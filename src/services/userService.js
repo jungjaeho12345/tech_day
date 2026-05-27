@@ -57,16 +57,24 @@ export function createUserService(db) {
       return { ok: true };
     },
 
-    /** Delete a user by userId (REQ-USR-D-001; not subject to article soft-delete). */
+    // @MX:NOTE: [AUTO] User "deletion" = status-based soft delete (deactivation), NOT physical DELETE
+    // (SPEC-AUTH-001 REQ-AUTH-USRMGMT-003 [D-AUTH-3]; CLAUDE.md HARD rule "DB rows are never deleted").
+    /** Soft-delete (deactivate) a user by userId; the User row is preserved. */
     remove(userId) {
-      const changes = model.remove(userId);
+      if (model.findById(userId) === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      const changes = model.deactivate(userId);
       return { ok: changes > 0 };
     },
 
-    /** Authenticate iff userId exists AND password matches the stored hash (REQ-USR-LOGIN-001..003). */
+    /**
+     * Authenticate iff userId exists, is active, AND password matches the stored hash.
+     * A deactivated user is rejected (REQ-AUTH-USRMGMT-004) while the row is preserved.
+     */
     login(userId, password) {
       const row = model.findById(userId);
-      if (row === undefined || !bcrypt.compareSync(password, row.password)) {
+      if (row === undefined || row.active === 'N' || !bcrypt.compareSync(password, row.password)) {
         return { ok: false };
       }
       return { ok: true, user: sanitize(row) };

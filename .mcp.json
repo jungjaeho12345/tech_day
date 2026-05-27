@@ -17,9 +17,14 @@
       "args": ["mcp", "lsp"],
       "timeout": 30
     },
-    "atlassian":{
-      "type": "sse",
-      "url": "https://mcp.atlassian.com/v1/sse"
+    "slack": {
+      "$comment": "Slack messaging — posts task completion summaries to the tech-day channel. Token/team read from user env vars (not committed).",
+      "command": "/bin/bash",
+      "args": ["-l", "-c", "exec npx -y @modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"
+      }
     }
   },
   "staggeredStartup": {

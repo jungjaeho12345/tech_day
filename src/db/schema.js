@@ -15,9 +15,14 @@ export const CONTENTS_COLUMNS = Object.freeze([
   'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status',
 ]);
 
+// @MX:NOTE: [AUTO] `active` is a SPEC-AUTH-001 amendment to SPEC-DB-FOUNDATION-001: status-based
+// user deactivation ('Y'=active default, 'N'=soft-deleted) so user "deletion" never physically
+// deletes a row (REQ-AUTH-USRMGMT-003; CLAUDE.md HARD rule).
 export const USER_COLUMNS = Object.freeze([
-  'userId', 'name', 'password', 'role', 'department', 'departmentCode',
+  'userId', 'name', 'password', 'role', 'department', 'departmentCode', 'active',
 ]);
+
+export const USER_ACTIVE = Object.freeze({ ACTIVE: 'Y', INACTIVE: 'N' });
 
 // Lifecycle states from news.md. KILL states represent soft deletion (REQ-DEL-002).
 export const LIFECYCLE_STATUSES = Object.freeze(
@@ -60,8 +65,22 @@ CREATE TABLE IF NOT EXISTS User (
   password VARCHAR,
   role VARCHAR,
   department VARCHAR,
-  departmentCode VARCHAR
+  departmentCode VARCHAR,
+  active VARCHAR NOT NULL DEFAULT 'Y'
 )`;
+
+/**
+ * Idempotently add the `active` column to a pre-existing User table (SPEC-AUTH-001 amendment).
+ * Re-running never destroys data (REQ-SCH-010): the column is added only when absent.
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function ensureUserActiveColumn(db) {
+  const hasActive = db.prepare("PRAGMA table_info('User')").all()
+    .some((col) => col.name === 'active');
+  if (!hasActive) {
+    db.exec("ALTER TABLE User ADD COLUMN active VARCHAR NOT NULL DEFAULT 'Y'");
+  }
+}
 
 /**
  * Create the three foundation tables idempotently on the given DatabaseSync handle.
@@ -71,4 +90,5 @@ export function createSchema(db) {
   db.exec(CREATE_ARTICLE);
   db.exec(CREATE_CONTENTS);
   db.exec(CREATE_USER);
+  ensureUserActiveColumn(db);
 }

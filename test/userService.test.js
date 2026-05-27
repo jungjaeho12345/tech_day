@@ -63,14 +63,16 @@ test('AC-7: update of a missing user returns not-found', () => {
   assert.equal(svc.update('ghost', { name: 'x' }).ok, false);
 });
 
-// AC-7 delete
-test('AC-7: delete removes the user by userId', () => {
+// AC-7 delete — superseded by SPEC-AUTH-001 [D-AUTH-3]: user "deletion" is now a soft delete
+// (deactivation), never a physical DELETE (CLAUDE.md HARD rule). The row MUST be preserved.
+test('AC-7: delete soft-deletes the user by userId (row preserved, marked inactive)', () => {
   const { db, svc } = freshService();
   svc.create({ userId: 'desk1', name: 'Lee', password: 'pw', role: 'D' });
   const result = svc.remove('desk1');
   assert.equal(result.ok, true);
   const row = db.prepare('SELECT * FROM User WHERE userId = ?').get('desk1');
-  assert.equal(row, undefined);
+  assert.notEqual(row, undefined, 'row must be preserved after soft delete');
+  assert.equal(row.active, 'N');
 });
 
 // AC-5: login success via hash compare, returns identity + role, no hash in response

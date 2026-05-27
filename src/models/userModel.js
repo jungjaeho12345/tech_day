@@ -4,7 +4,7 @@
 // User data-access layer for SPEC-BACKEND-CORE-001. Parameterized SQL only; no business logic.
 
 const UPDATABLE_COLUMNS = Object.freeze([
-  'name', 'password', 'role', 'department', 'departmentCode',
+  'name', 'password', 'role', 'department', 'departmentCode', 'active',
 ]);
 
 /**
@@ -53,8 +53,10 @@ export function createUserModel(db) {
       return Number(info.changes);
     },
 
-    remove(userId) {
-      const info = db.prepare('DELETE FROM User WHERE userId = ?').run(userId);
+    // @MX:NOTE: [AUTO] Status-based soft delete (SPEC-AUTH-001 REQ-AUTH-USRMGMT-003): the row is
+    // preserved, only `active` flips to 'N'. No physical DELETE is issued against User.
+    deactivate(userId) {
+      const info = db.prepare("UPDATE User SET active = 'N' WHERE userId = ?").run(userId);
       return Number(info.changes);
     },
   };

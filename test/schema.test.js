@@ -63,7 +63,8 @@ test('AC-1: User has expected columns', () => {
   const db = freshDb();
   createSchema(db);
   const cols = columnInfo(db, 'User').map((c) => c.name);
-  assert.deepEqual(cols, ['userId', 'name', 'password', 'role', 'department', 'departmentCode']);
+  // `active` added by SPEC-AUTH-001 amendment (status-based soft delete; REQ-AUTH-USRMGMT-003).
+  assert.deepEqual(cols, ['userId', 'name', 'password', 'role', 'department', 'departmentCode', 'active']);
 });
 
 test('AC-1: all columns declared VARCHAR', () => {
