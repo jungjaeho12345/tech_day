@@ -6,7 +6,7 @@
 // and routes send/hold through the Model. The client NEVER computes the next lifecycle state.
 import { useState, useCallback } from 'react';
 import { useModel } from '../app/context.js';
-import { createPlainTextEditorAdapter } from '../model/editorAdapter.js';
+import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 
 const EMPTY_COMMON = Object.freeze({
   author: '', coAuthor: '', content: '', region: '', attribute: '', keyword: '',
@@ -17,25 +17,26 @@ const EMPTY_COMMON = Object.freeze({
 export function useWriteController(user) {
   const model = useModel();
   // Editor adapter (DP-F1): the page programs against the adapter, not a concrete library.
-  const [adapter] = useState(() => createPlainTextEditorAdapter());
-  const [body, setBody] = useState('');
+  // SPEC-UI-EDITOR-001 uses the concrete structured adapter (text + ordered inline embeds).
+  const [adapter] = useState(() => createStructuredEditorAdapter());
+  // React mirror of the adapter content so the editor view re-renders on edits/embeds.
+  const [content, setContent] = useState(() => adapter.getContent());
   const [common, setCommon] = useState({ ...EMPTY_COMMON });
   const [articleId, setArticleId] = useState('A-DRAFT');
   const [lifecycleStatus, setLifecycleStatus] = useState(null);
   const [actionError, setActionError] = useState(null);
 
+  // Set the plain body text (typed input). Embeds already inserted are preserved (REQ-EDIT-ADP-003).
   const setBodyMarkup = useCallback((next) => {
-    adapter.setMarkup(next);
-    setBody(next);
+    adapter.setBodyText(next);
+    setContent(adapter.getContent());
   }, [adapter]);
 
-  const embed = useCallback((reference) => {
-    // Embed a media/article reference into the editor body (REQ-FE-WRITE-010/011).
-    setBody((prev) => {
-      const next = prev ? `${prev}\n${reference}` : reference;
-      adapter.setMarkup(next);
-      return next;
-    });
+  // @MX:NOTE: [AUTO] Inline embed insertion (REQ-EDIT-EMBED-001) — inserts a structured inline block
+  // (image/video/article descriptor) instead of appending a "[source] url" / "기사:id" marker string.
+  const embed = useCallback((descriptor) => {
+    adapter.embed(descriptor);
+    setContent(adapter.getContent());
   }, [adapter]);
 
   const updateCommon = useCallback((field, value) => {
@@ -73,7 +74,13 @@ export function useWriteController(user) {
   }, [articleId, assembleDto, model, user.role]);
 
   return {
-    body, setBodyMarkup, embed,
+    // Editor surface: structured content (text + ordered inline embeds) + plain body text.
+    content,
+    bodyText: adapter.getBodyText(),
+    setBodyMarkup,
+    embed,
+    getMarkup: adapter.getMarkup,
+    assembleDto,
     common, updateCommon,
     lifecycleStatus, actionError,
     send: () => submitAction('send'),

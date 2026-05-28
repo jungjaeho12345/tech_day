@@ -100,10 +100,10 @@ describe('WritePage media + text-article search (REQ-FE-WRITE-007..011) [DP-F3]'
     expect(screen.getByTestId('panel-공통정보')).toBeVisible();
   });
 
-  it('AC-4.1 embed: selecting a media result embeds reference into the body', async () => {
+  it('AC-2/AC-4.1 embed: image-tab result renders a VISUAL inline image, not a marker string', async () => {
     const user = userEvent.setup();
     const searchMedia = vi.fn().mockResolvedValue({
-      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x' }],
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x', thumbnailUrl: 'https://thumb/x' }],
       error: false,
     });
     renderWrite(createFakeModel({ searchMedia }));
@@ -111,10 +111,49 @@ describe('WritePage media + text-article search (REQ-FE-WRITE-007..011) [DP-F3]'
     await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'flood');
     await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
     await user.click(await screen.findByRole('button', { name: '삽입 YT clip' }));
-    expect(screen.getByTestId('editor-body').value).toContain('https://youtu.be/x');
+
+    const editorRegion = screen.getByTestId('editor-region');
+    // NEW behavior: a visual inline image element appears (REQ-EDIT-EMBED-002).
+    const embed = within(editorRegion).getByTestId('embed-image');
+    const img = within(embed).getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://thumb/x');
+    // OLD behavior gone: no plain "[youtube] url" marker text inside the editor body (REQ-EDIT-EMBED-001).
+    expect(within(editorRegion).queryByText(/\[youtube\]/)).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('editor-body')).queryByText('https://youtu.be/x')).not.toBeInTheDocument();
   });
 
-  it('AC-4.3: 글기사 internal search + embed on select', async () => {
+  it('EC-5: image result without thumbnailUrl falls back to url and does not crash', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x' }], // no thumbnailUrl
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'flood');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 YT clip' }));
+    const img = within(screen.getByTestId('editor-region')).getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://youtu.be/x');
+  });
+
+  it('AC-2/EC-3: 영상 tab result renders a VISUAL inline video reference card', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 YT clip' }));
+    const editorRegion = screen.getByTestId('editor-region');
+    expect(within(editorRegion).getByTestId('embed-video')).toBeInTheDocument();
+    expect(within(editorRegion).getByText('YT clip')).toBeInTheDocument();
+  });
+
+  it('AC-4.3: 글기사 internal search + inline article card on select (not 기사:id marker)', async () => {
     const user = userEvent.setup();
     const searchArticles = vi.fn().mockResolvedValue([
       { articleId: 'A-1', title: '폭우 피해', content: '본문...' },
@@ -125,7 +164,49 @@ describe('WritePage media + text-article search (REQ-FE-WRITE-007..011) [DP-F3]'
     await user.click(within(screen.getByTestId('panel-글기사')).getByRole('button', { name: '검색' }));
     expect(searchArticles).toHaveBeenCalledWith('폭우');
     await user.click(await screen.findByRole('button', { name: '삽입 폭우 피해' }));
-    expect(screen.getByTestId('editor-body').value).toContain('A-1');
+
+    const editorRegion = screen.getByTestId('editor-region');
+    // NEW behavior: a visual inline article card showing the title (REQ-EDIT-EMBED-004).
+    const card = within(editorRegion).getByTestId('embed-article');
+    expect(within(card).getByText('폭우 피해')).toBeInTheDocument();
+    // OLD behavior gone: no "기사:A-1" marker text (REQ-EDIT-EMBED-001).
+    expect(within(editorRegion).queryByText('기사:A-1')).not.toBeInTheDocument();
+  });
+
+  it('EC-3: embedding image + youtube + article in sequence yields three distinct ordered embeds', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'M item', url: 'https://m/1', thumbnailUrl: 'https://t/1' }],
+      error: false,
+    });
+    const searchArticles = vi.fn().mockResolvedValue([{ articleId: 'A-1', title: '내부기사', content: 'c' }]);
+    renderWrite(createFakeModel({ searchMedia, searchArticles }));
+
+    // image
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'a');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 M item' }));
+    // video
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'b');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 M item' }));
+    // article
+    await user.click(screen.getByRole('tab', { name: '글기사' }));
+    await user.type(within(screen.getByTestId('panel-글기사')).getByLabelText('검색어'), 'c');
+    await user.click(within(screen.getByTestId('panel-글기사')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 내부기사' }));
+
+    const editorRegion = screen.getByTestId('editor-region');
+    expect(within(editorRegion).getByTestId('embed-image')).toBeInTheDocument();
+    expect(within(editorRegion).getByTestId('embed-video')).toBeInTheDocument();
+    expect(within(editorRegion).getByTestId('embed-article')).toBeInTheDocument();
+    // Order preserved: image before video before article in DOM order.
+    const embeds = within(editorRegion).getAllByTestId(/^embed-/);
+    expect(embeds.map((e) => e.getAttribute('data-testid'))).toEqual([
+      'embed-image', 'embed-video', 'embed-article',
+    ]);
   });
 });
 

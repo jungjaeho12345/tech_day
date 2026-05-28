@@ -1,0 +1,818 @@
+/* ============================================================
+   yonhap.css  –  연합뉴스 visual design system
+   Single-file stylesheet: tokens → resets → layout → components
+   ============================================================ */
+
+/* ----------------------------------------------------------
+   1. Design tokens (CSS custom properties)
+   ---------------------------------------------------------- */
+:root {
+  /* Brand colours */
+  --yh-red:          #C8102E;
+  --yh-red-dark:     #a50d26;
+  --yh-red-light:    rgba(200, 16, 46, 0.08);
+
+  /* Neutral palette */
+  --yh-ink:          #1a1a1a;
+  --yh-gray-line:    #DDD;
+  --yh-gray-bg:      #f5f5f5;
+  --yh-gray-mid:     #888;
+  --yh-gray-dark:    #444;
+  --yh-white:        #ffffff;
+
+  /* Typography stacks */
+  --yh-serif:  'Nanum Myeongjo', 'Noto Serif KR', serif;
+  --yh-sans:   'Noto Sans KR', system-ui, sans-serif;
+
+  /* Spacing scale */
+  --yh-sp-xs:  0.25rem;
+  --yh-sp-sm:  0.5rem;
+  --yh-sp-md:  0.75rem;
+  --yh-sp-lg:  1rem;
+  --yh-sp-xl:  1.5rem;
+
+  /* Status-badge colour tokens */
+  --yh-badge-rds-bg:      #e8e8e8;
+  --yh-badge-rds-fg:      #555;
+
+  --yh-badge-send-bg:     #C8102E;   /* *PS  (DPS, BPS …) – transmit/송고 */
+  --yh-badge-send-fg:     #ffffff;
+
+  --yh-badge-hold-bg:     #d97706;   /* *RH / *DH – hold/보류 */
+  --yh-badge-hold-fg:     #ffffff;
+
+  --yh-badge-kill-bg:     #374151;   /* *RK / *DK – kill */
+  --yh-badge-kill-fg:     #ffffff;
+
+  --yh-badge-ok-bg:       #15803d;   /* general OK/confirmed */
+  --yh-badge-ok-fg:       #ffffff;
+
+  /* Layout */
+  --yh-header-height: 48px;
+  --yh-topbar-z:      100;
+}
+
+/* ----------------------------------------------------------
+   2. Global resets
+   ---------------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--yh-sans);
+  color: var(--yh-ink);
+  background: var(--yh-white);
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--yh-serif);
+  margin: 0;
+  line-height: 1.3;
+}
+
+a {
+  color: var(--yh-red);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+ul, ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--yh-sans);
+}
+
+input, select, textarea {
+  font-family: var(--yh-sans);
+  font-size: 0.9rem;
+}
+
+/* ----------------------------------------------------------
+   3. TopBar (header)
+   ---------------------------------------------------------- */
+.yh-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--yh-topbar-z);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--yh-header-height);
+  padding: 0 var(--yh-sp-lg);
+  background: var(--yh-red);
+  color: var(--yh-white);
+  border-bottom: 2px solid var(--yh-red-dark);
+}
+
+/* Brand wordmark area (left side) */
+.yh-brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--yh-sp-sm);
+}
+
+.yh-brand__logo {
+  font-family: var(--yh-serif);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--yh-white);
+}
+
+.yh-brand__title {
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.85;
+  letter-spacing: 0.04em;
+}
+
+/* User info (right side) */
+.yh-user {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-md);
+  font-size: 0.8rem;
+}
+
+.yh-user__name {
+  font-weight: 600;
+}
+
+.yh-user__role {
+  opacity: 0.8;
+  font-size: 0.75rem;
+}
+
+/* ----------------------------------------------------------
+   4. Realtime status bar (inside TopBar right area)
+   ---------------------------------------------------------- */
+.yh-status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-xs);
+  font-size: 0.75rem;
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-radius: 3px;
+  background: rgba(0,0,0,0.2);
+}
+
+.yh-status-bar--connected::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ade80;  /* green dot */
+  margin-right: 3px;
+}
+
+.yh-status-bar--disconnected::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fbbf24;  /* amber dot */
+  margin-right: 3px;
+}
+
+/* ----------------------------------------------------------
+   5. Site navigation bar (below header)
+   ---------------------------------------------------------- */
+.yh-nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 var(--yh-sp-lg);
+  background: var(--yh-white);
+  border-bottom: 1px solid var(--yh-gray-line);
+}
+
+.yh-nav__link {
+  display: inline-block;
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.85rem;
+  color: var(--yh-gray-dark);
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.yh-nav__link:hover {
+  color: var(--yh-red);
+  text-decoration: none;
+}
+
+.yh-nav__link--active {
+  color: var(--yh-red);
+  border-bottom-color: var(--yh-red);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------
+   6. Metadata tabs (WritePage right panel)
+   ---------------------------------------------------------- */
+.yh-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--yh-gray-line);
+  margin-bottom: var(--yh-sp-md);
+}
+
+.yh-tab {
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--yh-gray-mid);
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px; /* sit on top of parent border */
+}
+
+.yh-tab:hover {
+  color: var(--yh-red);
+}
+
+.yh-tab--active {
+  color: var(--yh-red);
+  border-bottom-color: var(--yh-red);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------
+   7. Buttons
+   ---------------------------------------------------------- */
+.yh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--yh-sp-xs) var(--yh-sp-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+/* Primary: solid red */
+.yh-btn--primary {
+  background: var(--yh-red);
+  color: var(--yh-white);
+  border-color: var(--yh-red);
+}
+.yh-btn--primary:hover {
+  background: var(--yh-red-dark);
+  border-color: var(--yh-red-dark);
+}
+
+/* Secondary: outlined */
+.yh-btn--secondary {
+  background: var(--yh-white);
+  color: var(--yh-gray-dark);
+  border-color: var(--yh-gray-line);
+}
+.yh-btn--secondary:hover {
+  background: var(--yh-gray-bg);
+}
+
+/* Danger / hold / kill */
+.yh-btn--hold {
+  background: #fff7ed;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+.yh-btn--hold:hover {
+  background: #fef3c7;
+}
+
+/* Disabled state (applies regardless of variant) */
+.yh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Small search button */
+.yh-btn--sm {
+  padding: 2px var(--yh-sp-sm);
+  font-size: 0.8rem;
+}
+
+/* ----------------------------------------------------------
+   8. Form fields
+   ---------------------------------------------------------- */
+.yh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--yh-sp-sm);
+}
+
+.yh-field label {
+  font-size: 0.78rem;
+  color: var(--yh-gray-mid);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.yh-field input,
+.yh-field select,
+.yh-field textarea {
+  width: 100%;
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-size: 0.88rem;
+  color: var(--yh-ink);
+  background: var(--yh-white);
+  transition: border-color 0.15s;
+}
+
+.yh-field input:focus,
+.yh-field select:focus,
+.yh-field textarea:focus {
+  outline: none;
+  border-color: var(--yh-red);
+}
+
+/* Standalone label+input rows (legacy inline labels kept for a11y) */
+.yh-field-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  margin-bottom: var(--yh-sp-xs);
+}
+
+.yh-field-row label {
+  font-size: 0.78rem;
+  color: var(--yh-gray-mid);
+  font-weight: 600;
+  text-align: right;
+}
+
+.yh-field-row input,
+.yh-field-row select {
+  padding: 2px var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-size: 0.88rem;
+  background: var(--yh-white);
+  color: var(--yh-ink);
+}
+
+.yh-field-row input:focus,
+.yh-field-row select:focus {
+  outline: none;
+  border-color: var(--yh-red);
+}
+
+/* ----------------------------------------------------------
+   9. Login card
+   ---------------------------------------------------------- */
+.yh-login-wrap {
+  min-height: calc(100vh - var(--yh-header-height));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--yh-gray-bg);
+}
+
+.yh-card {
+  background: var(--yh-white);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  padding: var(--yh-sp-xl);
+  width: 320px;
+}
+
+.yh-card__header {
+  text-align: center;
+  margin-bottom: var(--yh-sp-xl);
+}
+
+.yh-card__logo {
+  font-family: var(--yh-serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--yh-red);
+  letter-spacing: -0.02em;
+}
+
+.yh-card__subtitle {
+  font-size: 0.8rem;
+  color: var(--yh-gray-mid);
+  margin-top: var(--yh-sp-xs);
+}
+
+/* ----------------------------------------------------------
+   10. Article table (ViewPage)
+   ---------------------------------------------------------- */
+.yh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.yh-table thead {
+  background: var(--yh-gray-bg);
+}
+
+.yh-table th {
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-bottom: 2px solid var(--yh-red);
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--yh-gray-dark);
+  white-space: nowrap;
+}
+
+.yh-table td {
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-bottom: 1px solid var(--yh-gray-line);
+  vertical-align: middle;
+  color: var(--yh-ink);
+}
+
+.yh-table tr:hover td {
+  background: var(--yh-red-light);
+}
+
+/* Article list row (ul-based, not table) */
+.yh-article-list {
+  margin: 0;
+  padding: 0;
+}
+
+.yh-article-row {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-bottom: 1px solid var(--yh-gray-line);
+  font-size: 0.88rem;
+}
+
+.yh-article-row:hover {
+  background: var(--yh-red-light);
+}
+
+.yh-article-row__title {
+  flex: 1;
+  font-family: var(--yh-serif);
+  color: var(--yh-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yh-article-row__actions {
+  display: flex;
+  gap: var(--yh-sp-xs);
+  flex-shrink: 0;
+}
+
+/* ----------------------------------------------------------
+   11. Status badges
+   ---------------------------------------------------------- */
+.yh-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Default: RDS (draft / 기사대기) */
+.yh-badge--rds {
+  background: var(--yh-badge-rds-bg);
+  color: var(--yh-badge-rds-fg);
+}
+
+/* Transmit / 송고 group: DPS, BPS, any *PS */
+.yh-badge--send {
+  background: var(--yh-badge-send-bg);
+  color: var(--yh-badge-send-fg);
+}
+
+/* Hold / 보류 group: RRH, DDH, any *H */
+.yh-badge--hold {
+  background: var(--yh-badge-hold-bg);
+  color: var(--yh-badge-hold-fg);
+}
+
+/* Kill group: RRK, DDK, any *K */
+.yh-badge--kill {
+  background: var(--yh-badge-kill-bg);
+  color: var(--yh-badge-kill-fg);
+}
+
+/* Confirmed / published */
+.yh-badge--ok {
+  background: var(--yh-badge-ok-bg);
+  color: var(--yh-badge-ok-fg);
+}
+
+/* ----------------------------------------------------------
+   12. WritePage 2-column layout
+   ---------------------------------------------------------- */
+.yh-write-layout {
+  display: grid;
+  grid-template-columns: 60% 40%;
+  gap: 0;
+  min-height: calc(100vh - var(--yh-header-height) - 40px);
+}
+
+/* Left: editor region */
+.yh-editor-region {
+  display: flex;
+  flex-direction: column;
+  padding: var(--yh-sp-md);
+  border-right: 1px solid var(--yh-gray-line);
+}
+
+.yh-editor-region label {
+  font-size: 0.78rem;
+  color: var(--yh-gray-mid);
+  font-weight: 600;
+  margin-bottom: var(--yh-sp-xs);
+}
+
+.yh-editor-region textarea {
+  flex: 1;
+  min-height: 60vh;
+  padding: var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-family: var(--yh-serif);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  resize: vertical;
+  color: var(--yh-ink);
+}
+
+.yh-editor-region textarea:focus {
+  outline: none;
+  border-color: var(--yh-red);
+}
+
+/* Right: metadata region */
+.yh-meta-region {
+  display: flex;
+  flex-direction: column;
+  padding: var(--yh-sp-md);
+  overflow-y: auto;
+}
+
+/* Action buttons strip at top of meta region */
+.yh-meta-actions {
+  display: flex;
+  gap: var(--yh-sp-sm);
+  margin-bottom: var(--yh-sp-sm);
+  padding-bottom: var(--yh-sp-sm);
+  border-bottom: 1px solid var(--yh-gray-line);
+}
+
+/* Status display inside meta region */
+.yh-lifecycle-status {
+  font-size: 0.8rem;
+  color: var(--yh-gray-mid);
+  margin-bottom: var(--yh-sp-sm);
+}
+
+/* Alert/error messages */
+.yh-alert {
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-left: 3px solid var(--yh-red);
+  background: #fff5f5;
+  font-size: 0.85rem;
+  color: var(--yh-red-dark);
+  margin-bottom: var(--yh-sp-sm);
+}
+
+/* ----------------------------------------------------------
+   13. ViewPage layout
+   ---------------------------------------------------------- */
+.yh-view-wrap {
+  padding: var(--yh-sp-md) var(--yh-sp-lg);
+}
+
+/* View menus (조회 메뉴 buttons) */
+.yh-view-menu {
+  display: flex;
+  gap: var(--yh-sp-xs);
+  padding: var(--yh-sp-sm) 0;
+  border-bottom: 1px solid var(--yh-gray-line);
+  margin-bottom: var(--yh-sp-md);
+}
+
+.yh-view-menu__btn {
+  padding: var(--yh-sp-xs) var(--yh-sp-md);
+  font-size: 0.82rem;
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  background: var(--yh-white);
+  color: var(--yh-gray-dark);
+  transition: background 0.12s, color 0.12s;
+}
+
+.yh-view-menu__btn:hover {
+  background: var(--yh-gray-bg);
+}
+
+.yh-view-menu__btn--active {
+  background: var(--yh-red);
+  color: var(--yh-white);
+  border-color: var(--yh-red);
+  font-weight: 600;
+}
+
+/* Department filter row */
+.yh-dept-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  margin-bottom: var(--yh-sp-sm);
+  font-size: 0.85rem;
+}
+
+.yh-dept-filter label {
+  color: var(--yh-gray-mid);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.yh-dept-filter select {
+  padding: 2px var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-size: 0.85rem;
+  background: var(--yh-white);
+  color: var(--yh-ink);
+}
+
+/* ----------------------------------------------------------
+   14. Search result lists (WritePage media/article panels)
+   ---------------------------------------------------------- */
+.yh-search-bar {
+  display: flex;
+  gap: var(--yh-sp-xs);
+  margin-bottom: var(--yh-sp-sm);
+}
+
+.yh-search-bar input {
+  flex: 1;
+  padding: 3px var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-size: 0.85rem;
+}
+
+.yh-search-bar input:focus {
+  outline: none;
+  border-color: var(--yh-red);
+}
+
+.yh-result-list {
+  font-size: 0.85rem;
+}
+
+.yh-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--yh-gray-line);
+  gap: var(--yh-sp-sm);
+}
+
+.yh-result-row span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------------
+   15. Utility helpers
+   ---------------------------------------------------------- */
+.yh-divider {
+  border: none;
+  border-top: 1px solid var(--yh-gray-line);
+  margin: var(--yh-sp-sm) 0;
+}
+
+.yh-page-content {
+  padding: var(--yh-sp-md) var(--yh-sp-lg);
+}
+
+.yh-text-red   { color: var(--yh-red); }
+.yh-text-muted { color: var(--yh-gray-mid); font-size: 0.82rem; }
+
+/* Tabpanel content area */
+.yh-tabpanel {
+  padding-top: var(--yh-sp-sm);
+}
+
+/* ----------------------------------------------------------
+   16. Editor body + inline embeds (SPEC-UI-EDITOR-001)
+   contentEditable body text + visually distinct inline embeds
+   (image / video reference / internal-article card).
+   ---------------------------------------------------------- */
+.yh-editor-body {
+  flex: 1;
+  min-height: 50vh;
+  padding: var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-family: var(--yh-serif);
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--yh-ink);
+  background: var(--yh-white);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.yh-editor-body:focus {
+  outline: none;
+  border-color: var(--yh-red);
+}
+
+/* Ordered inline-embed strip below the typed body text. */
+.yh-editor-embeds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--yh-sp-sm);
+  margin-top: var(--yh-sp-sm);
+}
+
+/* Base embed: a card visually distinct from body text (gray separators, sans labels). */
+.yh-embed {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-left: 3px solid var(--yh-red);
+  border-radius: 3px;
+  background: var(--yh-gray-bg);
+  font-family: var(--yh-sans);
+  font-size: 0.85rem;
+}
+
+.yh-embed__img {
+  max-width: 120px;
+  max-height: 80px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid var(--yh-gray-line);
+}
+
+.yh-embed__caption,
+.yh-embed__title {
+  font-family: var(--yh-sans);
+  color: var(--yh-gray-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Type marker badges (영상 / 기사) in brand red. */
+.yh-embed__video-mark,
+.yh-embed__article-mark {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--yh-red);
+  color: var(--yh-white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.yh-embed__link {
+  font-size: 0.78rem;
+  color: var(--yh-red);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
