@@ -47,6 +47,39 @@ describe('createStructuredEditorAdapter (REQ-EDIT-ADP)', () => {
     expect(adapter.getStructure()).toEqual({ title: '제목', subtitle: '부제목', body: '본문줄' });
   });
 
+  it('Alt+Y: appendEnd inserts a newline + "(끝)" and it survives a setMarkup round-trip', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문 내용');
+    adapter.appendEnd();
+    // news.md: Alt+Y inserts "\r\n (끝)" — the marker on a NEW LINE ('\n'-based model => '\n (끝)').
+    expect(adapter.getBodyText()).toBe('본문 내용\n (끝)');
+    // Persists in markupVersion (round-trips via setMarkup): save -> reload keeps "(끝)".
+    expect(adapter.getMarkup()).toContain('(끝)');
+    const m = adapter.getMarkup();
+    adapter.setMarkup(m);
+    expect(adapter.getBodyText()).toBe('본문 내용\n (끝)');
+  });
+
+  it('Alt+Y: appendEnd is IDEMPOTENT — a second call does not append a duplicate "(끝)"', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문');
+    adapter.appendEnd();
+    adapter.appendEnd(); // already present -> no-op (news.md: 이미 있으면 삽입하지 않는다)
+    const body = adapter.getBodyText();
+    expect(body).toBe('본문\n (끝)');
+    // Exactly one occurrence of the marker.
+    expect(body.split('(끝)').length - 1).toBe(1);
+  });
+
+  it('Alt+Y: appendEnd preserves existing embeds (marker goes onto the body text, not after embeds)', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문');
+    adapter.embed(IMG);
+    adapter.appendEnd();
+    expect(adapter.getBodyText()).toBe('본문\n (끝)');
+    expect(adapter.getContent().blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
+  });
+
   it('EC-5: embedding a result without thumbnailUrl does not crash and survives round-trip', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.embed({ type: 'video', source: 'youtube', title: 'YT', url: 'https://youtu.be/x' });

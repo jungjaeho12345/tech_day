@@ -7,10 +7,21 @@
    1. Design tokens (CSS custom properties)
    ---------------------------------------------------------- */
 :root {
-  /* Brand colours */
-  --yh-red:          #C8102E;
+  /* Brand colours.
+     Design direction (CLAUDE.md / news.md): 연합뉴스 style — white+blue, BLUE-LED, RED as point accent.
+     Header is WHITE with a BLUE border and BLUE 연합 lettering (CLAUDE.md: 연합뉴스 글자색은 파란색).
+     BLUE leads the UI chrome (header border/wordmark, primary buttons, active tabs/nav, links, focus,
+     table underline); RED stays as the 연합 brand accent (logo rule, alert border, "send" status badge).
+     White backgrounds dominate. */
+  --yh-blue:         #0A4DA6;   /* primary chrome — 연합뉴스-compatible deep blue */
+  --yh-blue-dark:    #083d84;   /* hover/active emphasis */
+  --yh-blue-light:   rgba(10, 77, 166, 0.08); /* tint for hover rows / focus tints */
+
+  --yh-red:          #C8102E;   /* accent/point — 연합 brand identity */
   --yh-red-dark:     #a50d26;
   --yh-red-light:    rgba(200, 16, 46, 0.08);
+
+  --yh-gold:         #D4AF37;   /* 골드색 — Alt+Y "(끝)" end marker (news.md 기사 에디터) */
 
   /* Neutral palette */
   --yh-ink:          #1a1a1a;
@@ -80,7 +91,7 @@ h1, h2, h3, h4 {
 }
 
 a {
-  color: var(--yh-red);
+  color: var(--yh-blue);
   text-decoration: none;
 }
 a:hover {
@@ -115,9 +126,11 @@ input, select, textarea {
   justify-content: space-between;
   height: var(--yh-header-height);
   padding: 0 var(--yh-sp-lg);
-  background: var(--yh-red);
-  color: var(--yh-white);
-  border-bottom: 2px solid var(--yh-red-dark);
+  /* 연합뉴스 white+blue look (CLAUDE.md): WHITE header with a BLUE bottom border so the
+     blue lettering reads clearly. White dominates, blue leads. */
+  background: var(--yh-white);
+  color: var(--yh-ink);
+  border-bottom: 3px solid var(--yh-blue); /* BLUE underline anchors the white header */
 }
 
 /* Brand wordmark area (left side) */
@@ -127,36 +140,71 @@ input, select, textarea {
   gap: var(--yh-sp-sm);
 }
 
+/* Brand wordmark "연합" — BLUE lettering (CLAUDE.md: 연합뉴스 글자색은 파란색).
+   A thin RED left rule keeps the 연합 brand accent present without coloring the letters. */
 .yh-brand__logo {
   font-family: var(--yh-serif);
-  font-size: 1.35rem;
+  font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--yh-white);
+  color: var(--yh-blue);
+  border-left: 3px solid var(--yh-red); /* small red accent — 연합 identity */
+  padding: 2px var(--yh-sp-sm);
 }
 
+/* Subtitle wordmark — also BLUE so the lettering reads as blue on the white header. */
 .yh-brand__title {
   font-size: 0.8rem;
-  font-weight: 400;
-  opacity: 0.85;
+  font-weight: 600;
+  color: var(--yh-blue);
+  opacity: 0.9;
   letter-spacing: 0.04em;
 }
 
-/* User info (right side) */
+/* User info (right side) — dark/blue text, legible on the white header. */
 .yh-user {
   display: flex;
   align-items: center;
   gap: var(--yh-sp-md);
   font-size: 0.8rem;
+  color: var(--yh-gray-dark);
 }
 
 .yh-user__name {
   font-weight: 600;
+  color: var(--yh-blue);  /* userId reads in brand blue */
+}
+
+.yh-user__dept {
+  color: var(--yh-gray-dark);
 }
 
 .yh-user__role {
-  opacity: 0.8;
+  color: var(--yh-gray-mid);
   font-size: 0.75rem;
+}
+
+/* Logout button — legible on the WHITE header: blue outline + blue text that fills blue on hover. */
+.yh-logout-btn {
+  padding: 2px var(--yh-sp-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--yh-blue);
+  background: var(--yh-white);
+  border: 1px solid var(--yh-blue);
+  border-radius: 3px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.yh-logout-btn:hover {
+  background: var(--yh-blue);
+  color: var(--yh-white);
+  border-color: var(--yh-blue);
+}
+
+.yh-logout-btn:focus-visible {
+  outline: 2px solid var(--yh-blue);
+  outline-offset: 1px;
 }
 
 /* ----------------------------------------------------------
@@ -169,7 +217,9 @@ input, select, textarea {
   font-size: 0.75rem;
   padding: var(--yh-sp-xs) var(--yh-sp-sm);
   border-radius: 3px;
-  background: rgba(0,0,0,0.2);
+  /* Legible on the white header: light blue tint chip with dark text. */
+  background: var(--yh-blue-light);
+  color: var(--yh-gray-dark);
 }
 
 .yh-status-bar--connected::before {
@@ -214,13 +264,13 @@ input, select, textarea {
 }
 
 .yh-nav__link:hover {
-  color: var(--yh-red);
+  color: var(--yh-blue);
   text-decoration: none;
 }
 
 .yh-nav__link--active {
-  color: var(--yh-red);
-  border-bottom-color: var(--yh-red);
+  color: var(--yh-blue);
+  border-bottom-color: var(--yh-blue);
   font-weight: 600;
 }
 
@@ -245,12 +295,12 @@ input, select, textarea {
 }
 
 .yh-tab:hover {
-  color: var(--yh-red);
+  color: var(--yh-blue);
 }
 
 .yh-tab--active {
-  color: var(--yh-red);
-  border-bottom-color: var(--yh-red);
+  color: var(--yh-blue);
+  border-bottom-color: var(--yh-blue);
   font-weight: 600;
 }
 
@@ -269,15 +319,15 @@ input, select, textarea {
   transition: background 0.15s, border-color 0.15s;
 }
 
-/* Primary: solid red */
+/* Primary: solid blue (송고 — BLUE-LED primary chrome) */
 .yh-btn--primary {
-  background: var(--yh-red);
+  background: var(--yh-blue);
   color: var(--yh-white);
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
 .yh-btn--primary:hover {
-  background: var(--yh-red-dark);
-  border-color: var(--yh-red-dark);
+  background: var(--yh-blue-dark);
+  border-color: var(--yh-blue-dark);
 }
 
 /* Secondary: outlined */
@@ -290,7 +340,7 @@ input, select, textarea {
   background: var(--yh-gray-bg);
 }
 
-/* Danger / hold / kill */
+/* Hold (보류): amber-toned warning, distinct from KILL */
 .yh-btn--hold {
   background: #fff7ed;
   color: #92400e;
@@ -298,6 +348,17 @@ input, select, textarea {
 }
 .yh-btn--hold:hover {
   background: #fef3c7;
+}
+
+/* KILL: darker danger treatment — solid slate, clearly distinct from 보류's amber. */
+.yh-btn--kill {
+  background: var(--yh-badge-kill-bg);  /* #374151 slate */
+  color: var(--yh-white);
+  border-color: var(--yh-badge-kill-bg);
+}
+.yh-btn--kill:hover {
+  background: #1f2937;
+  border-color: #1f2937;
 }
 
 /* Disabled state (applies regardless of variant) */
@@ -346,7 +407,7 @@ input, select, textarea {
 .yh-field select:focus,
 .yh-field textarea:focus {
   outline: none;
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
 
 /* Standalone label+input rows (legacy inline labels kept for a11y) */
@@ -378,7 +439,7 @@ input, select, textarea {
 .yh-field-row input:focus,
 .yh-field-row select:focus {
   outline: none;
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
 
 /* ----------------------------------------------------------
@@ -410,7 +471,7 @@ input, select, textarea {
   font-family: var(--yh-serif);
   font-size: 1.6rem;
   font-weight: 700;
-  color: var(--yh-red);
+  color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
   letter-spacing: -0.02em;
 }
 
@@ -435,7 +496,7 @@ input, select, textarea {
 
 .yh-table th {
   padding: var(--yh-sp-xs) var(--yh-sp-sm);
-  border-bottom: 2px solid var(--yh-red);
+  border-bottom: 2px solid var(--yh-blue);   /* BLUE table header underline */
   text-align: left;
   font-size: 0.78rem;
   font-weight: 700;
@@ -451,13 +512,14 @@ input, select, textarea {
 }
 
 .yh-table tr:hover td {
-  background: var(--yh-red-light);
+  background: var(--yh-blue-light);
 }
 
 /* Article list row (ul-based, not table) */
 .yh-article-list {
   margin: 0;
   padding: 0;
+  list-style: none;
 }
 
 .yh-article-row {
@@ -470,16 +532,49 @@ input, select, textarea {
 }
 
 .yh-article-row:hover {
-  background: var(--yh-red-light);
+  background: var(--yh-blue-light);
+}
+
+/* Clickable row (opens the detail window). Pointer + clearer hover/focus cue. */
+.yh-article-row {
+  cursor: pointer;
+}
+
+.yh-article-row:focus-visible {
+  outline: 2px solid var(--yh-blue);
+  outline-offset: -2px;
 }
 
 .yh-article-row__title {
   flex: 1;
+  min-width: 0;            /* allow the title to shrink/ellipsize beside the meta columns */
   font-family: var(--yh-serif);
   color: var(--yh-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Compact newspaper-index meta columns: 작성자 / 수정자 / 시간 on one dense line.
+   Fixed-ish widths keep the columns aligned without wrapping. */
+.yh-article-row__author,
+.yh-article-row__modifier {
+  flex-shrink: 0;
+  width: 6rem;
+  color: var(--yh-gray-dark);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yh-article-row__time {
+  flex-shrink: 0;
+  width: 9rem;
+  color: var(--yh-gray-mid);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .yh-article-row__actions {
@@ -571,7 +666,7 @@ input, select, textarea {
 
 .yh-editor-region textarea:focus {
   outline: none;
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
 
 /* Right: metadata region */
@@ -639,9 +734,9 @@ input, select, textarea {
 }
 
 .yh-view-menu__btn--active {
-  background: var(--yh-red);
+  background: var(--yh-blue);
   color: var(--yh-white);
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
   font-weight: 600;
 }
 
@@ -688,7 +783,7 @@ input, select, textarea {
 
 .yh-search-bar input:focus {
   outline: none;
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
 
 .yh-result-list {
@@ -754,8 +849,18 @@ input, select, textarea {
 
 .yh-editor-body:focus {
   outline: none;
-  border-color: var(--yh-red);
+  border-color: var(--yh-blue);
 }
+
+/* Role-based body coloring (news.md 기사 에디터): 제목=파란색, 부제목=빨간색, 본문=검정색.
+   Applied presentationally (presentation only — the underlying plain text is unchanged). The
+   coloring re-runs on compositionend/blur/programmatic-load, NOT on every keystroke (Hangul IME safety). */
+.yh-line--title    { color: var(--yh-blue); }
+.yh-line--subtitle { color: var(--yh-red); }
+.yh-line--body     { color: var(--yh-ink); }
+
+/* Alt+Y end marker "(끝)" — 골드색 (news.md 기사 에디터). */
+.yh-end-mark { color: var(--yh-gold); font-weight: 700; }
 
 /* Ordered inline-embed strip below the typed body text. */
 .yh-editor-embeds {
@@ -765,11 +870,18 @@ input, select, textarea {
   margin-top: var(--yh-sp-sm);
 }
 
-/* Base embed: a card visually distinct from body text (gray separators, sans labels). */
+/* Base embed: a small card visually distinct from body text (gray separators, sans labels).
+   news.md 기사 에디터: an inline embed is small relative to the editor — about 10% of the
+   editor width (with a min-width so it stays usable). Stacks label/caption vertically inside
+   the narrow box. */
 .yh-embed {
   display: flex;
-  align-items: center;
-  gap: var(--yh-sp-sm);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--yh-sp-xs);
+  width: 10%;            /* ~10% of the .yh-editor-region width */
+  min-width: 96px;       /* keep it usable on narrow editors */
+  max-width: 100%;
   padding: var(--yh-sp-xs) var(--yh-sp-sm);
   border: 1px solid var(--yh-gray-line);
   border-left: 3px solid var(--yh-red);
@@ -780,8 +892,9 @@ input, select, textarea {
 }
 
 .yh-embed__img {
-  max-width: 120px;
-  max-height: 80px;
+  width: 100%;           /* fill the narrow embed box (which is ~10% of the editor) */
+  max-width: 100%;
+  height: auto;          /* keep aspect ratio for the small embed */
   object-fit: cover;
   border-radius: 2px;
   border: 1px solid var(--yh-gray-line);
@@ -815,4 +928,89 @@ input, select, textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ----------------------------------------------------------
+   17. Article list pagination (ViewPage)
+   news.md 기사 조회페이지: "기사는 10개씩 보여주며 페이징 처리 해줘". The list itself is the
+   dense newspaper-index row defined in §10 (.yh-article-row); only the pager lives here.
+   ---------------------------------------------------------- */
+/* Pagination controls (이전 / 현재 / 다음). */
+.yh-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yh-sp-md);
+  padding: var(--yh-sp-md) 0;
+}
+
+.yh-pagination__indicator {
+  font-size: 0.82rem;
+  color: var(--yh-gray-dark);
+  font-weight: 600;
+  min-width: 4rem;
+  text-align: center;
+}
+
+/* ----------------------------------------------------------
+   18. Article context menu (ViewPage right-click)
+   news.md 기사 조회페이지: right-click a row to open a menu of actions. Functional items are
+   enabled; not-yet-implemented items are shown DISABLED with a (준비중) hint. 연합 white panel
+   with a BLUE-LED hover and a RED point accent on the (준비중) hint.
+   ---------------------------------------------------------- */
+.yh-ctxmenu {
+  position: fixed;
+  z-index: calc(var(--yh-topbar-z) + 10);
+  margin: 0;
+  padding: var(--yh-sp-xs) 0;
+  list-style: none;
+  min-width: 10rem;
+  background: var(--yh-white);
+  border: 1px solid var(--yh-gray-line);
+  border-top: 2px solid var(--yh-blue);   /* BLUE-LED top rule */
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  font-size: 0.85rem;
+}
+
+.yh-ctxmenu__row {
+  margin: 0;
+  padding: 0;
+}
+
+.yh-ctxmenu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yh-sp-md);
+  width: 100%;
+  padding: var(--yh-sp-xs) var(--yh-sp-md);
+  border: 0;
+  background: transparent;
+  color: var(--yh-ink);
+  font-family: var(--yh-sans);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yh-ctxmenu__item:hover:not(:disabled) {
+  background: var(--yh-blue-light);   /* BLUE-LED hover tint */
+}
+
+.yh-ctxmenu__item:focus-visible {
+  outline: 2px solid var(--yh-blue);
+  outline-offset: -2px;
+}
+
+.yh-ctxmenu__item--disabled,
+.yh-ctxmenu__item:disabled {
+  color: var(--yh-gray-mid);
+  cursor: not-allowed;
+}
+
+.yh-ctxmenu__hint {
+  flex-shrink: 0;
+  color: var(--yh-red);   /* RED point accent for the (준비중) marker */
+  font-size: 0.72rem;
 }

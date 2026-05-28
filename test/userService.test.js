@@ -1,5 +1,5 @@
 // Tests for SPEC-BACKEND-CORE-001 user model + service + login (AC-5, AC-6, AC-7).
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import bcrypt from 'bcryptjs';
@@ -100,4 +100,40 @@ test('AC-6: login fails on unknown userId', () => {
   const result = svc.login('nobody', 'pw');
   assert.equal(result.ok, false);
   assert.equal(result.user, undefined);
+});
+
+// SPEC-AUTH-001 Finding #1 (A07 timing side-channel): unknown user, deactivated user, and wrong
+// password must ALL return the same unified {ok:false} with no message-based leak.
+test('Finding#1: unknown / deactivated / wrong-password logins all return a unified {ok:false}', () => {
+  const { svc } = freshService();
+  svc.create({ userId: 'active1', name: 'Kim', password: 'pw', role: 'R' });
+  svc.create({ userId: 'gone1', name: 'Lee', password: 'pw', role: 'R' });
+  svc.remove('gone1'); // deactivate (active='N')
+
+  const unknown = svc.login('nobody', 'pw');
+  const deactivated = svc.login('gone1', 'pw');
+  const wrongPw = svc.login('active1', 'wrong');
+
+  // Identical unified shape — no reason/message distinguishes the three rejection causes.
+  assert.deepEqual(unknown, { ok: false });
+  assert.deepEqual(deactivated, { ok: false });
+  assert.deepEqual(wrongPw, { ok: false });
+});
+
+// Finding #1: the not-found and deactivated branches must NOT early-return before a bcrypt compare;
+// the dummy-compare path keeps the timing-sensitive branch symmetric with the active-user branch.
+test('Finding#1: not-found and deactivated logins still exercise a bcrypt compare (no short-circuit)', () => {
+  const { svc } = freshService();
+  svc.create({ userId: 'gone1', name: 'Lee', password: 'pw', role: 'R' });
+  svc.remove('gone1'); // deactivate
+
+  const spy = mock.method(bcrypt, 'compareSync');
+  try {
+    svc.login('nobody', 'pw');     // unknown user
+    svc.login('gone1', 'pw');      // deactivated user
+    // Each rejection branch ran a hash comparison rather than returning before any compare.
+    assert.equal(spy.mock.callCount(), 2, 'both rejection branches must run bcrypt.compareSync');
+  } finally {
+    spy.mock.restore();
+  }
 });

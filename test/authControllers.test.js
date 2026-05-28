@@ -154,6 +154,26 @@ test('REQ-AUTH-GUARD: editDps on a non-existent article returns not-found', () =
   assert.equal(res.reason, 'not-found');
 });
 
+// SPEC-AUTH-001 Finding #2 (A07 session fixation): login mints a fresh sessionId on each call,
+// and a prior session supplied to login is invalidated before the new one is issued.
+test('Finding#2: login mints a new sessionId and invalidates any prior session id', () => {
+  const { c } = freshControllers();
+  seedUser(c, 'admin', 'Z');
+
+  const first = c.auth.login('admin', 'pw');
+  assert.equal(first.ok, true);
+  assert.equal(typeof first.sessionId, 'string');
+
+  // Re-login carrying the prior (pre-auth) session id: it must be invalidated and a NEW id minted.
+  const second = c.auth.login('admin', 'pw', first.sessionId);
+  assert.equal(second.ok, true);
+  assert.notEqual(second.sessionId, first.sessionId, 'a fresh session id must be minted on re-login');
+
+  // The prior session is gone (session fixation guard); the new one is live.
+  assert.equal(c.auth.manageUsers(first.sessionId, 'query', {}).reason, 'unauthenticated');
+  assert.equal(c.auth.manageUsers(second.sessionId, 'query', {}).ok, true);
+});
+
 // EC-4: logout invalidates the session so reuse is rejected.
 test('REQ-AUTH-SESS-004/GUARD-002: after logout the session is rejected', () => {
   const { c } = freshControllers();

@@ -32,12 +32,23 @@ export function createFakeModel(overrides = {}) {
     async searchMedia() {
       return { items: [], error: false };
     },
-    async applyAction(_articleId, _role, action) {
-      // Default: send -> DPS, hold -> DDH (matches backend D-role transitions).
-      return { ok: true, status: action === 'hold' ? 'DDH' : 'DPS' };
+    async applyAction(_articleId, role, action) {
+      // Default lifecycle results, role-aware (matches src/services/lifecycle.js RDS transitions).
+      // kill -> RRK (R) / DDK (D); hold -> RRH (R) / DDH (D); send -> DPS (D default).
+      if (action === 'kill') {
+        return { ok: true, status: role === 'R' ? 'RRK' : 'DDK' };
+      }
+      if (action === 'hold') {
+        return { ok: true, status: role === 'R' ? 'RRH' : 'DDH' };
+      }
+      return { ok: true, status: 'DPS' };
     },
     async saveArticle(articleId) {
       return { ok: true, articleId: articleId ?? 'A-0001' };
+    },
+    async logout() {
+      // Default: end the session successfully (no real HTTP transport wired).
+      return { ok: true };
     },
     subscribe(_filter, onChange) {
       const entry = { onChange };

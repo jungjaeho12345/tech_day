@@ -18,6 +18,8 @@ import {
   contentToText,
   contentToMarkup,
   deserializeContent,
+  END_MARKER_BLOCK,
+  hasEndMarker,
 } from './editorContent.js';
 import { parseArticleStructure } from './articleStructure.js';
 
@@ -63,6 +65,19 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
     setBodyText(text) {
       const embeds = content.blocks.filter((b) => b.type === 'embed');
       content = { blocks: [...contentFromText(text).blocks, ...embeds] };
+    },
+    /**
+     * Insert "\r\n (끝)" (a NEW LINE + the gold "(끝)" marker) at the END of the body text
+     * (news.md 기사 에디터 Alt+Y). Stored as literal body text so it round-trips through markupVersion
+     * (save -> reload keeps it). IDEMPOTENT: if the body already ends with the "(끝)" marker, this is a
+     * no-op (news.md: Alt+Y를 누를시 이미 "\r\n (끝)"이 있다면 삽입하지 않는다). Embeds are preserved.
+     */
+    appendEnd() {
+      const bodyText = contentToText(content);
+      if (hasEndMarker(bodyText)) return; // already present -> do not append a duplicate
+      const embeds = content.blocks.filter((b) => b.type === 'embed');
+      const nextText = bodyText + END_MARKER_BLOCK;
+      content = { blocks: [...contentFromText(nextText).blocks, ...embeds] };
     },
     /** Insert a media/article embed as a distinct inline block (REQ-EDIT-EMBED-001/007). */
     embed(descriptor) {

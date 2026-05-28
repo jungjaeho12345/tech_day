@@ -32,10 +32,18 @@ export function createControllers(db, deps = {}) {
     auth: {
       // REQ-AUTH-LOGIN-002 / SESS-001: on success, establish a session and return its id + sanitized user.
       // REQ-AUTH-LOGIN-003: on failure, return {ok:false, reason} (for the client ALERT), no session.
-      login: (userId, password) => {
+      // @MX:NOTE: [AUTO] Session re-issue is explicit (anti session-fixation): any pre-auth session id
+      // supplied on the login call is invalidated FIRST, then createSession mints a brand-new random id.
+      // @MX:REASON: makes the "new id per authenticated login" guarantee a code-level rule so it survives
+      // the future HTTP cookie-binding work (deferred per spec.md Exclusions), not an incidental property.
+      login: (userId, password, priorSessionId) => {
         const result = userService.login(userId, password);
         if (!result.ok) {
           return { ok: false, reason: 'invalid-credentials' };
+        }
+        // Invalidate any session the caller already held before re-authenticating (session fixation guard).
+        if (priorSessionId !== undefined) {
+          sessions.invalidateSession(priorSessionId);
         }
         const { sessionId } = sessions.createSession(result.user);
         return { ok: true, sessionId, user: result.user };

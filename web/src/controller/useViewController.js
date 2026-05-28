@@ -7,7 +7,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useModel } from '../app/context.js';
 
-export const MENUS = Object.freeze(['부서별 작성', '부서별 송고', '개인별 수정', '데스크 미송고']);
+export const MENUS = Object.freeze(['데스크 미송고', '부서별 작성', '부서별 송고', '개인별 수정']);
+
+/**
+ * Sort article rows by createdAt DESCENDING (newest first) — news.md: "기사는 시간 내림차순".
+ * Pure + non-mutating (returns a new array). createdAt holds ISO timestamps, which sort
+ * correctly lexicographically; rows missing createdAt are pushed to the end.
+ * @param {Array<{createdAt?: string}>} rows
+ * @returns {Array<object>}
+ */
+export function sortByCreatedAtDesc(rows) {
+  if (!Array.isArray(rows)) return [];
+  return [...rows].sort((a, b) => {
+    const at = a?.createdAt ?? '';
+    const bt = b?.createdAt ?? '';
+    if (at === bt) return 0;
+    if (!at) return 1; // missing createdAt sorts last
+    if (!bt) return -1;
+    return at < bt ? 1 : -1; // descending
+  });
+}
 
 /** Map a menu (and optional selected department) to the backend query filter. */
 function filterForMenu(menu, user, selectedDepartment) {
@@ -20,8 +39,9 @@ function filterForMenu(menu, user, selectedDepartment) {
       // Department articles together with RDS-state articles (REQ-FE-VIEW-008).
       return { department: user.department, status: 'RDS' };
     case '부서별 송고':
-      // Query only after a department is selected and 조회 is pressed (handled by caller).
-      return selectedDepartment ? { department: selectedDepartment } : null;
+      // DPS-only (news.md: "부서별 송고페이지는 DPS기사만 조회"). Query only after a
+      // department is selected and 조회 is pressed (handled by caller).
+      return selectedDepartment ? { department: selectedDepartment, status: 'DPS' } : null;
     default:
       return null;
   }
@@ -29,7 +49,7 @@ function filterForMenu(menu, user, selectedDepartment) {
 
 export function useViewController(user) {
   const model = useModel();
-  const [menu, setMenu] = useState('부서별 작성');
+  const [menu, setMenu] = useState('데스크 미송고');
   const [articles, setArticles] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [connected, setConnected] = useState(true);
@@ -41,7 +61,7 @@ export function useViewController(user) {
       return;
     }
     const rows = await model.queryArticles(filter);
-    setArticles(Array.isArray(rows) ? rows : []);
+    setArticles(sortByCreatedAtDesc(rows));
   }, [model]);
 
   // Auto-query whenever a non-deferred menu becomes active (부서별 송고 defers to the 조회 button).
@@ -63,7 +83,7 @@ export function useViewController(user) {
   useEffect(() => {
     const sub = model.subscribe({ menu }, (payload) => {
       if (payload?.articles) {
-        setArticles(payload.articles);
+        setArticles(sortByCreatedAtDesc(payload.articles));
       }
       if (payload?.connected === false) {
         setConnected(false);

@@ -13,6 +13,27 @@ import { parseArticleStructure } from './articleStructure.js';
 export const MARKUP_FORMAT = 'yh-editor';
 export const MARKUP_VERSION = 1;
 
+// The "(끝)" end marker (news.md 기사 에디터: Alt+Y appends it to the body, shown in 골드색).
+// Stored as literal body text so it round-trips through markupVersion; the view colors a trailing
+// occurrence gold purely presentationally. The gold-colored TOKEN is just "(끝)".
+export const END_MARKER = '(끝)';
+
+// news.md 기사 에디터: Alt+Y inserts "\r\n (끝)" — i.e. the marker on a NEW LINE. The editor content
+// model is '\n'-based, so the inserted block is a newline + space + the "(끝)" token. Only the trailing
+// "(끝)" token is colored gold; the preceding newline is an ordinary line break.
+export const END_MARKER_BLOCK = `\n ${END_MARKER}`;
+
+/**
+ * Whether body text already ends with the "(끝)" end marker (news.md: Alt+Y is idempotent — if the
+ * marker is already present at the end, pressing Alt+Y again must NOT append a duplicate). Tolerant of
+ * trailing whitespace so a stray space/newline after the marker still counts as "already present".
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function hasEndMarker(text) {
+  return typeof text === 'string' && text.trimEnd().endsWith(END_MARKER);
+}
+
 /** @returns {{blocks: Array<object>}} an empty content document. */
 export function createEmptyContent() {
   return { blocks: [] };

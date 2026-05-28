@@ -9,6 +9,9 @@ import {
   contentToMarkup,
   markupToStructuredDto,
   MARKUP_FORMAT,
+  END_MARKER,
+  END_MARKER_BLOCK,
+  hasEndMarker,
 } from './editorContent.js';
 
 // SPEC-UI-EDITOR-001 — REQ-EDIT-PARSE-006, REQ-EDIT-EMBED-005/007.
@@ -84,5 +87,26 @@ describe('editorContent model (REQ-EDIT-PARSE-006, REQ-EDIT-EMBED)', () => {
   it('markup contains typed plain text as a substring (AC-5.1 contract)', () => {
     const content = contentFromText('hello body');
     expect(contentToMarkup(content)).toContain('hello body');
+  });
+});
+
+describe('end marker (news.md 기사 에디터 Alt+Y "\\r\\n (끝)")', () => {
+  it('END_MARKER_BLOCK is a newline + space + the "(끝)" token', () => {
+    expect(END_MARKER_BLOCK).toBe(`\n ${END_MARKER}`);
+    expect(END_MARKER_BLOCK.endsWith(END_MARKER)).toBe(true);
+  });
+
+  it('hasEndMarker detects a body that already ends with "(끝)"', () => {
+    expect(hasEndMarker('본문\n (끝)')).toBe(true);
+    expect(hasEndMarker('본문(끝)')).toBe(true);
+    // Tolerant of trailing whitespace after the marker.
+    expect(hasEndMarker('본문\n (끝)  ')).toBe(true);
+  });
+
+  it('hasEndMarker is false when the marker is absent or not at the end', () => {
+    expect(hasEndMarker('본문')).toBe(false);
+    expect(hasEndMarker('(끝) 본문')).toBe(false);
+    expect(hasEndMarker('')).toBe(false);
+    expect(hasEndMarker(undefined)).toBe(false);
   });
 });

@@ -19,16 +19,18 @@
 //
 // @typedef {object} ArticleModel          the injectable Model passed via React context
 // @property {(userId:string,password:string)=>Promise<{ok:boolean,user?:AuthUser}>} login
+// @property {()=>Promise<{ok:boolean}>} logout                              // end the session (server /api/logout)
 // @property {(filters:object)=>Promise<Array<object>>} queryUsers           // used for department data-source (DP-F4)
 // @property {(filters:object)=>Promise<Array<object>>} queryArticles        // AND-combined metadata filters
 // @property {(queryText:string)=>Promise<Array<object>>} searchArticles     // internal text-article search (글기사)
 // @property {(query:string)=>Promise<{items:Array<object>,error:boolean}>} searchMedia // proxy: YouTube->Google
-// @property {(articleId:string,role:string,action:'send'|'hold')=>Promise<{ok:boolean,status?:string,reason?:string}>} applyAction
+// @property {(articleId:string,role:string,action:'send'|'hold'|'kill')=>Promise<{ok:boolean,status?:string,reason?:string}>} applyAction
 // @property {(articleId:string,dto:object)=>Promise<{ok:boolean,articleId?:string}>} saveArticle // assemble+persist DTO
 // @property {(filter:object,onChange:(payload:object)=>void)=>{unsubscribe:()=>void, connected:boolean}} subscribe // realtime (DP-F2)
 
 export const MODEL_KEYS = Object.freeze([
   'login',
+  'logout',
   'queryUsers',
   'queryArticles',
   'searchArticles',

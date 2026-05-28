@@ -10,6 +10,11 @@ import { createUserModel } from '../models/userModel.js';
 const VALID_ROLES = Object.freeze(new Set(['R', 'D', 'Z']));
 const SALT_ROUNDS = 10;
 
+// @MX:NOTE: [AUTO] Fixed dummy hash for constant-time login (REQ-AUTH-LOGIN-004, A07 timing side-channel).
+// When the user is absent OR deactivated, login() still runs bcrypt.compareSync against this hash so
+// the response time does not reveal whether a userId exists and is active (username enumeration defense).
+const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-constant-time-compare', SALT_ROUNDS);
+
 /** Strip the password hash before exposing a user row to any caller (REQ-USR-LOGIN-004). */
 function sanitize(row) {
   if (row === undefined) {
@@ -74,7 +79,13 @@ export function createUserService(db) {
      */
     login(userId, password) {
       const row = model.findById(userId);
-      if (row === undefined || row.active === 'N' || !bcrypt.compareSync(password, row.password)) {
+      // Constant-time path (A07): when the user is missing or deactivated, compare against a fixed
+      // dummy hash instead of short-circuiting, so the not-found / inactive branch takes comparable
+      // time to a wrong-password-on-active-user branch. No timing signal distinguishes the cases.
+      const active = row !== undefined && row.active !== 'N';
+      const hashToCompare = active ? row.password : DUMMY_HASH;
+      const passwordMatches = bcrypt.compareSync(password, hashToCompare);
+      if (!active || !passwordMatches) {
         return { ok: false };
       }
       return { ok: true, user: sanitize(row) };

@@ -51,6 +51,11 @@ export function createSessionService(options = {}) {
   }
 
   return {
+    // @MX:NOTE: [AUTO] Session-fixation guarantee — createSession ALWAYS mints a fresh random opaque id
+    // (24 random bytes); it never reuses or accepts a caller-supplied id. The controller invalidates any
+    // pre-auth session before calling this, so a fixed/forged id can never survive login (REQ-AUTH-SESS-001).
+    // @MX:REASON: prevents session fixation when HTTP cookie binding is added (deferred per spec.md Exclusions);
+    // until then the id is in-memory only, so the rule is enforced at the code level rather than via Set-Cookie.
     /** REQ-AUTH-SESS-001/002/003: bind an opaque id to the user's identity (no credentials). */
     createSession(user) {
       const sessionId = randomBytes(24).toString('hex'); // opaque; encodes nothing about the user.
