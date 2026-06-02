@@ -93,6 +93,22 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('yh-detail__row--empty');
   });
 
+  it('renders 제목 and 본문 in separate sections (news.md 분리해서 보여준다)', () => {
+    const html = buildArticleDetailHtml(fullArticle);
+    // Each section is its own <section> with an aria-label
+    expect(html).toContain('aria-label="공통정보"');
+    expect(html).toContain('aria-label="제목"');
+    expect(html).toContain('aria-label="본문"');
+    // Order: 공통정보 → 제목 → 본문
+    const body = html.slice(html.indexOf('<body>'));
+    const infoIdx = body.indexOf('aria-label="공통정보"');
+    const titleIdx = body.indexOf('aria-label="제목"');
+    const contentIdx = body.indexOf('aria-label="본문"');
+    expect(infoIdx).toBeGreaterThan(-1);
+    expect(infoIdx).toBeLessThan(titleIdx);
+    expect(titleIdx).toBeLessThan(contentIdx);
+  });
+
   it('escapes HTML special chars in dynamic text (no injection)', () => {
     const html = buildArticleDetailHtml({
       title: '<b>x</b>',

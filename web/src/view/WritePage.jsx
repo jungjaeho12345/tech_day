@@ -136,6 +136,11 @@ function paintEditor(el, text) {
 function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
   const ref = useRef(null);
   const composingRef = useRef(false);
+  // Korean IME 1-press Enter fix: when Enter commits an active composition, the IME consumes the
+  // keystroke and our handleEnter must NOT preventDefault (else the syllable is lost). We record the
+  // user's intent here and flush a single newline insertion on compositionend so a single Enter both
+  // commits the syllable AND breaks the line, instead of requiring a second Enter.
+  const pendingEnterAfterIme = useRef(false);
   const embeds = content.blocks.filter((b) => b.type === 'embed');
 
   // news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브를 본문에 임베딩한다. (10%x10% size
@@ -212,7 +217,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
   // we return WITHOUT preventDefault so the IME commits; the compositionend recolor then applies normally.
   const handleEnter = useCallback((e) => {
     if (e.key !== 'Enter') return false;
-    if (composingRef.current || e.isComposing || e.keyCode === 229) return false; // IME commit -> hands off
+    if (composingRef.current || e.isComposing || e.keyCode === 229) {
+      // IME commit Enter: let the IME finish the syllable; remember the intent so compositionend
+      // can insert the model '\n' a tick later. This makes a single Enter both commit and break.
+      pendingEnterAfterIme.current = true;
+      return false;
+    }
     e.preventDefault(); // stop the browser inserting <div>/<br> block markup
     insertNewline(e.currentTarget);
     return true;
@@ -263,6 +273,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
           composingRef.current = false;
           onChangeText(e.currentTarget.textContent ?? '');
           recolor();
+          // If the composition was committed by Enter, also break the line here so the user does not
+          // need to press Enter a second time (Korean IME 1-press Enter fix).
+          if (pendingEnterAfterIme.current) {
+            pendingEnterAfterIme.current = false;
+            insertNewline(e.currentTarget);
+          }
         }}
         onBlur={() => { if (!composingRef.current) recolor(); }}
         onKeyDown={(e) => {

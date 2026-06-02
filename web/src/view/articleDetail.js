@@ -97,18 +97,26 @@ export function buildArticleDetailHtml(article) {
     background: #fff;
     line-height: 1.6;
   }
+  .yh-detail__section {
+    margin: 0 0 24px;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid var(--yh-gray-line);
+    border-left: 4px solid var(--yh-blue);
+    border-radius: 4px;
+  }
+  .yh-detail__section:last-child { margin-bottom: 0; }
   .yh-detail__section-title {
     font-size: 0.95rem;
     font-weight: 700;
     color: var(--yh-blue);
-    border-left: 3px solid var(--yh-blue);
-    padding-left: 8px;
-    margin: 0 0 8px;
+    margin: 0 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--yh-gray-line);
   }
   .yh-detail__info {
-    margin: 0 0 24px;
+    margin: 0;
     border-top: 1px solid var(--yh-gray-line);
-    background: #fff;
   }
   .yh-detail__row {
     display: grid;
@@ -130,20 +138,13 @@ export function buildArticleDetailHtml(article) {
   .yh-detail__row--empty dd {
     color: var(--yh-gray-mid);
   }
-  .yh-detail__divider {
-    border: 0;
-    border-top: 2px solid var(--yh-blue);
-    margin: 16px 0 20px;
-  }
   .yh-detail__title {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
     font-size: 1.6rem;
     font-weight: 700;
     line-height: 1.3;
     color: var(--yh-blue-deep);
-    margin: 0 0 16px;
-    padding-bottom: 12px;
-    border-bottom: 3px solid var(--yh-blue);
+    margin: 0;
   }
   .yh-detail__content {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
@@ -157,13 +158,20 @@ export function buildArticleDetailHtml(article) {
 </style>
 </head>
 <body>
-  <h2 class="yh-detail__section-title">공통정보</h2>
-  <dl class="yh-detail__info">
+  <section class="yh-detail__section" aria-label="공통정보">
+    <h2 class="yh-detail__section-title">공통정보</h2>
+    <dl class="yh-detail__info">
 ${commonRows}
-  </dl>
-  <hr class="yh-detail__divider" />
-  <h1 class="yh-detail__title">${title}</h1>
-  <div class="yh-detail__content">${body}</div>
+    </dl>
+  </section>
+  <section class="yh-detail__section" aria-label="제목">
+    <h2 class="yh-detail__section-title">제목</h2>
+    <h1 class="yh-detail__title">${title}</h1>
+  </section>
+  <section class="yh-detail__section" aria-label="본문">
+    <h2 class="yh-detail__section-title">본문</h2>
+    <div class="yh-detail__content">${body}</div>
+  </section>
 </body>
 </html>`;
 }
