@@ -46,6 +46,38 @@
           }
         ],
         "matcher": "Write|Edit|Bash"
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous.sh\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "당신은 민감 파일 변경을 검증하는 보안 게이트입니다. 입력으로 받은 toolName과 toolInput을 검토하세요. 대상 file_path가 다음 중 하나에 해당하는지 확인하세요: .env, .env.*, secrets/**, **/credentials*, **/*token*, **/*secret*, **/private-key*, ~/.ssh/**, ~/.aws/**, .claude/settings.json, .moai/config/**, package.json의 scripts 영역, 데이터베이스 마이그레이션 파일. 해당하면 변경 내용(content/new_string)에 평문 비밀, API 키, 토큰, 비밀번호, 호스트 자격증명이 포함되었는지 점검하고, 위험하면 차단(ok=false)하고 사유를 한국어로 명확히 설명하세요. 민감 경로가 아니거나 안전한 변경이면 허용(ok=true)하세요. 반드시 {\"ok\": boolean, \"reason\": string} 형식의 JSON으로만 응답하세요.",
+            "model": "claude-haiku-4-5-20251001",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "agent",
+            "prompt": "수정 대상 파일과 변경 내용을 확인하세요. Read와 Grep 도구로 이 파일을 참조하는 다른 파일을 탐색하고, 변경이 다른 모듈에 영향을 미치는지 평가하세요. 영향이 크면 차단하고 사유를 설명하세요. 영향이 없으면 허용하세요.\n\n변경 정보:\n$ARGUMENTS",
+            "model": "claude-haiku-4-5-20251001",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -58,6 +90,28 @@
           }
         ],
         "matcher": "Write|Edit"
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/run-prettier.sh\"",
+            "timeout": 60000,
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-slack.sh\"",
+            "timeout": 10000,
+            "async": true
+          }
+        ]
       }
     ],
     "Stop": [
