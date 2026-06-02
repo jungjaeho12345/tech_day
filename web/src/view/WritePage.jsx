@@ -8,8 +8,9 @@ import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { InlineEmbed } from './InlineEmbed.jsx';
 import { buildColorSegments } from './editorColoring.js';
-import { getCaretCharOffset, setCaretCharOffset } from './editorCaret.js';
+import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset } from './editorCaret.js';
 import { insertNewlineAt } from './editorNewline.js';
+import { deleteCurrentLine } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
 
 const TABS = ['공통정보', '이미지', '영상', '글기사'];
@@ -285,6 +286,25 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
           // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
           if (handleEnter(e)) return;
+          // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D -> 캐럿이 위치한 라인(또는
+          // 선택에 일부라도 걸친 모든 라인)을 라인 단위 round-up 삭제 (D-2 결정 잠금). preventDefault로
+          // Chrome 북마크 추가 기본 동작을 차단. 핸들러는 에디터 컨테이너의 onKeyDown 한정이므로
+          // 에디터가 포커스를 받지 않은 상태에서는 호출되지 않는다 (AC-CTRL-D-4 스코프).
+          if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+            e.preventDefault();
+            const el = e.currentTarget;
+            const sel = getSelectionOffsets(el);
+            const caret = sel ?? { start: getCaretCharOffset(el) ?? bodyText.length, end: getCaretCharOffset(el) ?? bodyText.length };
+            const next = deleteCurrentLine({
+              value: bodyText,
+              selectionStart: caret.start,
+              selectionEnd: caret.end,
+            });
+            paintEditor(el, next.value);
+            setCaretCharOffset(el, next.selectionStart);
+            onChangeText(next.value);
+            return;
+          }
           // Alt+Y: append "(끝)" (골드색) to the end of the body. preventDefault so no 'y' is typed.
           if (e.altKey && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) {
             e.preventDefault();

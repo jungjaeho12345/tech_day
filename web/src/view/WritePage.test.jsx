@@ -622,6 +622,113 @@ describe('WritePage Enter inserts a model "\\n" (caret-jump bug fix)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D — AC-EMB-2 임베드 영속성 회귀 가드.
+describe('WritePage inline embed persistence (AC-EMB-2)', () => {
+  it('AC-EMB-2: 이미지 임베드 후 본문 텍스트 추가 입력해도 embed가 동일 위치에 유지된다', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'persist-img', url: 'https://u/p', thumbnailUrl: 'https://t/p' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    // 이미지 임베드 삽입
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 persist-img' }));
+
+    const editorRegion = screen.getByTestId('editor-region');
+    const embedBefore = within(editorRegion).getByTestId('embed-image');
+    const srcBefore = embedBefore.querySelector('img').getAttribute('src');
+
+    // 본문에 추가 텍스트 입력
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '추가본문');
+
+    // embed 노드 여전히 1개 존재, 동일 src 보존
+    const embedsAfter = within(editorRegion).getAllByTestId('embed-image');
+    expect(embedsAfter).toHaveLength(1);
+    expect(embedsAfter[0].querySelector('img').getAttribute('src')).toBe(srcBefore);
+    // 추가본문 텍스트도 본문에 존재
+    expect(body.textContent).toContain('추가본문');
+  });
+});
+
+// SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D — Ctrl+D 라인 삭제 React 통합.
+describe('WritePage Ctrl+D line delete (REQ-EDITOR-EMBED-AND-CTRL-D)', () => {
+  it('AC-CTRL-D-1: BBB 라인 캐럿에서 Ctrl+D -> "AAA\\nCCC", preventDefault', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'AAA');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'BBB');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'CCC');
+    // 캐럿을 BBB 라인 내부(offset 5 = AAA\nB|BB)에 둔다.
+    setCaretCharOffset(body, 5);
+    const evt = fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    expect(evt).toBe(false); // fireEvent returns false when preventDefault was called
+    expect(body.textContent).toBe('AAA\nCCC');
+  });
+
+  it('AC-CTRL-D-3: 마지막 라인 캐럿에서 Ctrl+D -> 직전 라인의 끝으로 캐럿 보정', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'AAA');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'BBB');
+    // 캐럿 BBB 끝
+    setCaretCharOffset(body, body.textContent.length);
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    expect(body.textContent).toBe('AAA');
+  });
+
+  it('AC-CTRL-D-4: 에디터 외부 input 포커스 상태에서 Ctrl+D는 본문에 영향 없음', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'AAA');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'BBB');
+    const before = body.textContent;
+    // 공통정보 탭의 검색 input(작성자 필드)로 포커스 이동.
+    const authorInput = within(screen.getByTestId('panel-공통정보')).getByLabelText('작성자');
+    authorInput.focus();
+    // Ctrl+D 이벤트를 input에 발화 — BodyEditor의 onKeyDown은 호출되지 않음.
+    fireEvent.keyDown(authorInput, { key: 'd', ctrlKey: true });
+    expect(body.textContent).toBe(before);
+  });
+
+  it('AC-CTRL-D-5: Alt+Y 회귀 — Ctrl+D 핸들러 도입 후에도 (끝) 삽입 동작 보존', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '본문');
+    await user.keyboard('{Alt>}y{/Alt}');
+    expect(body.textContent).toBe('본문\n (끝)');
+    expect(body.querySelector('.yh-end-mark')).not.toBeNull();
+  });
+
+  it('Ctrl+D 전체 선택 후 -> 본문 빈 문자열', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'AAA');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'BBB');
+    // 전체 선택을 모방: getSelectionOffsets는 collapsed caret만 인식하므로 selection range 직접 설정.
+    const range = document.createRange();
+    range.selectNodeContents(body);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    expect(body.textContent).toBe('');
+  });
+});
+
 describe('WritePage clipboard paste -> inline embed (news.md 기사 에디터: 붙여넣기 이미지/유투브)', () => {
   // Build a paste-event clipboardData stub. `imageFile` (a real File) sets up an image item;
   // `text` is returned by getData('text'). The 10%x10% size comes from the existing .yh-embed CSS.

@@ -25,6 +25,29 @@ export function getCaretCharOffset(root) {
 }
 
 /**
+ * Current selection's start/end character offsets within `root`. Returns null when no selection
+ * intersects `root`. Used by SPEC-NEWS-REVISE-001 Ctrl+D handler to get the full selection range,
+ * not just the collapsed caret position.
+ * @param {HTMLElement} root
+ * @returns {{ start: number, end: number } | null}
+ */
+export function getSelectionOffsets(root) {
+  const sel = root?.ownerDocument?.getSelection?.();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  const preStart = range.cloneRange();
+  preStart.selectNodeContents(root);
+  preStart.setEnd(range.startContainer, range.startOffset);
+  const start = preStart.toString().length;
+  const preEnd = range.cloneRange();
+  preEnd.selectNodeContents(root);
+  preEnd.setEnd(range.endContainer, range.endOffset);
+  const end = preEnd.toString().length;
+  return { start, end };
+}
+
+/**
  * Place the collapsed caret at character offset `offset` within `root`. Clamps to the text length.
  * No-op when offset is null or root is empty.
  * @param {HTMLElement} root
