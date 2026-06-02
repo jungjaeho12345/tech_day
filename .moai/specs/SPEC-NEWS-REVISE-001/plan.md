@@ -37,6 +37,7 @@ updated: 2026-06-02
 | **D-4** | 포인트 컬러는 파랑 `#0A4DA6` 유지 (CLAUDE.md HARD 규칙 "파란색과 흰색" 우선). news.md의 #C8102E 표현은 적용하지 않음 | 전 컴포넌트 / 디자인 토큰 `--yh-blue` 재사용 |
 | **D-5** | 미커밋 작업트리는 SPEC 작성 후 두 갈래 커밋 분리(`chore(hooks)`, `feat(news)`)로 정리됨 — Run은 깨끗한 트리에서 시작 | 운영 결정 (구현 외) |
 | **D-6** | Z권한의 송고/보류/KILL 전이는 D권한과 동일 (RDS→DPS/DDH/DDK). 근거: news.md "Z=관리자 + 데스크 편집 권한"이 D와 의미적으로 정렬 | lifecycle.js TRANSITIONS / articleService KILL_BY_ROLE |
+| **D-7** | 본문 contentEditable의 IME 합성(composition) 중에는 onInput→state 갱신/useEffect repaint/compositionEnd 내 recolor를 모두 차단. Enter는 합성 여부와 무관하게 항상 preventDefault. 근거: 매 키스트로크 paintEditor(replaceChildren)이 IME 합성 노드를 파괴해 "1글자 지연 + Enter 두 번" 증상을 유발 | WritePage.jsx BodyEditor onInput / useEffect / onCompositionEnd / handleEnter |
 
 
 ### M1 — REQ-DETAIL-LAYOUT-SPLIT (Priority: High, 가장 단순)

@@ -375,19 +375,18 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   }, [onChangeText, contentWithText]);
 
   // Intercept Enter / Shift+Enter on keydown and splice a model '\n' ourselves. We use keydown (one path,
-  // not also beforeinput) because it fires reliably in the target browser AND is testable. Korean IME
-  // safety: an Enter that COMMITS an active composition must be left to the IME — browsers signal this with
-  // e.isComposing === true or e.keyCode === 229 (and composingRef is set on compositionstart). In that case
-  // we return WITHOUT preventDefault so the IME commits; the compositionend recolor then applies normally.
+  // not also beforeinput) because it fires reliably in the target browser AND is testable.
+  // SPEC-NEWS-REVISE-001 D-7: Enter는 합성 여부와 무관하게 ALWAYS preventDefault한다. 합성 중 Enter일
+  // 경우에도 브라우저 기본 <br>/<div> 삽입을 막아야 DOM 구조가 일관되며 (이전엔 preventDefault를 생략해
+  // <br>이 들어가 두 번째 Enter가 필요했다). 합성 commit은 IME가 preventDefault와 무관하게 처리하고
+  // compositionend가 fire되며, 그 안에서 pendingEnterAfterIme 분기가 '\n' 한 번을 끼워 넣는다.
   const handleEnter = useCallback((e) => {
     if (e.key !== 'Enter') return false;
+    e.preventDefault();
     if (composingRef.current || e.isComposing || e.keyCode === 229) {
-      // IME commit Enter: let the IME finish the syllable; remember the intent so compositionend
-      // can insert the model '\n' a tick later. This makes a single Enter both commit and break.
       pendingEnterAfterIme.current = true;
-      return false;
+      return true;
     }
-    e.preventDefault(); // stop the browser inserting <div>/<br> block markup
     insertNewline(e.currentTarget);
     return true;
   }, [insertNewline]);
@@ -400,7 +399,10 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // (where onInput already pushed the same text to the model). This is the IME-safety guarantee: ordinary
   // keystrokes/composition never trigger a repaint here; coloring during typing only happens on
   // compositionend/blur. The caret (when focused, e.g. Alt+Y) is preserved by paintWithCaret.
+  // SPEC-NEWS-REVISE-001 D-7: 합성(composition) 중에는 절대 repaint하지 않는다 — replaceChildren이
+  // IME 내부 상태를 파괴해 "1글자 지연" 증상을 유발한다.
   useEffect(() => {
+    if (composingRef.current) return;
     const el = ref.current;
     if (!el) return;
     // Repaint when DOM is out of sync with the model text OR when content (embed blocks) changes.
@@ -436,6 +438,11 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         suppressContentEditableWarning
         ref={ref}
         onInput={(e) => {
+          // SPEC-NEWS-REVISE-001 D-7: 합성 중에는 state를 갱신하지 않는다 — onChangeText가 호출되면
+          // 부모가 re-render되고 useEffect의 repaint 가드(또는 paintEditor)가 IME 합성 노드를
+          // 파괴해 입력 1글자가 지연된 듯 보이는 증상이 발생한다. 합성 결과는 compositionEnd에서
+          // 한 번에 flush한다.
+          if (composingRef.current) return;
           onChangeText(getBodyTextFromDom(e.currentTarget));
           if (onCaretChange) {
             const off = getCaretCharOffset(e.currentTarget);
@@ -457,12 +464,16 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         onPaste={handlePaste}
         onCompositionStart={() => { composingRef.current = true; }}
         onCompositionEnd={(e) => {
-          // Hangul composition finished: flush the text, then recolor (safe now that no IME is active).
+          // Hangul composition finished: flush the text to state. SPEC-NEWS-REVISE-001 D-7:
+          // 절대 여기서 recolor()를 호출하지 않는다. 연속 한글 타이핑 시 한 음절의 compositionEnd
+          // 직후 다음 음절의 compositionStart가 동기적으로 fire되는데, 그 사이의 paintEditor는
+          // 새로 시작된 IME 합성을 파괴해 "1글자 지연" 증상을 만든다. 색칠은 onBlur, Enter(insertNewline),
+          // 기타 모델-주도 변경 시점에만 수행한다.
           composingRef.current = false;
           onChangeText(getBodyTextFromDom(e.currentTarget));
-          recolor();
           // If the composition was committed by Enter, also break the line here so the user does not
-          // need to press Enter a second time (Korean IME 1-press Enter fix).
+          // need to press Enter a second time (Korean IME 1-press Enter fix). insertNewlineFromDom의
+          // paintEditor는 합성이 막 끝난(=새 합성이 아직 시작되지 않은) 안전한 순간에만 수행된다.
           if (pendingEnterAfterIme.current) {
             pendingEnterAfterIme.current = false;
             insertNewlineFromDom(e.currentTarget);
