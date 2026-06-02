@@ -336,12 +336,73 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
     expect(screen.getByRole('button', { name: 'KILL' })).toBeInTheDocument();
   });
 
-  it('role Z draft (RDS): none of 송고/보류/KILL are shown', () => {
-    // Role Z can author/edit per spec but cannot transition the article.
+  // SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS AC-Z-1:
+  // Z권한도 RDS 기사에서는 송고/보류/KILL 3개 버튼이 모두 보인다 (R과 동일 매트릭스).
+  it('AC-Z-1: role Z draft (RDS): 송고/보류/KILL all visible and enabled', () => {
     renderWrite(createFakeModel(), EDITOR_Z);
+    const send = screen.getByRole('button', { name: '송고' });
+    const hold = screen.getByRole('button', { name: '보류' });
+    const kill = screen.getByRole('button', { name: 'KILL' });
+    expect(send).toBeInTheDocument();
+    expect(hold).toBeInTheDocument();
+    expect(kill).toBeInTheDocument();
+    expect(send).toBeEnabled();
+    expect(hold).toBeEnabled();
+    expect(kill).toBeEnabled();
+  });
+
+  // SPEC-NEWS-REVISE-001 AC-Z-2: Z권한이라도 송고/보류/KILL 외 추가 액션 버튼은 노출 금지.
+  it('AC-Z-2: role Z (RDS) does not expose any extra action buttons beyond 송고/보류/KILL', () => {
+    renderWrite(createFakeModel(), EDITOR_Z);
+    for (const extra of ['고침', '포털고침', '재송', '삭제요청', '후속기사작성']) {
+      expect(screen.queryByRole('button', { name: extra })).not.toBeInTheDocument();
+    }
+    // 액션 컨테이너(yh-meta-actions) 내부에 정확히 3개의 버튼만 존재한다.
+    const actionsContainer = document.querySelector('.yh-meta-actions');
+    expect(actionsContainer).not.toBeNull();
+    const buttons = actionsContainer.querySelectorAll('button');
+    expect(buttons.length).toBe(3);
+    const names = Array.from(buttons).map((b) => b.textContent);
+    expect(new Set(names)).toEqual(new Set(['송고', '보류', 'KILL']));
+  });
+
+  // SPEC-NEWS-REVISE-001 AC-Z-3: Z권한이라도 status가 RDS가 아니면 송고/보류/KILL 비표시 (D-1 잠금).
+  it('AC-Z-3: role Z with non-RDS article (DPS): 송고/보류/KILL all hidden', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=A-DPS-Z');
+    const row = {
+      articleId: 'A-DPS-Z',
+      status: 'DPS',
+      markupVersion: contentToMarkup(contentFromText('이미 송고된 기사')),
+      author: '편집자',
+    };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    renderWrite(createFakeModel({ queryArticles }), EDITOR_Z);
+    await screen.findByDisplayValue('편집자');
     expect(screen.queryByRole('button', { name: '송고' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '보류' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
+  });
+
+  // SPEC-NEWS-REVISE-001 AC-Z-5: 접근성 — Z권한 버튼들이 키보드 포커스 가능 + visible text.
+  it('AC-Z-5: role Z buttons are keyboard-focusable and have visible accessible labels', () => {
+    renderWrite(createFakeModel(), EDITOR_Z);
+    for (const name of ['송고', '보류', 'KILL']) {
+      const btn = screen.getByRole('button', { name });
+      // visible text가 있어 role + name 기반 쿼리가 성공한다는 사실이 접근 가능 라벨 존재의 증거.
+      expect(btn.textContent.trim()).toBe(name);
+      btn.focus();
+      expect(document.activeElement).toBe(btn);
+    }
+  });
+
+  // SPEC-NEWS-REVISE-001 REQ-AUTH-Z-BUTTONS 회귀 가드: Z 클릭 시 articleUpdate 호출 경로가 살아 있다.
+  it('AC-Z (regression): role Z KILL click triggers applyAction(kill) and shows returned status', async () => {
+    const user = userEvent.setup();
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRK' });
+    renderWrite(createFakeModel({ applyAction }), EDITOR_Z);
+    await user.click(screen.getByRole('button', { name: 'KILL' }));
+    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'kill');
+    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('RRK');
   });
 
   it('edit-loaded non-RDS article (DPS): all three buttons hidden even for role R', async () => {

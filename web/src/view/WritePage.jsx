@@ -329,17 +329,18 @@ export function WritePage({ user }) {
       <section data-testid="metadata-region" className="yh-meta-region" aria-label="메타데이터">
         {/* 송고 / 보류 / KILL action buttons at the top (news.md 기사 작성 페이지 내 버튼).
             Visibility is gated by role + the editing article's status:
-            - 송고/보류: role R or D AND status RDS
-            - KILL: role R only AND status RDS
-            (Role Z can author/edit but never transition; non-RDS articles show none.) */}
+            - 송고/보류: role R, D, or Z AND status RDS
+            - KILL:    role R or Z      AND status RDS
+            SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS (D-1 잠금): Z권한도 R/D와 동일한 RDS gate를
+            적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다. */}
         <div className="yh-meta-actions">
-          {(user.role === 'R' || user.role === 'D') && isRds ? (
+          {(user.role === 'R' || user.role === 'D' || user.role === 'Z') && isRds ? (
             <>
               <button type="button" className="yh-btn yh-btn--primary" onClick={ctrl.send}>송고</button>
               <button type="button" className="yh-btn yh-btn--hold" onClick={ctrl.hold}>보류</button>
             </>
           ) : null}
-          {user.role === 'R' && isRds ? (
+          {(user.role === 'R' || user.role === 'Z') && isRds ? (
             <button type="button" className="yh-btn yh-btn--kill" onClick={ctrl.kill}>KILL</button>
           ) : null}
         </div>
