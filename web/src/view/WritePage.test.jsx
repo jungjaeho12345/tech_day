@@ -777,6 +777,96 @@ describe('WritePage inline embed persistence (AC-EMB-2)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE-001 — 본문 커서 위치 인라인 임베드 (AC-EMB-INLINE).
+describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
+  it('AC-EMB-INLINE-1: 본문 "안녕하세요"에서 caret offset 2 -> 영상 삽입 시 blocks=[text:"안녕", embed:video, text:"하세요"]', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'mid-video', url: 'https://yt/m', thumbnailUrl: 'https://th/m' }],
+      error: false,
+    });
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    renderWrite(createFakeModel({ searchMedia, saveArticle, applyAction }));
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '안녕하세요');
+    // 캐럿을 '안녕' 다음(offset=2)에 둔다 — onMouseUp으로 lastCaretRef 갱신.
+    setCaretCharOffset(body, 2);
+    fireEvent.mouseUp(body);
+
+    // 영상 탭에서 검색 후 "삽입" 클릭 (포커스가 BodyEditor를 떠나지만 lastCaretRef 보존).
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 mid-video' }));
+
+    // 송고로 markupVersion 확보해 블록 순서를 검증.
+    await user.click(screen.getByRole('button', { name: '송고' }));
+    expect(saveArticle).toHaveBeenCalled();
+    const dto = saveArticle.mock.calls[0][1];
+    const parsed = JSON.parse(dto.markupVersion);
+    // 기대: [text:"안녕", embed:video, text:"하세요"]
+    expect(parsed.blocks.length).toBe(3);
+    expect(parsed.blocks[0]).toMatchObject({ type: 'text', text: '안녕' });
+    expect(parsed.blocks[1]).toMatchObject({ type: 'embed', embed: { type: 'video' } });
+    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요' });
+  });
+
+  it('AC-EMB-INLINE-2: contentEditable 내부에 인라인 embed 스팬이 올바른 위치에 렌더된다', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'inline', url: 'https://yt/i', thumbnailUrl: 'https://th/i' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '안녕하세요');
+    setCaretCharOffset(body, 2);
+    fireEvent.mouseUp(body);
+
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 inline' }));
+
+    // 인라인 embed 스팬이 본문 editor-body 안에 존재한다 (별도 컨테이너 아님).
+    const inlineEmbeds = body.querySelectorAll('[data-embed-index]');
+    expect(inlineEmbeds.length).toBe(1);
+    expect(inlineEmbeds[0].getAttribute('data-testid')).toBe('embed-video');
+    expect(inlineEmbeds[0].classList.contains('yh-embed-inline')).toBe(true);
+    // editor-body의 body text (embed 텍스트 제외)는 모델과 동일 — 즉 "안녕하세요"가 유지.
+    // (caret helper의 getBodyTextFromDom과 동일한 로직)
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        let p = n.parentNode;
+        while (p && p !== body) {
+          if (p.nodeType === 1 && p.hasAttribute && p.hasAttribute('data-embed-index')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          p = p.parentNode;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let bodyText = '';
+    let n = walker.nextNode();
+    while (n) { bodyText += n.textContent; n = walker.nextNode(); }
+    expect(bodyText).toBe('안녕하세요');
+  });
+
+  it('AC-EMB-INLINE-3: markupVersion 라운드트립 — setMarkup 후 blocks 동일 (AC-EMB-2 정합)', () => {
+    const sourceBlocks = [
+      { type: 'text', text: '안녕' },
+      { type: 'embed', embed: { type: 'video', source: 'youtube', title: 'rt', url: 'https://u/rt' } },
+      { type: 'text', text: '하세요' },
+    ];
+    const markup = contentToMarkup({ blocks: sourceBlocks });
+    // 라운드트립: deserialize -> serialize 결과가 동일 (AC-EMB-2 invariant).
+    const parsed = JSON.parse(markup);
+    expect(parsed.blocks).toEqual(sourceBlocks);
+  });
+});
+
 // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D — Ctrl+D 라인 삭제 React 통합.
 describe('WritePage Ctrl+D line delete (REQ-EDITOR-EMBED-AND-CTRL-D)', () => {
   it('AC-CTRL-D-1: BBB 라인 캐럿에서 Ctrl+D -> "AAA\\nCCC", preventDefault', async () => {

@@ -862,7 +862,16 @@ input, select, textarea {
 /* Alt+Y end marker "(끝)" — 골드색 (news.md 기사 에디터). */
 .yh-end-mark { color: var(--yh-gold); font-weight: 700; }
 
-/* Ordered inline-embed strip below the typed body text. */
+/* SPEC-NEWS-REVISE-001 — 본문 커서 위치 인라인 임베드. contentEditable 내부에 inline-block으로
+   배치되어 텍스트와 같은 행에 흐른다. 색은 디자인 토큰(파랑)만 사용 (D-4 결정 잠금 — #C8102E 금지). */
+.yh-embed-inline {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 var(--yh-sp-xs);
+  border-left-color: var(--yh-blue);
+}
+
+/* Ordered inline-embed strip below the typed body text (legacy — kept for backwards CSS compat). */
 .yh-editor-embeds {
   display: flex;
   flex-direction: column;
