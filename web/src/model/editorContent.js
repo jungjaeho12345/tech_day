@@ -56,6 +56,56 @@ export function appendEmbed(content, embed) {
   return { blocks };
 }
 
+/**
+ * SPEC-NEWS-REVISE-001 — 본문 커서 위치 임베드 삽입. caretOffset은 contentToText(content) 기준의
+ * character offset이다. 텍스트 블록을 해당 offset에서 분할하고, 사이에 embed 블록을 끼워 넣는다.
+ * 블록 순서가 [text-앞부분, embed, text-뒷부분, ...기존 embed들] 형태로 재구성된다.
+ *
+ * caretOffset이 null/undefined 또는 텍스트 길이 이상이면 appendEmbed와 동일(끝에 append).
+ * caretOffset이 0이면 모든 텍스트 블록 앞에 embed가 놓인다.
+ *
+ * @param {{blocks: Array<object>}} content
+ * @param {object} embed normalized embed descriptor
+ * @param {number|null|undefined} caretOffset character offset within body text
+ */
+export function insertEmbedAtTextOffset(content, embed, caretOffset) {
+  const blocks = content?.blocks ?? [];
+  const totalText = contentToText(content);
+  if (caretOffset == null || caretOffset >= totalText.length) {
+    return appendEmbed(content, embed);
+  }
+  const at = Math.max(0, caretOffset);
+
+  const next = [];
+  let consumed = 0; // text characters consumed so far across iterated text blocks
+  let inserted = false;
+  for (const b of blocks) {
+    if (inserted || b.type !== 'text') {
+      next.push(b);
+      continue;
+    }
+    const len = b.text.length;
+    if (consumed + len < at) {
+      next.push(b);
+      consumed += len;
+      continue;
+    }
+    // The split point lands inside (or at the end of) this text block.
+    const localOffset = at - consumed;
+    const before = b.text.slice(0, localOffset);
+    const after = b.text.slice(localOffset);
+    if (before !== '') next.push({ type: 'text', text: before });
+    next.push({ type: 'embed', embed: { ...embed } });
+    if (after !== '') next.push({ type: 'text', text: after });
+    inserted = true;
+  }
+  if (!inserted) {
+    // No text blocks (or caret at 0 with empty text) — prepend the embed.
+    next.unshift({ type: 'embed', embed: { ...embed } });
+  }
+  return { blocks: next };
+}
+
 /** Concatenate the text blocks back into the editor body text (embeds contribute no text). */
 export function contentToText(content) {
   return (content?.blocks ?? [])

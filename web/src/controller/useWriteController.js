@@ -88,8 +88,10 @@ export function useWriteController(user, options = {}) {
 
   // @MX:NOTE: [AUTO] Inline embed insertion (REQ-EDIT-EMBED-001) — inserts a structured inline block
   // (image/video/article descriptor) instead of appending a "[source] url" / "기사:id" marker string.
-  const embed = useCallback((descriptor) => {
-    adapter.embed(descriptor);
+  // SPEC-NEWS-REVISE-001: caretOffset이 주어지면 본문 커서 위치에 인라인 임베드 (split text block).
+  // 미지정 시 기존 append 동작 — backwards-compatible.
+  const embed = useCallback((descriptor, caretOffset) => {
+    adapter.embed(descriptor, caretOffset != null ? { caretOffset } : undefined);
     setContent(adapter.getContent());
   }, [adapter]);
 

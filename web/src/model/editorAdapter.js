@@ -15,6 +15,7 @@ import {
   createEmptyContent,
   contentFromText,
   appendEmbed,
+  insertEmbedAtTextOffset,
   contentToText,
   contentToMarkup,
   deserializeContent,
@@ -79,9 +80,19 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
       const nextText = bodyText + END_MARKER_BLOCK;
       content = { blocks: [...contentFromText(nextText).blocks, ...embeds] };
     },
-    /** Insert a media/article embed as a distinct inline block (REQ-EDIT-EMBED-001/007). */
-    embed(descriptor) {
-      content = appendEmbed(content, descriptor);
+    /**
+     * Insert a media/article embed as a distinct inline block (REQ-EDIT-EMBED-001/007).
+     * SPEC-NEWS-REVISE-001: options.caretOffset이 주어지면 본문 텍스트의 해당 위치(텍스트 character
+     * 기준)에서 텍스트 블록을 분할하고 사이에 embed 블록을 삽입한다 (인라인 임베드). caretOffset이
+     * 없으면 종전과 동일하게 끝에 append한다 (backwards-compatible).
+     */
+    embed(descriptor, options) {
+      const caretOffset = options?.caretOffset;
+      if (caretOffset == null) {
+        content = appendEmbed(content, descriptor);
+      } else {
+        content = insertEmbedAtTextOffset(content, descriptor, caretOffset);
+      }
     },
     /** Current content document (ordered blocks) for rendering. */
     getContent() {

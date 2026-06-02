@@ -224,3 +224,39 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
     expect(labels).toEqual(['공통정보', '제목', '본문']);
   });
 });
+
+// PR-REVIEW REGRESSION (RED — pending fix):
+// 폼/DB는 "내용" 입력을 `content` 키로 저장하지만 articleDetail.js의 COMMON_INFO_FIELDS는
+// `description` 키에서 "내용" 행 값을 읽는다 (articleDetail.js:28). 따라서 실제 작성 흐름
+// (WritePage common.content -> articleInsert -> queryArticles -> 상세보기 popup)에서 사용자가
+// 입력한 "내용" 값이 공통정보 "내용" 행에 표시되지 않고 em-dash placeholder로 렌더된다.
+//
+// 이 테스트는 폼 데이터 형태로 article을 구성하고 (description 키 없음, content 키만 있음)
+// 공통정보 "내용" 행이 form-input 값을 표시할 것을 단언한다. 현재 production 동작은 placeholder
+// "—"를 표시하므로 RED. 수정 시 articleDetail.js의 COMMON_INFO_FIELDS에서 'description' -> 'content'
+// 또는 readField에 description<->content alias 추가 필요.
+describe('REGRESSION (RED): 공통정보 "내용" 행은 form/DB의 content 필드와 매핑되어야 한다', () => {
+  it.fails('content 필드 값이 공통정보 "내용" 행에 표시되어야 한다 (현재 description만 인식)', () => {
+    // 폼 흐름의 데이터: WritePage common.content -> articleInsert -> DB row 형태
+    const formArticle = {
+      articleId: 'A-FORM',
+      title: '제목',
+      content: '본문은 별도지만 "내용" 입력 필드 값',
+      // description 키 자체가 존재하지 않음 (폼/DB가 만들지 않음)
+    };
+    const html = buildArticleDetailHtml(formArticle);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const rows = doc.querySelectorAll('section[aria-label="공통정보"] .yh-detail__row');
+    // "내용" 라벨의 dd 텍스트
+    let contentRowText = null;
+    for (const row of rows) {
+      const dt = row.querySelector('dt');
+      if (dt && dt.textContent === '내용') {
+        contentRowText = row.querySelector('dd')?.textContent ?? null;
+        break;
+      }
+    }
+    // 기대: form-input 값이 공통정보 "내용" 행에 표시 (현재는 em-dash로 placeholder됨)
+    expect(contentRowText).toBe('본문은 별도지만 "내용" 입력 필드 값');
+  });
+});
