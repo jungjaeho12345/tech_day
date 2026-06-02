@@ -211,6 +211,20 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
     onChangeText(next);
   }, [bodyText, onChangeText]);
 
+  // SPEC-NEWS-REVISE-001 — Korean IME 1-press Enter fix (stale-closure 회피). compositionEnd 시점에는
+  // 직전 onChangeText(textContent) 호출이 비동기 state update라 `bodyText` 클로저가 아직 IME-commit
+  // 이전 값이다. 클로저 대신 el.textContent를 source of truth로 사용해 splice 한다 — 방금 commit된
+  // 한글 음절이 paintEditor에 의해 덮어쓰여 사라지는 문제(두 번째 Enter 필요)를 제거.
+  const insertNewlineFromDom = useCallback((el) => {
+    const text = el.textContent ?? '';
+    const offset = getCaretCharOffset(el);
+    const next = insertNewlineAt(text, offset);
+    const caret = (offset == null ? text.length : Math.min(offset, text.length)) + 1;
+    paintEditor(el, next);
+    setCaretCharOffset(el, caret);
+    onChangeText(next);
+  }, [onChangeText]);
+
   // Intercept Enter / Shift+Enter on keydown and splice a model '\n' ourselves. We use keydown (one path,
   // not also beforeinput) because it fires reliably in the target browser AND is testable. Korean IME
   // safety: an Enter that COMMITS an active composition must be left to the IME — browsers signal this with
@@ -278,7 +292,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed }) {
           // need to press Enter a second time (Korean IME 1-press Enter fix).
           if (pendingEnterAfterIme.current) {
             pendingEnterAfterIme.current = false;
-            insertNewline(e.currentTarget);
+            insertNewlineFromDom(e.currentTarget);
           }
         }}
         onBlur={() => { if (!composingRef.current) recolor(); }}
