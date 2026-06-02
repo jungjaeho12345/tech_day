@@ -1,5 +1,5 @@
-// Article-detail document builder (news.md 기사 조회페이지):
-// "기사를 클릭하면 새로운 창에서 기사의 제목, 내용, 공통정보 내용을 볼 수 있다."
+// Article-detail document builder (news.md "# 상세보기"):
+// 상세보기 클릭 시 새 창 — 상단에 공통정보 12개 필드, 하단에 기사 제목/본문.
 // Pure functions only — no DOM/window access here, so they are unit-testable in isolation.
 // The view layer (ViewPage) calls window.open and writes the returned HTML string.
 
@@ -19,52 +19,58 @@ export function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-// 공통정보 (common-info) fields, in display order, mapped to Korean labels.
-// These mirror the Contents row fields the Model returns (no backend change).
+// 공통정보 (common-info) fields per news.md "# 상세보기" enumeration, in display order.
+// `description` is the form-only "내용" field (distinct from the article body which is shown
+// at the bottom). `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
 const COMMON_INFO_FIELDS = Object.freeze([
   ['author', '작성자'],
-  ['modifier', '수정자'],
-  ['sender', '송고자'],
-  ['department', '부서'],
-  ['departmentCode', '부서코드'],
-  ['createdAt', '작성시간'],
-  ['editedAt', '수정시간'],
-  ['sentAt', '송고시간'],
-  ['distributedAt', '배부시간'],
-  ['embargoAt', '엠바고'],
-  ['secondEmbargoAt', '2차 엠바고'],
-  ['status', '상태값'],
+  ['coAuthor', '공동작성'],
+  ['description', '내용'],
+  ['region', '지역'],
+  ['attribute', '속성'],
+  ['keyword', '키워드'],
+  ['internalComment', '내부코멘트'],
+  ['externalComment', '외부코멘트'],
+  ['attachmentFile', '첨부파일'],
+  ['referenceFile', '자료파일'],
+  ['embargoAt', '엠바고 시간'],
+  ['secondEmbargoAt', '2차 엠바고 시간'],
 ]);
 
-/**
- * Build the 공통정보 definition-list rows for the fields that are present (non-empty).
- * @param {Record<string, unknown>} article
- * @returns {string}
- */
+const EMPTY_PLACEHOLDER = '—';
+
+function readField(article, key) {
+  const raw = article?.[key];
+  if (raw !== null && raw !== undefined && String(raw).trim() !== '') return raw;
+  if (key === 'secondEmbargoAt') {
+    const alt = article?.secondaryEmbargoAt;
+    if (alt !== null && alt !== undefined && String(alt).trim() !== '') return alt;
+  }
+  return null;
+}
+
 function buildCommonInfoRows(article) {
   return COMMON_INFO_FIELDS
-    .filter(([key]) => {
-      const v = article?.[key];
-      return v !== null && v !== undefined && String(v).trim() !== '';
+    .map(([key, label]) => {
+      const v = readField(article, key);
+      const cellClass = v === null ? 'yh-detail__row yh-detail__row--empty' : 'yh-detail__row';
+      const cellValue = v === null ? EMPTY_PLACEHOLDER : escapeHtml(v);
+      return `<div class="${cellClass}"><dt>${escapeHtml(label)}</dt><dd>${cellValue}</dd></div>`;
     })
-    .map(
-      ([key, label]) =>
-        `<div class="yh-detail__row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(article[key])}</dd></div>`,
-    )
     .join('\n');
 }
 
 /**
  * Build a full standalone HTML document for the article-detail popup window.
- * Shows the 제목(title) as a heading, the 내용(content) body, and a 공통정보 section.
- * Light 연합뉴스 styling is inlined so the popup is self-contained and readable.
+ * Layout per news.md "# 상세보기": 상단 공통정보(12 필드) → 하단 제목 + 본문.
+ * 연합뉴스 블루/화이트 톤 (CLAUDE.md 디자인 규칙: 파란색과 흰색, 글자색은 파란색).
  * @param {Record<string, unknown>} article
  * @returns {string}
  */
 export function buildArticleDetailHtml(article) {
   const a = article ?? {};
   const title = escapeHtml(a.title) || '(제목 없음)';
-  const content = escapeHtml(a.content);
+  const body = escapeHtml(a.content);
   const commonRows = buildCommonInfoRows(a);
 
   return `<!DOCTYPE html>
@@ -76,11 +82,11 @@ export function buildArticleDetailHtml(article) {
 <style>
   :root {
     --yh-blue: #0A4DA6;
-    --yh-red: #C8102E;
-    --yh-ink: #1a1a1a;
-    --yh-gray-line: #DDD;
-    --yh-gray-bg: #f5f5f5;
-    --yh-gray-mid: #888;
+    --yh-blue-deep: #08306B;
+    --yh-blue-soft: #E8F0FB;
+    --yh-ink: #08306B;
+    --yh-gray-line: #DDE3EC;
+    --yh-gray-mid: #6B7A90;
   }
   * { box-sizing: border-box; }
   body {
@@ -91,11 +97,50 @@ export function buildArticleDetailHtml(article) {
     background: #fff;
     line-height: 1.6;
   }
+  .yh-detail__section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--yh-blue);
+    border-left: 3px solid var(--yh-blue);
+    padding-left: 8px;
+    margin: 0 0 8px;
+  }
+  .yh-detail__info {
+    margin: 0 0 24px;
+    border-top: 1px solid var(--yh-gray-line);
+    background: #fff;
+  }
+  .yh-detail__row {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--yh-gray-line);
+    font-size: 0.9rem;
+  }
+  .yh-detail__row dt {
+    color: var(--yh-blue);
+    font-weight: 600;
+  }
+  .yh-detail__row dd {
+    margin: 0;
+    color: var(--yh-ink);
+    overflow-wrap: anywhere;
+  }
+  .yh-detail__row--empty dd {
+    color: var(--yh-gray-mid);
+  }
+  .yh-detail__divider {
+    border: 0;
+    border-top: 2px solid var(--yh-blue);
+    margin: 16px 0 20px;
+  }
   .yh-detail__title {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
     font-size: 1.6rem;
     font-weight: 700;
     line-height: 1.3;
+    color: var(--yh-blue-deep);
     margin: 0 0 16px;
     padding-bottom: 12px;
     border-bottom: 3px solid var(--yh-blue);
@@ -104,48 +149,21 @@ export function buildArticleDetailHtml(article) {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
     font-size: 1.02rem;
     line-height: 1.8;
+    color: var(--yh-ink);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    margin: 0 0 24px;
-  }
-  .yh-detail__section-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--yh-blue);
-    border-left: 3px solid var(--yh-red);
-    padding-left: 8px;
-    margin: 0 0 8px;
-  }
-  .yh-detail__info {
     margin: 0;
-    border-top: 1px solid var(--yh-gray-line);
-  }
-  .yh-detail__row {
-    display: grid;
-    grid-template-columns: 7rem 1fr;
-    gap: 8px;
-    padding: 6px 4px;
-    border-bottom: 1px solid var(--yh-gray-line);
-    font-size: 0.88rem;
-  }
-  .yh-detail__row dt {
-    color: var(--yh-gray-mid);
-    font-weight: 600;
-  }
-  .yh-detail__row dd {
-    margin: 0;
-    color: var(--yh-ink);
-    overflow-wrap: anywhere;
   }
 </style>
 </head>
 <body>
-  <h1 class="yh-detail__title">${title}</h1>
-  <div class="yh-detail__content">${content}</div>
   <h2 class="yh-detail__section-title">공통정보</h2>
   <dl class="yh-detail__info">
 ${commonRows}
   </dl>
+  <hr class="yh-detail__divider" />
+  <h1 class="yh-detail__title">${title}</h1>
+  <div class="yh-detail__content">${body}</div>
 </body>
 </html>`;
 }
