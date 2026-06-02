@@ -39,9 +39,24 @@ test('AC-11: unknown action is rejected', () => {
   assert.equal(result.ok, false);
 });
 
-test('AC-11: role Z performing a send action on RDS is rejected (not defined)', () => {
-  const result = transition('RDS', 'Z', 'send');
-  assert.equal(result.ok, false);
+// SPEC-NEWS-REVISE-001 D-6: Z권한은 D권한과 동일하게 RDS 송고/보류/KILL 허용
+// (lifecycle.js:18-20). 과거 'Z|send rejected' 단언은 D-6 결정 이전 잠금이었으며
+// 현재는 D-mirror로 변경됨.
+test('AC-Z-LC-1: RDS + Z + send -> DPS (D-mirror, SPEC-NEWS-REVISE-001 D-6)', () => {
+  assert.deepEqual(transition('RDS', 'Z', 'send'), { ok: true, status: 'DPS' });
+});
+
+test('AC-Z-LC-2: RDS + Z + hold -> DDH (D-mirror)', () => {
+  assert.deepEqual(transition('RDS', 'Z', 'hold'), { ok: true, status: 'DDH' });
+});
+
+test('AC-Z-LC-3: RDS + Z + kill -> DDK (D-mirror)', () => {
+  assert.deepEqual(transition('RDS', 'Z', 'kill'), { ok: true, status: 'DDK' });
+});
+
+test('AC-Z-LC-4: non-RDS source + Z is still rejected (only RDS-source defined)', () => {
+  assert.equal(transition('DPS', 'Z', 'send').ok, false);
+  assert.equal(transition('RRH', 'Z', 'hold').ok, false);
 });
 
 test('AC-11: rejected transition carries no status (caller leaves status unchanged)', () => {

@@ -150,6 +150,37 @@ test('AC-11/13: undefined transition leaves Contents.status unchanged', () => {
   assert.equal(row.status, 'RRH'); // unchanged
 });
 
+// SPEC-NEWS-REVISE-001 D-6: Z권한 applyAction은 D권한과 동일하게 송고/보류/KILL 허용
+test('D-6: applyAction (RDS + Z + send) becomes DPS and persists', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202605270000000001', 'RDS');
+  const result = svc.applyAction('AKR202605270000000001', 'Z', 'send');
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'DPS');
+  const row = db.prepare('SELECT status FROM Contents WHERE articleId = ?').get('AKR202605270000000001');
+  assert.equal(row.status, 'DPS');
+});
+
+test('D-6: applyAction (RDS + Z + hold) becomes DDH and persists', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202605270000000001', 'RDS');
+  const result = svc.applyAction('AKR202605270000000001', 'Z', 'hold');
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'DDH');
+  const row = db.prepare('SELECT status FROM Contents WHERE articleId = ?').get('AKR202605270000000001');
+  assert.equal(row.status, 'DDH');
+});
+
+test('D-6: remove with role Z soft-deletes to DDK', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202605270000000001', 'RDS');
+  const result = svc.remove('AKR202605270000000001', 'Z');
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'DDK');
+  const row = db.prepare('SELECT status FROM Contents WHERE articleId = ?').get('AKR202605270000000001');
+  assert.equal(row.status, 'DDK');
+});
+
 test('AC-13: applyAction on a missing article returns not-found', () => {
   const { svc } = freshService();
   const result = svc.applyAction('AKR000000000000000000', 'R', 'send');

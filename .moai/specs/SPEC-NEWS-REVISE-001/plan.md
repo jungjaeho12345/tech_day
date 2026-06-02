@@ -36,6 +36,7 @@ updated: 2026-06-02
 | **D-3** | 임베드 직렬화 형식은 SPEC-UI-EDITOR-001에 위임. 본 SPEC은 round-trip 보존 행위만 단언 | REQ-EDITOR-EMBED-AND-CTRL-D / AC-EMB-2 |
 | **D-4** | 포인트 컬러는 파랑 `#0A4DA6` 유지 (CLAUDE.md HARD 규칙 "파란색과 흰색" 우선). news.md의 #C8102E 표현은 적용하지 않음 | 전 컴포넌트 / 디자인 토큰 `--yh-blue` 재사용 |
 | **D-5** | 미커밋 작업트리는 SPEC 작성 후 두 갈래 커밋 분리(`chore(hooks)`, `feat(news)`)로 정리됨 — Run은 깨끗한 트리에서 시작 | 운영 결정 (구현 외) |
+| **D-6** | Z권한의 송고/보류/KILL 전이는 D권한과 동일 (RDS→DPS/DDH/DDK). 근거: news.md "Z=관리자 + 데스크 편집 권한"이 D와 의미적으로 정렬 | lifecycle.js TRANSITIONS / articleService KILL_BY_ROLE |
 
 
 ### M1 — REQ-DETAIL-LAYOUT-SPLIT (Priority: High, 가장 단순)

@@ -11,7 +11,8 @@ import { transition } from './lifecycle.js';
 
 const INITIAL_STATUS = 'RDS';
 // Soft-delete KILL state by deleting role (REQ-ART-D-001): R -> RRK, D -> DDK.
-const KILL_BY_ROLE = Object.freeze({ R: 'RRK', D: 'DDK' });
+// Z is admin/desk-equivalent: mirrors D (SPEC-NEWS-REVISE-001 D-6).
+const KILL_BY_ROLE = Object.freeze({ R: 'RRK', D: 'DDK', Z: 'DDK' });
 
 /**
  * @param {import('node:sqlite').DatabaseSync} db

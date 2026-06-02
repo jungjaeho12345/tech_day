@@ -13,6 +13,11 @@ const TRANSITIONS = Object.freeze({
   'RDS|D|send': 'DPS',
   'RDS|D|hold': 'DDH',
   'RDS|D|kill': 'DDK',
+  // @MX:NOTE: [AUTO] Z권한 전이는 D권한과 동일 매핑 (SPEC-NEWS-REVISE-001 D-6).
+  // news.md "Z=관리자 + 데스크 편집 권한"이 D와 의미적으로 정렬되므로 D-mirror 적용.
+  'RDS|Z|send': 'DPS',
+  'RDS|Z|hold': 'DDH',
+  'RDS|Z|kill': 'DDK',
 });
 
 const ROLES = Object.freeze(new Set(['R', 'D', 'Z']));
