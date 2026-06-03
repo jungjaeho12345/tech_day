@@ -140,7 +140,7 @@ issue_number: null
 - **REQ-FE-VIEW-005 (Event-Driven)**: **When** the 부서별 작성 menu is active, the system **shall** display only articles authored within the relevant department.
 - **REQ-FE-VIEW-006 (Event-Driven)** [DP-F4]: **When** the 부서별 송고 menu is active, the system **shall** present a department dropdown populated from a separated department data-source interface (e.g., distinct `User.department`; the concrete source is confirmed at the Run stage) and a 조회 (query) button, and **shall** display articles for the selected department only after the query button is pressed.
 - **REQ-FE-VIEW-007 (Event-Driven)**: **When** the 개인별 수정 menu is active, the system **shall** display only articles authored by the current individual user.
-- **REQ-FE-VIEW-008 (Event-Driven)**: **When** the 데스크 미송고 menu is active, the system **shall** display articles authored within the department together with articles in the `RDS` lifecycle state.
+- **REQ-FE-VIEW-008 (Event-Driven)**: **When** the 데스크 미송고 menu is active, the system **shall** display only articles in the `RDS` lifecycle state (news.md: "데스크 미송고 페이지는 RDS기사만 보여준다").
 
 ### 기사 조회 페이지 — 권한 게이팅 (Article View — Role Gating)
 

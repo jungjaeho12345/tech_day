@@ -36,8 +36,8 @@ function filterForMenu(menu, user, selectedDepartment) {
     case '개인별 수정':
       return { author: user.userId };
     case '데스크 미송고':
-      // Department articles together with RDS-state articles (REQ-FE-VIEW-008).
-      return { department: user.department, status: 'RDS' };
+      // RDS-state articles only (news.md: "데스크 미송고 페이지는 RDS기사만 보여준다"; REQ-FE-VIEW-008).
+      return { status: 'RDS' };
     case '부서별 송고':
       // DPS-only (news.md: "부서별 송고페이지는 DPS기사만 조회"). Query only after a
       // department is selected and 조회 is pressed (handled by caller).

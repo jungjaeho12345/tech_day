@@ -86,28 +86,28 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     expect(await screen.findByText('mine')).toBeInTheDocument();
   });
 
-  it('AC-7.4: 데스크 미송고 includes department + RDS-state articles', async () => {
+  it('AC-7.4: 데스크 미송고 shows RDS-state articles only', async () => {
     const user = userEvent.setup();
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-4', title: 'unsent', status: 'RDS' }]);
     renderView(createFakeModel({ queryArticles }));
     await user.click(screen.getByRole('button', { name: '데스크 미송고' }));
     const call = queryArticles.mock.calls.at(-1)[0];
-    expect(call).toEqual(expect.objectContaining({ department: 'Politics', status: 'RDS' }));
+    expect(call).toEqual({ status: 'RDS' });
     expect(await screen.findByText('unsent')).toBeInTheDocument();
   });
 });
 
 describe('ViewPage default menu = 데스크 미송고 (news.md 기사 조회페이지)', () => {
-  it('on load the active menu is 데스크 미송고 and it queries with { department, status: RDS }', async () => {
+  it('on load the active menu is 데스크 미송고 and it queries with { status: RDS }', async () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-0', title: 'desk unsent', status: 'RDS' }]);
     renderView(createFakeModel({ queryArticles }));
     // The 데스크 미송고 menu button is active on load.
     const active = await screen.findByRole('button', { name: '데스크 미송고' });
     expect(active).toHaveAttribute('aria-pressed', 'true');
-    // And it auto-queries the department + RDS-state filter without any interaction.
+    // And it auto-queries the RDS-state-only filter without any interaction.
     await act(async () => {});
     const call = queryArticles.mock.calls.at(-1)[0];
-    expect(call).toEqual({ department: 'Politics', status: 'RDS' });
+    expect(call).toEqual({ status: 'RDS' });
     expect(await screen.findByText('desk unsent')).toBeInTheDocument();
   });
 });
