@@ -1,9 +1,9 @@
 ---
 id: SPEC-NEWS-REVISE-001
 artifact: acceptance
-version: 0.1.0
+version: 0.1.1
 created: 2026-06-02
-updated: 2026-06-02
+updated: 2026-06-03
 ---
 
 # Acceptance — SPEC-NEWS-REVISE-001
@@ -50,6 +50,14 @@ updated: 2026-06-02
 - **When** Tab 키로 포커스를 이동한다
 - **Then** 송고/보류/KILL 각 버튼이 포커스 가능 (`document.activeElement === button`)
 - **And** 각 버튼은 visible text 또는 `aria-label` 속성을 가진다
+
+### Scenario AC-Z-LIFECYCLE-1: Z권한 lifecycle 전이 (D-mirror, plan.md D-6)
+
+- **Given** 권한 `Z` 사용자가 `status === 'RDS'` 인 기사를 편집 중이다
+- **When** 송고/보류/KILL 중 한 버튼을 클릭하여 `articleService.update(...)` 또는 동등한 라이프사이클 전이가 호출된다
+- **Then** 결과 상태는 권한 `D` 가 동일 버튼을 눌렀을 때와 동일하다 — 송고 → `DPS`, 보류 → `DDH`, KILL → `DDK`
+- **And** 백엔드 `lifecycle.js` (또는 동등 모듈)의 TRANSITIONS 매트릭스 / `articleService` 의 `KILL_BY_ROLE` 셋에 `Z` 가 포함되어 있어 401/403/422 등의 권한 거부 응답이 발생하지 않는다
+- **And** DB의 기존 레코드는 비파괴(소프트 전이)로 보존된다 (CLAUDE.md HARD: "DB에 있는 내용은 삭제하지 않는다")
 
 ---
 
@@ -157,6 +165,47 @@ updated: 2026-06-02
 - **When** `Alt+Y` 발화
 - **Then** news.md 기존 명세대로 본문 끝에 `"\r\n (끝)"`이 1회 삽입되며 골드색 스타일 적용. 이미 존재 시 noop
 
+### Scenario AC-EMB-INLINE-1: 본문 캐럿 위치에 인라인 임베드 노드 삽입 (commit 850c4cd / c5b12f8)
+
+- **Given** 본문 contentEditable 에 `"리드 단락\n본문 한 줄\n참고"` 텍스트가 있고, 캐럿(Selection)이 `"본문 한 줄"` 의 중간 offset(예: 4) 에 위치한다
+- **When** 메타데이터 탭(이미지/영상/글기사) 검색 결과 카드의 "삽입" 액션을 트리거한다
+- **Then** 본문 DOM 트리에 임베드 노드(`<span data-embed>` 또는 동등 컨테이너)가 *바로 그 캐럿 offset* 자리에 1개 삽입된다 — 본문 끝 append 가 아니며, 리드 단락 앞 prepend 도 아니다
+- **And** 임베드 노드의 데이터 속성에는 카드의 `source/title/url/thumbnailUrl` 또는 article-card payload 가 보존된다
+- **And** 캐럿 보정(M3) 이 적용되어 임베드 노드 직후에 캐럿이 위치한다 (`window.getSelection().anchorNode` 가 임베드의 다음 텍스트 노드)
+
+### Scenario AC-EMB-INLINE-2: 임베드 삽입 후 후속 텍스트 입력이 임베드 노드를 파괴하지 않음
+
+- **Given** AC-EMB-INLINE-1 의 결과 상태
+- **When** 사용자가 임베드 직후 또는 다른 라인에서 `"추가본문"` 텍스트를 키보드로 입력한다
+- **Then** 임베드 노드가 동일 위치에 그대로 존재 (`document.querySelectorAll('[data-embed]').length === 1`)
+- **And** 임베드 노드의 데이터 속성과 시각 표현(thumbnail/title) 이 보존된다
+- **And** 본문 markup 직렬화(`getMarkup()` 또는 동등) 결과에 임베드 토큰이 포함되어 있다 (RED 잠금)
+
+### Scenario AC-EMB-INLINE-3: 임베드 인라인 CSS 정합 (c5b12f8 CSS 회귀잠금)
+
+- **Given** AC-EMB-INLINE-1 상태에서 본문 영역의 임베드 노드를 querySelector 로 획득한다
+- **When** computed style 또는 적용 CSS 클래스(`yh-embed--inline` 또는 동등)를 검사한다
+- **Then** 임베드 노드의 `display` 가 인라인 흐름과 호환되는 값(`inline-block` / `inline` 등)이며 전체 폭을 점유하지 않는다 (본문 텍스트와 같은 라인에 공존 가능)
+- **And** 임베드 노드 주변 텍스트의 baseline 정렬이 깨지지 않는다 (인접 텍스트 노드와 동일 행 박스에 정렬)
+- **And** 임베드 노드는 연합뉴스 디자인 토큰(`--yh-blue` / `--yh-gray-line` 계열)을 사용하며 신규 색 변수를 도입하지 않는다
+
+### Scenario AC-IME-1: 한글 IME 합성 중 paintEditor/replaceChildren 차단 (commit b1f7155 / 7580d2b, plan.md D-7)
+
+- **Given** 본문 contentEditable 영역이 포커스를 받은 상태에서 한글 입력기로 `compositionstart` 이벤트가 발화되었다 (`isComposing === true`)
+- **When** 사용자가 합성 도중 자모(예: 'ㄱ', 'ㅏ') 키를 추가로 입력하여 `input` 이벤트가 연속 발생한다
+- **Then** `onInput` 핸들러에서 React state(bodyText 등) 동기화가 *합성 종료까지 지연*되거나 가드되어, 합성 중간 상태가 외부에서 `setBodyText(...)` 로 덮어쓰이지 않는다
+- **And** 동일 시점에 본문 영역에 대한 `useEffect` 기반 repaint(`replaceChildren`, paintEditor 류 전체 재렌더) 가 호출되지 않는다 (가드 분기로 early-return)
+- **And** 합성 종료(`compositionend`) 직후의 최종 텍스트가 1글자 지연 없이 정확하게 반영된다 (회귀: "타이핑한 마지막 1글자가 누락" 증상 없음)
+
+### Scenario AC-IME-2: IME 합성 중 Enter 1-press 줄바꿈 (commit b1f7155 / 7580d2b, plan.md D-7)
+
+- **Given** 본문 contentEditable 영역에서 한글 합성 중이거나(`isComposing === true`) 합성 직후 상태이다
+- **When** 사용자가 `Enter` 키를 1회 누른다 (`keydown { key: 'Enter' }`)
+- **Then** 줄바꿈이 정확히 1회만 본문에 삽입된다 (스냅샷 비교: 합성 종료에 의한 1회 + Enter 핸들러에 의한 1회 = 2회 중복 삽입 금지)
+- **And** `event.defaultPrevented === true` (`preventDefault` 가 합성 여부와 무관하게 항상 적용)
+- **And** `compositionend` 이벤트 안의 recolor / repaint 가 Enter 처리 *이후*로 deferred 되어, 합성 종료가 Enter 의 결과를 덮어쓰지 않는다
+- **And** 본문 직렬화(`getMarkup()`) 결과에 newline 토큰이 정확히 1개 추가된다 (stale bodyText 회귀 잠금)
+
 ---
 
 ## 4. 비기능 시나리오
@@ -195,11 +244,14 @@ updated: 2026-06-02
 전체 spec.md §12와 본 acceptance.md 시나리오 전부에 더해:
 
 - [ ] 본 acceptance.md의 모든 Scenario가 자동화 테스트로 존재하고 GREEN
-- [ ] Pending Decisions (D-1 ~ D-5) 사용자 승인 완료
+- [ ] Pending Decisions (D-1 ~ D-7) 사용자 승인 완료 (D-6 Z lifecycle / D-7 IME 가드 포함)
+- [ ] AC-Z-LIFECYCLE-1 백엔드 lifecycle 단위 테스트 GREEN (`lifecycle.js` TRANSITIONS / `articleService` KILL_BY_ROLE)
+- [ ] AC-EMB-INLINE-1·2·3 본문 캐럿 위치 인라인 임베드 테스트 GREEN (M3 임베드 모델 + 캐럿 보정)
+- [ ] AC-IME-1·2 IME 합성 가드 회귀잠금 테스트 GREEN (1글자 지연 없음 + Enter 1-press)
 - [ ] 미커밋 변경분 처리 결정(commit / stash / 폐기) 완료 (사용자 권한)
 - [ ] `npm test`, `npm run build` 통과
 - [ ] news.md / SPEC 정합 확인
 - [ ] Slack `tech-day` 채널에 완료 보고 (CLAUDE.md HARD)
 - [ ] `/moai sync SPEC-NEWS-REVISE-001` 실행 및 docs 동기화
 
-Version: 0.1.0
+Version: 0.1.1

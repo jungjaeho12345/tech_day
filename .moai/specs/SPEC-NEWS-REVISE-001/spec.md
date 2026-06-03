@@ -1,9 +1,9 @@
 ---
 id: SPEC-NEWS-REVISE-001
-version: 0.1.0
-status: Plan
+version: 0.1.1
+status: In Progress
 created: 2026-06-02
-updated: 2026-06-02
+updated: 2026-06-03
 author: manager-spec
 priority: high
 issue_number: 0
@@ -17,6 +17,13 @@ related_specs:
 
 ## HISTORY
 
+- 2026-06-03 (v0.1.1): Run 진행분(2026-06-03 커밋 5건)을 기존 REQ/AC 범위 안에서 사후 정합화. 새 REQ는 추가하지 않음.
+  - `ebf7425` fix(backend): D-6 Z권한 lifecycle 전이(RDS→DPS/DDH/DDK, D-mirror) 추가 → **REQ-AUTH-Z-BUTTONS 강화**. plan.md D-6 결정에 해당하는 *행위 가드*가 acceptance에 누락되어 있던 점을 `AC-Z-LIFECYCLE-1` 로 보강.
+  - `850c4cd` feat(news-revise): M3 임베드 모델 + 캐럿 보정 + RED 회귀 잠금 → **REQ-EDITOR-EMBED-AND-CTRL-D / AC-EMB-1·2·3 충족**. 본문 커서 위치 인라인 임베드 의미를 `AC-EMB-INLINE-1/2/3` 으로 세분화하여 회귀잠금 ID를 정식 등재.
+  - `c5b12f8` test(editor): 본문 커서 위치 인라인 임베드 AC-EMB-INLINE-1/2/3 + CSS → **AC-EMB-INLINE-*** acceptance.md 정식 수록.
+  - `b1f7155` fix(editor): IME compositionEnd Enter 1-press 줄바꿈 (stale bodyText 제거) → **plan.md D-7 결정 충족**. spec.md REQ-EDITOR-EMBED-AND-CTRL-D 영역에 *IME 가드 EARS 1줄* 추가 및 `AC-IME-1` 로 행위 단언.
+  - `7580d2b` fix(editor): D-7 IME 합성 중 repaint 차단으로 1글자 지연/Enter 두 번 회귀 해결 → **AC-IME-2 (repaint 가드)** 로 회귀잠금 추가.
+  변경 범위: spec.md HISTORY/메타 + REQ-EDITOR-EMBED-AND-CTRL-D EARS 2줄 추가, acceptance.md 시나리오 6개 신설(AC-Z-LIFECYCLE-1, AC-IME-1·2, AC-EMB-INLINE-1·2·3). plan.md/research.md/news.md 무변경. (manager-spec)
 - 2026-06-02 (v0.1.0): 최초 작성. news.md 최근 개정 3가지를 단일 SPEC, 3개 REQ로 정리.
   (1) Z권한 버튼 가시성을 송고/보류/KILL 로 한정 (기사 작성 페이지 상단),
   (2) 상세보기 새창 하단의 제목/본문 분리 레이아웃 명문화 + 상단 공통정보 12필드 보장,
@@ -119,6 +126,7 @@ related_specs:
 - **[Unwanted]** THE 시스템 SHALL NOT 권한이 `Z`라는 이유로 위 세 버튼 외의 추가 액션 버튼(예: 고침, 포털고침, 재송, 삭제요청 등)을 작성 페이지 상단 버튼군에 노출하지 않는다.
 - **[State-Driven]** WHILE 편집 대상 기사 상태가 `RDS`가 아니면, THE 시스템 SHALL 권한 `Z`에 대해 송고/보류/KILL 세 버튼을 노출하지 않는다 (기존 R/D와 동일한 status-gating 적용).
 - **[Ubiquitous]** THE 시스템 SHALL 권한 `R`/`D`의 기존 버튼 가시성 규칙(`R`: 송고+보류+KILL, `D`: 송고+보류, KILL 비표시)을 변경하지 아니한다.
+- **[Event-Driven]** WHEN 권한 `Z` 사용자가 `RDS` 상태 기사에서 송고/보류/KILL 버튼을 클릭하면, THE 시스템 SHALL 기사 상태를 권한 `D` 와 동일한 전이 규칙(RDS→DPS / RDS→DDH / RDS→DDK)으로 변경한다 (plan.md Decision Lock D-6 기준).
 
 #### Acceptance Criteria (Given-When-Then, 최소 3개)
 
@@ -203,6 +211,8 @@ related_specs:
 - **[Unwanted]** THE 시스템 SHALL NOT `Ctrl+D` 입력을 브라우저 기본 동작(예: Chrome 북마크 추가)으로 전파한다 (`preventDefault` 필수).
 - **[Optional]** WHERE 사용자가 멀티라인 텍스트를 선택한 뒤 `Ctrl+D` 를 누르면, THE 시스템 SHALL 선택에 걸친 모든 라인(부분 포함 라인 포함, 라인 단위 round-up)을 제거한다.
 - **[Unwanted]** THE 시스템 SHALL NOT 에디터가 포커스를 받지 않은 상태에서 발생한 `Ctrl+D`를 가로채지 않는다 (전역 핸들러 금지; 핸들러는 에디터 영역 한정).
+- **[State-Driven]** WHILE 본문 `contentEditable` 영역이 IME 합성(composition) 상태(`isComposing === true` 또는 `compositionstart` 이후 `compositionend` 이전)에 있는 동안, THE 시스템 SHALL `onInput` → React state 동기화, `useEffect` 기반 본문 repaint(`replaceChildren` 류 전체 재렌더), `compositionend` 내부 recolor 를 모두 차단한다 — IME 합성 노드를 외부에서 파괴하여 발생하는 "1글자 지연" / "Enter 2회 입력" 회귀를 방지한다 (plan.md Decision Lock D-7 기준).
+- **[Event-Driven]** WHEN 사용자가 본문 `contentEditable` 영역에서 `Enter` 키를 누르면, THE 시스템 SHALL IME 합성 상태와 무관하게 항상 `preventDefault` 후 1회만 줄바꿈을 삽입한다 (합성 종료와 줄바꿈이 2회 분리 발사되지 않는다).
 
 #### Acceptance Criteria
 
@@ -415,12 +425,20 @@ D-1~D-7(plan.md Decision Lock) 전부 구현에 반영됨. 특히 D-1(Z는 RDS g
 
 ### 13.4 잔여 항목 (구현 외 — completed 전이 차단 요소)
 
-- **Slack `tech-day` 채널 완료 보고** (CLAUDE.md HARD 규칙) — 현재 세션에 Slack 도구 미연결로 자동 수행 불가. 사용자 조치 필요.
-- plan.md / acceptance.md 버전 0.2.0 동기 + DoD 체크 동기 (정합성 게이트).
+- ~~Slack `tech-day` 채널 완료 보고 (CLAUDE.md HARD 규칙)~~ — **해소됨** (2026-06-04 `/news produce` 및 `/moai sync` 종료 시 채널 C0B69CG59UM 에 보고 완료).
+- ~~plan.md / acceptance.md 버전 0.2.0 동기 + DoD 체크 동기~~ — **해소됨** (acceptance.md v0.1.1 라인에서 신규 AC 6개 흡수, 별도 0.2.0 트랙 미생성).
 - 작업 트리의 미커밋 변경(`news.md` 마크다운 재포맷, `ContentsVO.md` LockYN 추가, SPEC-FRONTEND-UI-001 파일)은 **본 SPEC 소관이 아님** — 별도 처리 대상.
+
+### 13.5 GAN Round 1 평가 (2026-06-04, `/news produce SPEC-NEWS-REVISE-001 --resume`)
+
+- 종합 점수 **0.8625** ≥ pass_threshold 0.75 → **PASS**
+- 차원별: Design 0.85 / Originality 0.90 / Completeness 0.82 / Functionality 0.88
+- 통과 AC 22/24 (AC-DTL-3 라벨 완화, AC-CTRL-D-2 React 통합 부분 커버 — △ 2건)
+- Must-Pass Firewall: Jest 355/355 + AC 매핑 + Vite build 무경고 모두 PASS
+- 후속(LOW): `articleDetail.js` `description`↔`content` alias 보강, AC-CTRL-D-2 React 통합 테스트 추가
 
 ---
 
-Version: 0.1.0
-Status: Plan
-Last Updated: 2026-06-03
+Version: 0.1.1
+Status: In Progress
+Last Updated: 2026-06-04
