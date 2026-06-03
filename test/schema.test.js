@@ -50,13 +50,95 @@ test('AC-1: Contents has expected columns including distributedAt and status', (
   const db = freshDb();
   createSchema(db);
   const cols = columnInfo(db, 'Contents').map((c) => c.name);
+  // SPEC-NEWS-REVISE-002 REQ-DB-LOCKYN (T-M1-001) + REQ-EDIT-LOCK (T-M2-001, D2-2 = A):
+  //   lockYN 1 컬럼 + lockerUserId/lockerSessionId/lockedAt 3 컬럼 추가 → 총 19 컬럼.
+  // 단일 SQL race-safe 락 획득 (UPDATE ... WHERE lockYN='N' OR lockedAt < ?)을 가능케 함.
   assert.deepEqual(cols, [
     'articleId', 'title', 'content', 'author', 'modifier', 'sender',
     'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
-    'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status',
+    'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status', 'lockYN',
+    'lockerUserId', 'lockerSessionId', 'lockedAt',
   ]);
   assert.ok(cols.includes('distributedAt'), 'distributedAt column must exist');
   assert.ok(cols.includes('status'), 'status column must exist on Contents');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-LOCKYN-1: lockYN 컬럼은 NOT NULL + DEFAULT 'N'.
+test('AC-LOCKYN-1: Contents.lockYN is NOT NULL with default \'N\'', () => {
+  const db = freshDb();
+  createSchema(db);
+  const lockColumn = columnInfo(db, 'Contents').find((c) => c.name === 'lockYN');
+  assert.ok(lockColumn, 'lockYN column must exist');
+  assert.equal(lockColumn.notnull, 1, 'lockYN must be NOT NULL');
+  assert.equal(lockColumn.dflt_value, "'N'", "lockYN must default to 'N'");
+  assert.equal(lockColumn.type, 'VARCHAR');
+});
+
+test('AC-LOCKYN-1: CONTENTS_COLUMNS array contains lockYN and locker columns', () => {
+  for (const name of ['lockYN', 'lockerUserId', 'lockerSessionId', 'lockedAt']) {
+    assert.ok(CONTENTS_COLUMNS.includes(name), `${name} must be in CONTENTS_COLUMNS`);
+  }
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-1 schema prerequisite: locker columns are NULLABLE.
+test('AC-EDIT-LOCK-1 schema: locker columns are VARCHAR + nullable', () => {
+  const db = freshDb();
+  createSchema(db);
+  const cols = columnInfo(db, 'Contents');
+  for (const name of ['lockerUserId', 'lockerSessionId', 'lockedAt']) {
+    const col = cols.find((c) => c.name === name);
+    assert.ok(col, `${name} column must exist`);
+    assert.equal(col.notnull, 0, `${name} must be NULLABLE`);
+    assert.equal(col.type, 'VARCHAR');
+  }
+});
+
+test('AC-LOCKYN-2: INSERT without lockYN populates default \'N\'', () => {
+  const db = freshDb();
+  createSchema(db);
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?, ?)')
+    .run('AKR202606040000000001', 'RDS');
+  const row = db.prepare('SELECT lockYN FROM Contents WHERE articleId = ?')
+    .get('AKR202606040000000001');
+  assert.equal(row.lockYN, 'N');
+});
+
+// SPEC-NEWS-REVISE-002 — REQ-SCH-010 idempotence for the two new ensure helpers.
+test('REQ-SCH-010: re-running createSchema on a pre-existing Contents adds new columns without destroying rows', () => {
+  const db = freshDb();
+  // Legacy Contents without ANY of the SPEC-NEWS-REVISE-002 amendments.
+  db.exec(`
+    CREATE TABLE Contents (
+      articleId VARCHAR PRIMARY KEY,
+      title VARCHAR,
+      content VARCHAR,
+      author VARCHAR,
+      modifier VARCHAR,
+      sender VARCHAR,
+      department VARCHAR,
+      departmentCode VARCHAR,
+      createdAt VARCHAR,
+      editedAt VARCHAR,
+      sentAt VARCHAR,
+      distributedAt VARCHAR,
+      embargoAt VARCHAR,
+      secondEmbargoAt VARCHAR,
+      status VARCHAR
+    )
+  `);
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?, ?)')
+    .run('AKR202606040000000099', 'RDS');
+  createSchema(db);
+  const cols = columnInfo(db, 'Contents').map((c) => c.name);
+  for (const name of ['lockYN', 'lockerUserId', 'lockerSessionId', 'lockedAt']) {
+    assert.ok(cols.includes(name), `${name} added idempotently`);
+  }
+  const row = db.prepare('SELECT articleId, status, lockYN, lockerUserId FROM Contents WHERE articleId = ?')
+    .get('AKR202606040000000099');
+  assert.equal(row.articleId, 'AKR202606040000000099');
+  assert.equal(row.status, 'RDS');
+  assert.equal(row.lockYN, 'N');
+  assert.equal(row.lockerUserId, null);
 });
 
 test('AC-1: User has expected columns', () => {

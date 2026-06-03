@@ -6,9 +6,19 @@
 // and routes send/hold/kill through the Model. The client NEVER computes the next lifecycle state.
 // After a SUCCESSFUL action the write page is reset to a fresh draft (news.md: 기사 작성페이지는 초기화 된다),
 // while the backend-returned status confirmation remains visible.
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useModel } from '../app/context.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
+
+// SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — page-scoped sessionId generator (D2-5 = A strict).
+// One UUID per editor mount so two tabs of the same user collide on the lock (different sessionIds).
+// Falls back to a Math.random pair when crypto.randomUUID is unavailable (jsdom/older Node).
+function generatePageSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const EMPTY_COMMON = Object.freeze({
   author: '', coAuthor: '', content: '', region: '', attribute: '', keyword: '',
@@ -60,6 +70,15 @@ export function useWriteController(user, options = {}) {
   const [status, setStatus] = useState('RDS');
   const [lifecycleStatus, setLifecycleStatus] = useState(null);
   const [actionError, setActionError] = useState(null);
+  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — frontend lock integration. lockError holds the conflict
+  // reason ('locked' / 'unauthenticated' / 'network-error') so WritePage can show ALERT + banner +
+  // disable the editor body (AC-EDIT-LOCK-2 / NFR-A11Y).
+  const [lockError, setLockError] = useState(null);
+  // Page-scoped UUID — generated ONCE per editor mount (D2-5 strict so two tabs collide).
+  const pageSessionIdRef = useRef(null);
+  if (pageSessionIdRef.current == null) {
+    pageSessionIdRef.current = generatePageSessionId();
+  }
 
   // Edit-load (news.md 데스크 미송고 편집): when an editArticleId is supplied, fetch the row and load it
   // into the editor + common fields, and adopt its articleId so the next save PUTs (updates) the row.
@@ -80,6 +99,72 @@ export function useWriteController(user, options = {}) {
     return () => { cancelled = true; };
   }, [editArticleId, model, adapter]);
 
+  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire the lock on mount (when editing an existing article)
+  // and release on unmount. The page-scoped sessionId (pageSessionIdRef.current) is stable per mount
+  // so D2-5 strict (same user, different tab → 'locked') holds. Network failures degrade to
+  // { ok:false, reason:'network-error' } which is surfaced as lockError so the UI degrades safely.
+  //
+  // unload safety (D2-4 = C): beforeunload + visibilitychange:hidden BOTH trigger navigator.sendBeacon
+  // so the release reaches the server even when the page is being torn down (sendBeacon is preferred
+  // over fetch because it survives the unload event without blocking it).
+  useEffect(() => {
+    if (!editArticleId) return undefined;
+    let cancelled = false;
+    const sessionId = pageSessionIdRef.current;
+
+    (async () => {
+      try {
+        const result = await model.acquireEditLock(editArticleId, { sessionId });
+        if (cancelled) return;
+        if (!result?.ok) {
+          setLockError({ reason: result?.reason ?? 'locked' });
+        } else {
+          setLockError(null);
+        }
+      } catch {
+        if (!cancelled) setLockError({ reason: 'network-error' });
+      }
+    })();
+
+    // sendBeacon release — used by both unload channels and the cleanup path so the server frees the
+    // lock even if the user closes the tab without an explicit logout.
+    const beaconRelease = () => {
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          // Backend endpoint accepts the page sessionId in the body for sendBeacon compatibility
+          // (sendBeacon cannot specify HTTP method = DELETE; the server reads sessionId from the
+          // JSON payload and treats POST-to-lock-release as equivalent to DELETE for unload paths).
+          const payload = JSON.stringify({ sessionId, articleId: editArticleId, release: true });
+          const blob = new Blob([payload], { type: 'application/json' });
+          navigator.sendBeacon(`/api/articles/${encodeURIComponent(editArticleId)}/lock`, blob);
+        }
+      } catch {
+        // Ignore — unload paths must never throw.
+      }
+    };
+
+    const onBeforeUnload = () => { beaconRelease(); };
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        beaconRelease();
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      // Best-effort async release on React unmount (page navigation, hot reload).
+      try {
+        model.releaseEditLock?.(editArticleId, { sessionId }).catch(() => {});
+      } catch {
+        // Ignore — release is best effort.
+      }
+    };
+  }, [editArticleId, model]);
+
   // Set the plain body text (typed input). Embeds already inserted are preserved (REQ-EDIT-ADP-003).
   const setBodyMarkup = useCallback((next) => {
     adapter.setBodyText(next);
@@ -95,8 +180,18 @@ export function useWriteController(user, options = {}) {
     setContent(adapter.getContent());
   }, [adapter]);
 
+  // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — remove a single inline embed by its ordinal index
+  // (0-based among embed blocks; matches the `data-embed-index` the editor paints). View hooks this
+  // up to the × button (D2-6 option C) and to the Backspace handler when an embed has focus.
+  const removeEmbed = useCallback((embedIndex) => {
+    adapter.removeEmbed(embedIndex);
+    setContent(adapter.getContent());
+  }, [adapter]);
+
   // news.md 기사 에디터: Alt+Y appends "(끝)" to the END of the body text (shown in 골드색 by the view).
-  // It persists in markupVersion (round-trips via setMarkup) because it is stored as literal body text.
+  // SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER simplifies the inserted token to exactly "(끝)" (prefix-free
+  // — previously "\n (끝)"). It persists in markupVersion (round-trips via setMarkup) because it is stored
+  // as literal body text.
   const appendEnd = useCallback(() => {
     adapter.appendEnd();
     setContent(adapter.getContent());
@@ -135,6 +230,13 @@ export function useWriteController(user, options = {}) {
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
   const submitAction = useCallback(async (action) => {
     setActionError(null);
+    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — when the lock acquire was rejected, every transport call
+    // is suppressed (the page is read-only until the user dismisses and navigates away). This is the
+    // server-side AC-EDIT-LOCK-2/6 invariant mirrored at the client so the conflict is not papered
+    // over by a network error from the server-side lock guard.
+    if (lockError) {
+      return;
+    }
     // news.md 기사작성 워크플로우: 송고/보류 require a title (the editor's first line). When it is
     // empty, abort BEFORE saving or applying the action and surface the inline alert. KILL is exempt.
     if (action === 'send' || action === 'hold') {
@@ -146,7 +248,14 @@ export function useWriteController(user, options = {}) {
     try {
       let id = articleId;
       if (action === 'send') {
-        const saved = await model.saveArticle(articleId, assembleDto());
+        // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / REQ-API-INSERT-UPDATE-SPLIT — when this is an edit
+        // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
+        // route's lock guard (assertLockHolder) accepts the request. The DTO field is stripped by
+        // server/index.js before the partial update is applied (it is transport-only metadata).
+        const dto = assembleDto();
+        const isEditContext = articleId !== 'A-DRAFT';
+        const payload = isEditContext ? { ...dto, sessionId: pageSessionIdRef.current } : dto;
+        const saved = await model.saveArticle(articleId, payload);
         if (saved?.ok && saved.articleId) {
           id = saved.articleId;
           setArticleId(id);
@@ -164,7 +273,7 @@ export function useWriteController(user, options = {}) {
     } catch {
       setActionError('전송 중 오류가 발생했습니다.');
     }
-  }, [adapter, articleId, assembleDto, model, user.role, resetDraft]);
+  }, [adapter, articleId, assembleDto, model, user.role, resetDraft, lockError]);
 
   return {
     // Editor surface: structured content (text + ordered inline embeds) + plain body text.
@@ -172,12 +281,16 @@ export function useWriteController(user, options = {}) {
     bodyText: adapter.getBodyText(),
     setBodyMarkup,
     embed,
+    removeEmbed,
     appendEnd,
     getMarkup: adapter.getMarkup,
     assembleDto,
     common, updateCommon,
     status,
     lifecycleStatus, actionError,
+    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — null when the lock is free / acquired; non-null
+    // ({ reason }) when the editor must stay read-only because another holder is editing.
+    lockError,
     send: () => submitAction('send'),
     hold: () => submitAction('hold'),
     kill: () => submitAction('kill'),

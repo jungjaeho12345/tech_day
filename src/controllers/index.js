@@ -92,6 +92,14 @@ export function createControllers(db, deps = {}) {
       updateStatus: (articleId, status) => articleService.updateStatus(articleId, status),
       remove: (articleId, role) => articleService.remove(articleId, role),
       applyAction: (articleId, role, action) => articleService.applyAction(articleId, role, action),
+      // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (D2-7 = A) — partial update of an existing
+      // article. The PUT /api/articles/:id route wires through here after asserting lock ownership.
+      update: (articleId, fields) => articleService.update(articleId, fields),
+      // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire/release endpoints (NFR-SEC: userId/sessionId
+      // are pulled from the validated session, never the request body).
+      acquireEditLock: (articleId, options) => articleService.acquireEditLock(articleId, options),
+      releaseEditLock: (articleId, options) => articleService.releaseEditLock(articleId, options),
+      assertLockHolder: (articleId, options) => articleService.assertLockHolder(articleId, options),
     },
     user: {
       create: (user) => userService.create(user),

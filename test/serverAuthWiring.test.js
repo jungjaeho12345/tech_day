@@ -263,3 +263,125 @@ test('USRMGMT: an unauthenticated PUT /api/users/:userId is rejected and does no
   const [unchanged] = controllers.user.query({ userId: 'put-victim' });
   assert.notEqual(unchanged.department, '사회부', 'the user must be unchanged without a session');
 });
+
+// --- SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK + REQ-API-INSERT-UPDATE-SPLIT route wiring ---
+
+async function acquireLock(articleId, { sessionId, pageSessionId } = {}) {
+  const headers = { 'content-type': 'application/json' };
+  if (sessionId !== undefined) headers['x-session-id'] = sessionId;
+  const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(pageSessionId === undefined ? {} : { sessionId: pageSessionId }),
+  });
+  return res.json();
+}
+
+async function releaseLock(articleId, { sessionId, pageSessionId } = {}) {
+  const headers = { 'content-type': 'application/json' };
+  if (sessionId !== undefined) headers['x-session-id'] = sessionId;
+  const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
+    method: 'DELETE',
+    headers,
+    body: JSON.stringify(pageSessionId === undefined ? {} : { sessionId: pageSessionId }),
+  });
+  return res.json();
+}
+
+async function putArticle(articleId, body, { sessionId } = {}) {
+  const headers = { 'content-type': 'application/json' };
+  if (sessionId !== undefined) headers['x-session-id'] = sessionId;
+  const res = await fetch(`${base}/api/articles/${articleId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body ?? {}),
+  });
+  return res.json();
+}
+
+// AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires the lock with the page-scoped sessionId.
+test('AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires (auth session userId, page sessionId)', async () => {
+  seedUser('r-lock-1', 'R');
+  const sessionId = loginSessionId('r-lock-1');
+  const { articleId } = controllers.article.create({ title: 'lock-1' });
+  const result = await acquireLock(articleId, { sessionId, pageSessionId: 'page-A' });
+  assert.equal(result.ok, true, 'first-time acquire on a free lock must succeed');
+});
+
+// AC-EDIT-LOCK-2: a different user's lock acquire is rejected (locked).
+test('AC-EDIT-LOCK-2: second user cannot acquire while another user holds the lock', async () => {
+  seedUser('r-lock-2a', 'R');
+  seedUser('r-lock-2b', 'R');
+  const { articleId } = controllers.article.create({ title: 'lock-2' });
+  const sessionA = loginSessionId('r-lock-2a');
+  const sessionB = loginSessionId('r-lock-2b');
+  const first = await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  assert.equal(first.ok, true);
+  const second = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  assert.equal(second.ok, false);
+  assert.equal(second.reason, 'locked');
+});
+
+// AC-EDIT-LOCK-3: release frees the lock so another user can acquire.
+test('AC-EDIT-LOCK-3: DELETE /api/articles/:id/lock releases; a second user can then acquire', async () => {
+  seedUser('r-lock-3a', 'R');
+  seedUser('r-lock-3b', 'R');
+  const { articleId } = controllers.article.create({ title: 'lock-3' });
+  const sessionA = loginSessionId('r-lock-3a');
+  const sessionB = loginSessionId('r-lock-3b');
+  await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  const released = await releaseLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  assert.equal(released.ok, true);
+  const reAcquired = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  assert.equal(reAcquired.ok, true);
+});
+
+// AC-EDIT-LOCK-1 boundary: an unauthenticated POST /api/articles/:id/lock is rejected.
+test('AC-EDIT-LOCK-1 boundary: unauthenticated lock acquire is rejected', async () => {
+  const { articleId } = controllers.article.create({ title: 'lock-anon' });
+  const result = await acquireLock(articleId, { pageSessionId: 'page-A' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'unauthenticated');
+});
+
+// AC-API-2: PUT /api/articles/:id routes to articleService.update (R-CRIT-2 regression guard).
+// The previous wiring (saveArticle) called .create on every PUT — assert that the SAME articleId is
+// updated (not a NEW one minted), so we know we are hitting the update path.
+test('AC-API-2 + R-CRIT-2: PUT /api/articles/:id updates the SAME row (no new id minted)', async () => {
+  seedUser('d-put', 'D');
+  const sessionId = loginSessionId('d-put');
+  const { articleId } = controllers.article.create({ title: '원본', content: '원본 본문' });
+  // Acquire the lock first (REQ-EDIT-LOCK gates PUT).
+  await acquireLock(articleId, { sessionId, pageSessionId: 'page-PUT' });
+  const result = await putArticle(
+    articleId,
+    { sessionId: 'page-PUT', title: '편집된 제목', markupVersion: 'v2' },
+    { sessionId },
+  );
+  assert.equal(result.ok, true, 'PUT must succeed when the caller holds the lock');
+  // R-CRIT-2 가드: 원래 articleId의 row가 갱신됨 (새 articleId가 생기지 않음).
+  const [row] = controllers.article.query({ articleId });
+  assert.equal(row.title, '편집된 제목');
+  // The original row count for THIS articleId must still be exactly 1 (no shadow create).
+  const duplicates = db.prepare('SELECT COUNT(*) AS n FROM Contents WHERE articleId = ?').get(articleId);
+  assert.equal(duplicates.n, 1, 'no duplicate row created — PUT updated in place');
+  // Cross-check: no new row with the edited title was minted (would happen under the legacy create path).
+  const titleRows = db.prepare("SELECT COUNT(*) AS n FROM Contents WHERE title = '편집된 제목'").get();
+  assert.equal(titleRows.n, 1, 'no extra row with the edited title was minted');
+});
+
+// AC-EDIT-LOCK-6: PUT /api/articles/:id requires the lock holder.
+test('AC-EDIT-LOCK-6: PUT /api/articles/:id without lock is rejected with lock-required', async () => {
+  seedUser('d-put-nolock', 'D');
+  const sessionId = loginSessionId('d-put-nolock');
+  const { articleId } = controllers.article.create({ title: 'no-lock' });
+  const result = await putArticle(
+    articleId,
+    { sessionId: 'page-PUT', title: 'should-not-apply' },
+    { sessionId },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'lock-required');
+  const [row] = controllers.article.query({ articleId });
+  assert.equal(row.title, 'no-lock', 'no mutation when the lock guard rejects');
+});

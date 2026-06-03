@@ -138,9 +138,10 @@ export function buildArticleDetailHtml(article) {
   .yh-detail__row--empty dd {
     color: var(--yh-gray-mid);
   }
+  /* SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS: body font-size > title font-size (시각적 강조). */
   .yh-detail__title {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
-    font-size: 1.6rem;
+    font-size: 1.3rem;
     font-weight: 700;
     line-height: 1.3;
     color: var(--yh-blue-deep);
@@ -148,7 +149,7 @@ export function buildArticleDetailHtml(article) {
   }
   .yh-detail__content {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
-    font-size: 1.02rem;
+    font-size: 1.75rem;
     line-height: 1.8;
     color: var(--yh-ink);
     white-space: pre-wrap;

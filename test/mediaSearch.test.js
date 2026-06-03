@@ -98,3 +98,52 @@ test('AC-17: default providers do not leak env keys onto the service or result',
   delete process.env.YOUTUBE_API_KEY;
   delete process.env.GOOGLE_API_KEY;
 });
+
+// SPEC-NEWS-REVISE-002 — REQ-SEARCH-YOUTUBE-API regression guard (no production change).
+// Pending Decision D2-8 = (B) HTTP fail OR empty → Google fallback. AC-14/15/16/17과 동일 동작을
+// 본 SPEC ID로 재단언하여 추후 mediaSearch.js를 누가 수정해도 본 SPEC 가드가 즉시 깨지도록 잠금.
+
+test('AC-SEARCH-1: Youtube provider is called first; on success Google is not called', async () => {
+  let youtubeCalls = 0;
+  let googleCalls = 0;
+  const youtube = { search: async () => { youtubeCalls += 1; return [{ title: 'yt1', url: 'https://yt/1' }]; } };
+  const google = { search: async () => { googleCalls += 1; return []; } };
+  const svc = createMediaSearchService({ youtube, google });
+  const result = await svc.search('query');
+  assert.equal(youtubeCalls, 1);
+  assert.equal(googleCalls, 0);
+  assert.equal(result.items[0].source, 'youtube');
+  assert.equal(result.error, false);
+});
+
+test('AC-SEARCH-2 (D2-8=B): Youtube HTTP-fail OR empty -> Google fallback (both paths)', async () => {
+  // Path 1 — HTTP non-2xx (provider throws)
+  const svc1 = createMediaSearchService({
+    youtube: { search: async () => { throw new Error('http 503'); } },
+    google: { search: async () => [{ title: 'g1', url: 'https://g/1' }] },
+  });
+  const r1 = await svc1.search('q');
+  assert.equal(r1.items[0].source, 'google');
+
+  // Path 2 — empty array (no items returned, no throw)
+  let googleCalled = 0;
+  const svc2 = createMediaSearchService({
+    youtube: { search: async () => [] },
+    google: { search: async () => { googleCalled += 1; return [{ title: 'g2', url: 'https://g/2' }]; } },
+  });
+  const r2 = await svc2.search('q');
+  assert.equal(googleCalled, 1);
+  assert.equal(r2.items[0].source, 'google');
+});
+
+test('AC-SEARCH-4 (NFR-SEC): API key strings never appear in the result payload', async () => {
+  process.env.YOUTUBE_API_KEY = 'KEY_SECRET_YT_002';
+  process.env.GOOGLE_API_KEY = 'KEY_SECRET_G_002';
+  const svc = createMediaSearchService();
+  const result = await svc.search('q');
+  const serialized = JSON.stringify(result);
+  assert.ok(!serialized.includes('KEY_SECRET_YT_002'));
+  assert.ok(!serialized.includes('KEY_SECRET_G_002'));
+  delete process.env.YOUTUBE_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+});

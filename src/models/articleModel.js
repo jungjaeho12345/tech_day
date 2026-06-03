@@ -18,7 +18,11 @@ const QUERY_FILTERS = Object.freeze({
  */
 export function createArticleModel(db) {
   return {
-    /** Insert the shared row into both Article and Contents tables. */
+    /**
+     * Insert the shared row into both Article and Contents tables.
+     * SPEC-NEWS-REVISE-002 REQ-DB-LOCKYN: explicit `lockYN` (default 'N' when unspecified) so the
+     * NOT NULL constraint is satisfied even when callers don't supply it.
+     */
     insert(articleId, data) {
       db.prepare(
         'INSERT INTO Article (articleId, title, content, markupVersion, modifier) VALUES (?,?,?,?,?)',
@@ -26,14 +30,14 @@ export function createArticleModel(db) {
       db.prepare(
         `INSERT INTO Contents (articleId, title, content, author, modifier, sender,
           department, departmentCode, createdAt, editedAt, sentAt, distributedAt,
-          embargoAt, secondEmbargoAt, status)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          embargoAt, secondEmbargoAt, status, lockYN)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         articleId, data.title ?? null, data.content ?? null, data.author ?? null,
         data.modifier ?? null, data.sender ?? null, data.department ?? null,
         data.departmentCode ?? null, data.createdAt ?? null, data.editedAt ?? null,
         data.sentAt ?? null, data.distributedAt ?? null, data.embargoAt ?? null,
-        data.secondEmbargoAt ?? null, data.status,
+        data.secondEmbargoAt ?? null, data.status, data.lockYN ?? 'N',
       );
     },
 

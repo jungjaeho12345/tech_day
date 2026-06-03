@@ -1,7 +1,7 @@
-// @MX:ANCHOR: [AUTO] Article service — business logic for CRUD, lifecycle, search (REQ-ARCH-002, fan_in >= 3).
-// @MX:REASON: orchestrates ID generation, lifecycle reducer, and soft delete over the article model.
+// @MX:ANCHOR: [AUTO] Article service — business logic for CRUD, lifecycle, search, edit lock (REQ-ARCH-002, fan_in >= 3).
+// @MX:REASON: orchestrates ID generation, lifecycle reducer, soft delete, and edit-lock acquisition over the article model.
 //
-// Article business logic for SPEC-BACKEND-CORE-001.
+// Article business logic for SPEC-BACKEND-CORE-001 + SPEC-NEWS-REVISE-002 (REQ-EDIT-LOCK, REQ-API-INSERT-UPDATE-SPLIT).
 // Reuses SPEC-DB-FOUNDATION-001 modules: generateArticleId and softDeleteArticle.
 
 import { generateArticleId } from '../db/articleId.js';
@@ -14,11 +14,41 @@ const INITIAL_STATUS = 'RDS';
 // Z is admin/desk-equivalent: mirrors D (SPEC-NEWS-REVISE-001 D-6).
 const KILL_BY_ROLE = Object.freeze({ R: 'RRK', D: 'DDK', Z: 'DDK' });
 
+// SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / Pending Decision D2-3 = (A): zombie-lock timeout 30 분.
+// Locks older than this are auto-released by the next acquire attempt (race-safe single-SQL WHERE).
+export const EDIT_LOCK_TIMEOUT_MS = 30 * 60 * 1000;
+
 /**
  * @param {import('node:sqlite').DatabaseSync} db
  */
 export function createArticleService(db) {
   const model = createArticleModel(db);
+
+  /**
+   * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK helper: atomic single-SQL lock acquire.
+   * Returns the SQLite info.changes (1 = acquired, 0 = locked by someone else / not found).
+   * The WHERE clause includes `lockYN='N'` OR a stale lockedAt < cutoff (D2-3 zombie timeout)
+   * so a stuck lock auto-releases without a separate cleanup pass.
+   */
+  function tryAcquireLockSql(articleId, userId, sessionId, nowIso, staleCutoffIso) {
+    const info = db.prepare(`
+      UPDATE Contents
+         SET lockYN = 'Y',
+             lockerUserId = ?,
+             lockerSessionId = ?,
+             lockedAt = ?
+       WHERE articleId = ?
+         AND (lockYN = 'N' OR lockedAt < ?)
+    `).run(userId, sessionId, nowIso, articleId, staleCutoffIso);
+    return Number(info.changes);
+  }
+
+  /** Internal: read current locker info (returns undefined if no row). */
+  function readLock(articleId) {
+    return db.prepare(
+      'SELECT lockYN, lockerUserId, lockerSessionId, lockedAt FROM Contents WHERE articleId = ?',
+    ).get(articleId);
+  }
 
   return {
     /** Create an article with a unique ID and initial RDS state (REQ-ART-C-001..002). */
@@ -61,6 +91,103 @@ export function createArticleService(db) {
       return { ok: true, status: killStatus };
     },
 
+    /**
+     * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — atomic edit-lock acquisition.
+     *
+     * Behaviour:
+     *  - missing row → {ok:false, reason:'not-found'}
+     *  - free lock (lockYN='N') → acquire (single-SQL race-safe), {ok:true}
+     *  - stale lock (lockedAt < now - timeoutMs, D2-3 = 30분) → auto-release + acquire, {ok:true}
+     *  - same user + same sessionId already holding → idempotent re-acquire (refresh lockedAt), {ok:true}
+     *  - same user, DIFFERENT sessionId (D2-5 = A, 엄격) → reject {ok:false, reason:'locked'}
+     *  - different user → reject {ok:false, reason:'locked'}
+     */
+    acquireEditLock(articleId, options) {
+      const { userId, sessionId } = options ?? {};
+      if (!userId || !sessionId) {
+        return { ok: false, reason: 'invalid-args' };
+      }
+      const now = options.now ?? new Date();
+      const timeoutMs = options.timeoutMs ?? EDIT_LOCK_TIMEOUT_MS;
+      const nowIso = now.toISOString();
+      const staleCutoffIso = new Date(now.getTime() - timeoutMs).toISOString();
+
+      const before = readLock(articleId);
+      if (before === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+
+      // Fast path — race-safe atomic acquire (free or stale lock).
+      if (tryAcquireLockSql(articleId, userId, sessionId, nowIso, staleCutoffIso) === 1) {
+        return { ok: true };
+      }
+
+      // Slow path — lock held by someone. Check whether it's an idempotent same-user-same-session
+      // re-acquire (refresh lockedAt) vs another holder (D2-5 = A: 동일 user 다른 session도 거부).
+      const current = readLock(articleId);
+      if (current?.lockerUserId === userId && current?.lockerSessionId === sessionId) {
+        db.prepare('UPDATE Contents SET lockedAt = ? WHERE articleId = ?').run(nowIso, articleId);
+        return { ok: true };
+      }
+      return { ok: false, reason: 'locked' };
+    },
+
+    /**
+     * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — release the lock if the caller is the holder.
+     * Idempotent: releasing an already-free lock returns {ok:true} (no-op) so beforeunload /
+     * visibilitychange double-fire does not error. A non-holder release returns
+     * {ok:false, reason:'not-holder'} without mutating state.
+     */
+    releaseEditLock(articleId, options) {
+      const { userId, sessionId } = options ?? {};
+      if (!userId || !sessionId) {
+        return { ok: false, reason: 'invalid-args' };
+      }
+      const row = readLock(articleId);
+      if (row === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      if (row.lockYN === 'N') {
+        return { ok: true }; // already free — idempotent
+      }
+      if (row.lockerUserId !== userId || row.lockerSessionId !== sessionId) {
+        return { ok: false, reason: 'not-holder' };
+      }
+      db.prepare(`
+        UPDATE Contents
+           SET lockYN = 'N', lockerUserId = NULL, lockerSessionId = NULL, lockedAt = NULL
+         WHERE articleId = ?
+      `).run(articleId);
+      return { ok: true };
+    },
+
+    /**
+     * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — strict holder check used by applyAction / update gates.
+     * Stale (timed-out) locks are treated as released (consistent with acquireEditLock's WHERE clause).
+     */
+    assertLockHolder(articleId, options) {
+      const { userId, sessionId } = options ?? {};
+      if (!userId || !sessionId) {
+        return { ok: false, reason: 'invalid-args' };
+      }
+      const row = readLock(articleId);
+      if (row === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      if (row.lockYN === 'N') {
+        return { ok: false, reason: 'lock-required' };
+      }
+      const now = options.now ?? new Date();
+      const timeoutMs = options.timeoutMs ?? EDIT_LOCK_TIMEOUT_MS;
+      if (row.lockedAt && new Date(row.lockedAt).getTime() < now.getTime() - timeoutMs) {
+        return { ok: false, reason: 'lock-required' };
+      }
+      if (row.lockerUserId !== userId || row.lockerSessionId !== sessionId) {
+        return { ok: false, reason: 'lock-required' };
+      }
+      return { ok: true };
+    },
+
     /** Route a lifecycle action through the state machine and persist (REQ-WF-001, REQ-ART-LC-*). */
     applyAction(articleId, role, action) {
       const current = model.findById(articleId);
@@ -73,6 +200,49 @@ export function createArticleService(db) {
       }
       model.updateStatus(articleId, result.status);
       return { ok: true, status: result.status };
+    },
+
+    /**
+     * SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (D2-7 = A) — partial update of an existing
+     * article. Only the fields EXPLICITLY present in `fields` are written; everything else is left
+     * as-is. Returns {ok:false, reason:'not-found'} when the row is absent. Lifecycle transitions
+     * remain the caller's responsibility (call applyAction afterwards — same path as before).
+     * Locker / lockYN columns are NOT touched here — those have dedicated acquire/release endpoints.
+     */
+    update(articleId, fields) {
+      if (model.findById(articleId) === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      const safe = fields ?? {};
+      const articleSets = [];
+      const articleValues = [];
+      for (const key of ['title', 'content', 'markupVersion', 'modifier']) {
+        if (Object.prototype.hasOwnProperty.call(safe, key)) {
+          articleSets.push(`${key} = ?`);
+          articleValues.push(safe[key] ?? null);
+        }
+      }
+      if (articleSets.length > 0) {
+        db.prepare(`UPDATE Article SET ${articleSets.join(', ')} WHERE articleId = ?`)
+          .run(...articleValues, articleId);
+      }
+      const contentsAllowed = new Set([
+        'title', 'content', 'author', 'modifier', 'sender', 'department', 'departmentCode',
+        'editedAt', 'sentAt', 'distributedAt', 'embargoAt', 'secondEmbargoAt',
+      ]);
+      const contentsSets = [];
+      const contentsValues = [];
+      for (const key of Object.keys(safe)) {
+        if (contentsAllowed.has(key)) {
+          contentsSets.push(`${key} = ?`);
+          contentsValues.push(safe[key] ?? null);
+        }
+      }
+      if (contentsSets.length > 0) {
+        db.prepare(`UPDATE Contents SET ${contentsSets.join(', ')} WHERE articleId = ?`)
+          .run(...contentsValues, articleId);
+      }
+      return { ok: true };
     },
   };
 }

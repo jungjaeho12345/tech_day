@@ -3,6 +3,7 @@ import {
   createEmptyContent,
   contentFromText,
   appendEmbed,
+  removeEmbedAt,
   contentToText,
   serializeContent,
   deserializeContent,
@@ -90,16 +91,17 @@ describe('editorContent model (REQ-EDIT-PARSE-006, REQ-EDIT-EMBED)', () => {
   });
 });
 
-describe('end marker (news.md 기사 에디터 Alt+Y "\\r\\n (끝)")', () => {
-  it('END_MARKER_BLOCK is a newline + space + the "(끝)" token', () => {
-    expect(END_MARKER_BLOCK).toBe(`\n ${END_MARKER}`);
-    expect(END_MARKER_BLOCK.endsWith(END_MARKER)).toBe(true);
+// SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER: Alt+Y 마커가 prefix 없이 정확히 "(끝)"로 단순화.
+describe('end marker (SPEC-NEWS-REVISE-002 simplified to "(끝)")', () => {
+  it('AC-ENDMARK-1: END_MARKER_BLOCK is exactly the "(끝)" token (prefix-free)', () => {
+    expect(END_MARKER_BLOCK).toBe(END_MARKER);
+    expect(END_MARKER_BLOCK).toBe('(끝)');
   });
 
-  it('hasEndMarker detects a body that already ends with "(끝)"', () => {
-    expect(hasEndMarker('본문\n (끝)')).toBe(true);
+  it('AC-ENDMARK-2: hasEndMarker detects both new "(끝)" and legacy "\\n (끝)" forms', () => {
     expect(hasEndMarker('본문(끝)')).toBe(true);
-    // Tolerant of trailing whitespace after the marker.
+    expect(hasEndMarker('본문\n (끝)')).toBe(true);
+    expect(hasEndMarker('본문(끝)  ')).toBe(true);
     expect(hasEndMarker('본문\n (끝)  ')).toBe(true);
   });
 
@@ -108,5 +110,62 @@ describe('end marker (news.md 기사 에디터 Alt+Y "\\r\\n (끝)")', () => {
     expect(hasEndMarker('(끝) 본문')).toBe(false);
     expect(hasEndMarker('')).toBe(false);
     expect(hasEndMarker(undefined)).toBe(false);
+  });
+});
+
+// SPEC-NEWS-REVISE-002 — REQ-EMBED-DELETE (AC-EMB-DEL-1/2/3)
+describe('removeEmbedAt (SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE)', () => {
+  const IMG2 = { type: 'image', source: 'youtube', title: '현장', url: 'https://img/y' };
+  const VIDEO2 = { type: 'video', source: 'youtube', title: 'YT', url: 'https://youtu.be/y' };
+  const ARTICLE2 = { type: 'article', articleId: 'A-2', title: '내부' };
+
+  it('AC-EMB-DEL-1: removes the N-th embed by ordinal index (0-based)', () => {
+    let content = contentFromText('intro');
+    content = appendEmbed(content, IMG2);
+    content = appendEmbed(content, VIDEO2);
+    content = appendEmbed(content, ARTICLE2);
+    const next = removeEmbedAt(content, 1);
+    const embeds = next.blocks.filter((b) => b.type === 'embed');
+    expect(embeds).toHaveLength(2);
+    expect(embeds[0].embed.type).toBe('image');
+    expect(embeds[1].embed.type).toBe('article');
+  });
+
+  it('AC-EMB-DEL-2: adjacent text blocks and other embeds are preserved verbatim', () => {
+    const content = { blocks: [
+      { type: 'text', text: 'AAA' },
+      { type: 'embed', embed: { ...IMG2 } },
+      { type: 'text', text: 'BBB' },
+      { type: 'embed', embed: { ...VIDEO2 } },
+      { type: 'text', text: 'CCC' },
+    ] };
+    const next = removeEmbedAt(content, 0);
+    expect(next.blocks).toEqual([
+      { type: 'text', text: 'AAA' },
+      { type: 'text', text: 'BBB' },
+      { type: 'embed', embed: { ...VIDEO2 } },
+      { type: 'text', text: 'CCC' },
+    ]);
+  });
+
+  it('AC-EMB-DEL-3: markup round-trip — the removed embed does not resurrect', () => {
+    let content = contentFromText('body');
+    content = appendEmbed(content, IMG2);
+    content = appendEmbed(content, ARTICLE2);
+    const next = removeEmbedAt(content, 0);
+    const markup = serializeContent(next);
+    const restored = deserializeContent(markup);
+    const embeds = restored.blocks.filter((b) => b.type === 'embed');
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0].embed.type).toBe('article');
+  });
+
+  it('out-of-range or non-finite index is a defensive no-op', () => {
+    let content = contentFromText('body');
+    content = appendEmbed(content, IMG2);
+    const before = content.blocks.length;
+    expect(removeEmbedAt(content, 5).blocks).toHaveLength(before);
+    expect(removeEmbedAt(content, -1).blocks).toHaveLength(before);
+    expect(removeEmbedAt(content, NaN).blocks).toHaveLength(before);
   });
 });

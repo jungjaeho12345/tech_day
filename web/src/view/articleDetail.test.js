@@ -120,6 +120,39 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(html).toContain('a&amp;b');
   });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-1: 본문 폰트 사이즈 > 제목 폰트 사이즈 (CSS rule regex).
+  it('AC-FONT-1: 본문 폰트 사이즈가 제목 폰트 사이즈보다 크다', () => {
+    const html = buildArticleDetailHtml(fullArticle);
+    const titleMatch = html.match(/\.yh-detail__title\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+    const contentMatch = html.match(/\.yh-detail__content\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+    expect(titleMatch).not.toBeNull();
+    expect(contentMatch).not.toBeNull();
+    expect(parseFloat(contentMatch[1])).toBeGreaterThan(parseFloat(titleMatch[1]));
+  });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-3: 빈 제목 placeholder 케이스에서도 폰트 관계 유지.
+  it('AC-FONT-3: 빈 제목 placeholder 시에도 본문 폰트 > 제목 폰트 관계가 유지된다', () => {
+    for (const blank of ['', null, undefined]) {
+      const html = buildArticleDetailHtml({ ...fullArticle, title: blank });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const h1 = doc.querySelector('h1.yh-detail__title');
+      expect(h1).not.toBeNull();
+      expect(h1.textContent).toBe('(제목 없음)');
+      const titleMatch = html.match(/\.yh-detail__title\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+      const contentMatch = html.match(/\.yh-detail__content\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+      expect(parseFloat(contentMatch[1])).toBeGreaterThan(parseFloat(titleMatch[1]));
+    }
+  });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 회귀.
+  it('AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 + aria-label 회귀', () => {
+    const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
+    const sections = Array.from(doc.querySelectorAll('body > section'));
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['공통정보', '제목', '본문']);
+    expect(doc.querySelector('.yh-detail__content')).not.toBeNull();
+    expect(doc.querySelector('.yh-detail__title')).not.toBeNull();
+  });
 });
 
 // SPEC-NEWS-REVISE-001 — REQ-DETAIL-LAYOUT-SPLIT

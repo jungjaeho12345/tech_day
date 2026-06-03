@@ -9,10 +9,16 @@ export const ARTICLE_COLUMNS = Object.freeze([
   'articleId', 'title', 'content', 'markupVersion', 'modifier',
 ]);
 
+// @MX:NOTE: [AUTO] `lockYN` (REQ-DB-LOCKYN) + `lockerUserId` / `lockerSessionId` / `lockedAt`
+// (REQ-EDIT-LOCK, Pending Decision D2-2 = A) are SPEC-NEWS-REVISE-002 amendments to
+// SPEC-DB-FOUNDATION-001. Together they enable race-safe atomic lock acquisition via a single SQL
+// `UPDATE Contents SET ... WHERE articleId=? AND (lockYN='N' OR lockedAt < ?)`. lockYN is NEVER
+// NULL ('Y'/'N'); the locker identification columns are NULL when no edit lock is held.
 export const CONTENTS_COLUMNS = Object.freeze([
   'articleId', 'title', 'content', 'author', 'modifier', 'sender',
   'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
-  'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status',
+  'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status', 'lockYN',
+  'lockerUserId', 'lockerSessionId', 'lockedAt',
 ]);
 
 // @MX:NOTE: [AUTO] `active` is a SPEC-AUTH-001 amendment to SPEC-DB-FOUNDATION-001: status-based
@@ -55,7 +61,11 @@ CREATE TABLE IF NOT EXISTS Contents (
   distributedAt VARCHAR,
   embargoAt VARCHAR,
   secondEmbargoAt VARCHAR,
-  status VARCHAR
+  status VARCHAR,
+  lockYN VARCHAR NOT NULL DEFAULT 'N',
+  lockerUserId VARCHAR,
+  lockerSessionId VARCHAR,
+  lockedAt VARCHAR
 )`;
 
 const CREATE_USER = `
@@ -83,6 +93,42 @@ function ensureUserActiveColumn(db) {
 }
 
 /**
+ * Idempotently add the `lockYN` column to a pre-existing Contents table
+ * (SPEC-NEWS-REVISE-002 REQ-DB-LOCKYN). Mirrors ensureUserActiveColumn's pattern:
+ * PRAGMA table_info check → ALTER TABLE ADD COLUMN only when absent. Re-running
+ * preserves existing rows (REQ-SCH-010, CLAUDE.md HARD: DB 내용은 삭제하지 않는다).
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function ensureContentsLockYNColumn(db) {
+  const hasLockYN = db.prepare("PRAGMA table_info('Contents')").all()
+    .some((col) => col.name === 'lockYN');
+  if (!hasLockYN) {
+    db.exec("ALTER TABLE Contents ADD COLUMN lockYN VARCHAR NOT NULL DEFAULT 'N'");
+  }
+}
+
+/**
+ * Idempotently add the locker identification columns to a pre-existing Contents table
+ * (SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK, D2-2 = A). Locker columns are NULLABLE because they
+ * are populated only while a lock is held.
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function ensureContentsLockerColumns(db) {
+  const existing = new Set(
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name),
+  );
+  if (!existing.has('lockerUserId')) {
+    db.exec('ALTER TABLE Contents ADD COLUMN lockerUserId VARCHAR');
+  }
+  if (!existing.has('lockerSessionId')) {
+    db.exec('ALTER TABLE Contents ADD COLUMN lockerSessionId VARCHAR');
+  }
+  if (!existing.has('lockedAt')) {
+    db.exec('ALTER TABLE Contents ADD COLUMN lockedAt VARCHAR');
+  }
+}
+
+/**
  * Create the three foundation tables idempotently on the given DatabaseSync handle.
  * @param {import('node:sqlite').DatabaseSync} db
  */
@@ -91,4 +137,6 @@ export function createSchema(db) {
   db.exec(CREATE_CONTENTS);
   db.exec(CREATE_USER);
   ensureUserActiveColumn(db);
+  ensureContentsLockYNColumn(db);
+  ensureContentsLockerColumns(db);
 }
