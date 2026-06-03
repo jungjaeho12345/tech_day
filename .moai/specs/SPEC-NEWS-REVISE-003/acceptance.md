@@ -1,9 +1,9 @@
 ---
 id: SPEC-NEWS-REVISE-003
 artifact: acceptance
-version: 0.1.0
+version: 0.1.1
 created: 2026-06-03
-updated: 2026-06-03
+updated: 2026-06-04
 ---
 
 # Acceptance — SPEC-NEWS-REVISE-003
@@ -470,6 +470,6 @@ updated: 2026-06-03
 
 ---
 
-Version: 0.1.0
-Status: Plan
-Last Updated: 2026-06-03
+Version: 0.1.1
+Status: Complete (Run 단계 종료 — 30/30 AC GREEN, spec.md HISTORY v0.1.1 참조)
+Last Updated: 2026-06-04

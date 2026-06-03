@@ -106,16 +106,44 @@ function TextArticlePanel({ onEmbed }) {
 // zero text contribution: the embed span carries NO text children, so DOM textContent stays equal to
 // bodyText. data-testid mirrors InlineEmbed (embed-image/embed-video/embed-article) so the existing
 // tests find embeds inline within the contentEditable. Defensive: thumbnailUrl falls back to url.
-function buildEmbedInlineSpan(doc, embed, index) {
+//
+// SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE (D2-6 = C): when `onRemoveEmbed` is supplied, every embed gets
+// an × affordance (<button aria-label="임베드 삭제">) that triggers onRemoveEmbed(index). The button is
+// type="button" so it never submits a parent form, and uses onMouseDown=preventDefault to keep the
+// contentEditable caret state stable across the click.
+function buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed) {
   const span = doc.createElement('span');
   span.className = 'yh-embed-inline';
   span.setAttribute('contenteditable', 'false');
   span.setAttribute('data-embed-index', String(index));
 
+  // Tab-focusable so Backspace handling can target the embed (and a11y).
+  span.setAttribute('tabindex', '0');
+
   if (!embed) return span;
 
   // Title/url labels live INSIDE the embed span. They contribute to DOM textContent, but caret math
   // (editorCaret.js) excludes [data-embed-index] descendants, so the bodyText model stays intact.
+  // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — × affordance creator (D2-6 = C).
+  const appendDeleteButton = (target) => {
+    if (typeof onRemoveEmbed !== 'function') return;
+    const btn = doc.createElement('button');
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('aria-label', '임베드 삭제');
+    btn.className = 'yh-embed__delete';
+    btn.textContent = '×';
+    btn.addEventListener('mousedown', (e) => {
+      // Keep the contentEditable caret stable across the click.
+      e.preventDefault();
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onRemoveEmbed(index);
+    });
+    target.appendChild(btn);
+  };
+
   if (embed.type === 'image') {
     span.setAttribute('data-testid', 'embed-image');
     span.classList.add('yh-embed', 'yh-embed--image');
@@ -130,6 +158,7 @@ function buildEmbedInlineSpan(doc, embed, index) {
       cap.textContent = embed.title;
       span.appendChild(cap);
     }
+    appendDeleteButton(span);
     return span;
   }
   if (embed.type === 'video') {
@@ -158,6 +187,7 @@ function buildEmbedInlineSpan(doc, embed, index) {
       link.textContent = embed.url;
       span.appendChild(link);
     }
+    appendDeleteButton(span);
     return span;
   }
   if (embed.type === 'article') {
@@ -171,6 +201,7 @@ function buildEmbedInlineSpan(doc, embed, index) {
     titleSpan.className = 'yh-embed__title';
     titleSpan.textContent = embed.title || embed.articleId || '내부 기사';
     span.appendChild(titleSpan);
+    appendDeleteButton(span);
     return span;
   }
   return span;
@@ -181,7 +212,10 @@ function buildEmbedInlineSpan(doc, embed, index) {
 // "본문 커서 위치에 임베딩". DOM textContent EXACTLY equals bodyText (embed spans contribute no text),
 // so caret offsets and character counts remain byte-stable. Role-based coloring (제목/부제목/본문/(끝))
 // is computed from the global bodyText so line semantics survive embeds that split text blocks.
-function paintEditor(el, content) {
+//
+// SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE: paintEditor accepts an optional `onRemoveEmbed(index)` so
+// each embed renders an × affordance (D2-6 = C); pass `undefined` to keep the old read-only render.
+function paintEditor(el, content, onRemoveEmbed) {
   const doc = el.ownerDocument;
   // Backwards-compatible: callers passing a plain string get the legacy text-only paint.
   const blocks = typeof content === 'string'
@@ -211,7 +245,7 @@ function paintEditor(el, content) {
   const emitEmbedsAt = (currentPos) => {
     while (nextEmbedIdx < embedAtPos.length && embedAtPos[nextEmbedIdx].pos === currentPos) {
       const { embed, index } = embedAtPos[nextEmbedIdx];
-      frag.appendChild(buildEmbedInlineSpan(doc, embed, index));
+      frag.appendChild(buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed));
       nextEmbedIdx += 1;
     }
   };
@@ -239,7 +273,7 @@ function paintEditor(el, content) {
         frag.appendChild(span);
       }
       const { embed, index } = embedAtPos[nextEmbedIdx];
-      frag.appendChild(buildEmbedInlineSpan(doc, embed, index));
+      frag.appendChild(buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed));
       nextEmbedIdx += 1;
       cursor = target;
     }
@@ -269,9 +303,12 @@ function paintEditor(el, content) {
 // compositionend, blur, and programmatic body-text changes — the caret is preserved by character offset.
 // Enter/Shift+Enter are intercepted on keydown to splice a model '\n' at the caret (the model is authoritative
 // for newlines), so the browser never inserts block markup that would desync the repaint and jump the caret.
-function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange }) {
+function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange, onRemoveEmbed, readOnly = false }) {
   const ref = useRef(null);
   const composingRef = useRef(false);
+  // Stable ref to onRemoveEmbed so paintWithCaret/recolor/insertNewline never close over a stale handler.
+  const onRemoveEmbedRef = useRef(onRemoveEmbed);
+  onRemoveEmbedRef.current = onRemoveEmbed;
   // Korean IME 1-press Enter fix: when Enter commits an active composition, the IME consumes the
   // keystroke and our handleEnter must NOT preventDefault (else the syllable is lost). We record the
   // user's intent here and flush a single newline insertion on compositionend so a single Enter both
@@ -324,14 +361,21 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // Paint a content snapshot (or string) into the editor while preserving the caret by character
   // offset (caret restored only when the editor is focused). Pure presentation — DOM textContent
   // ends up exactly equal to the body text (embed spans contribute no text).
+  // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — single source of truth for paint calls so EVERY repaint
+  // (initial mount, Enter, Ctrl+D, IME compositionEnd, paintWithCaret) consistently carries the latest
+  // onRemoveEmbed callback. Using a ref means React re-renders never produce a stale callback closure.
+  const paintNow = useCallback((el, contentOrText) => {
+    paintEditor(el, contentOrText, onRemoveEmbedRef.current);
+  }, []);
+
   const paintWithCaret = useCallback((contentOrText) => {
     const el = ref.current;
     if (!el) return;
     const focused = el.ownerDocument.activeElement === el;
     const caret = focused ? getCaretCharOffset(el) : null;
-    paintEditor(el, contentOrText);
+    paintNow(el, contentOrText);
     if (caret != null) setCaretCharOffset(el, caret);
-  }, []);
+  }, [paintNow]);
 
   // Recolor the editor's CURRENT contents in place (compositionend/blur). Caret-preserving.
   // Use the latest content (with existing embeds) reskinned with the live DOM text so inline embeds
@@ -355,10 +399,10 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const caret = (offset == null ? bodyText.length : Math.min(offset, bodyText.length)) + 1;
     // Paint + place the caret immediately (no flicker). Pass a content snapshot so inline embeds are
     // preserved through the repaint.
-    paintEditor(el, contentWithText(next));
+    paintNow(el, contentWithText(next));
     setCaretCharOffset(el, caret);
     onChangeText(next);
-  }, [bodyText, onChangeText, contentWithText]);
+  }, [bodyText, onChangeText, contentWithText, paintNow]);
 
   // SPEC-NEWS-REVISE-001 — Korean IME 1-press Enter fix (stale-closure 회피). compositionEnd 시점에는
   // 직전 onChangeText(textContent) 호출이 비동기 state update라 `bodyText` 클로저가 아직 IME-commit
@@ -369,10 +413,10 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const offset = getCaretCharOffset(el);
     const next = insertNewlineAt(text, offset);
     const caret = (offset == null ? text.length : Math.min(offset, text.length)) + 1;
-    paintEditor(el, contentWithText(next));
+    paintNow(el, contentWithText(next));
     setCaretCharOffset(el, caret);
     onChangeText(next);
-  }, [onChangeText, contentWithText]);
+  }, [onChangeText, contentWithText, paintNow]);
 
   // Intercept Enter / Shift+Enter on keydown and splice a model '\n' ourselves. We use keydown (one path,
   // not also beforeinput) because it fires reliably in the target browser AND is testable.
@@ -418,7 +462,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   useEffect(() => {
     const el = ref.current;
     if (el && el.textContent === '' && (bodyText !== '' || (content?.blocks ?? []).length > 0)) {
-      paintEditor(el, content);
+      paintNow(el, content);
     }
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,7 +478,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         role="textbox"
         aria-multiline="true"
         aria-label="본문"
-        contentEditable
+        contentEditable={!readOnly}
         suppressContentEditableWarning
         ref={ref}
         onInput={(e) => {
@@ -481,6 +525,23 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         }}
         onBlur={() => { if (!composingRef.current) recolor(); }}
         onKeyDown={(e) => {
+          // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE (D2-6 = C) — Backspace on a focused embed node
+          // removes that embed (AC-EMB-DEL-1). The target may be the embed span itself or any of its
+          // children; walk up to the nearest [data-embed-index] ancestor.
+          if (e.key === 'Backspace' && typeof onRemoveEmbedRef.current === 'function') {
+            let node = e.target;
+            while (node && node !== e.currentTarget) {
+              if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-embed-index')) {
+                const idx = Number(node.getAttribute('data-embed-index'));
+                if (Number.isFinite(idx)) {
+                  e.preventDefault();
+                  onRemoveEmbedRef.current(idx);
+                  return;
+                }
+              }
+              node = node.parentNode;
+            }
+          }
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
           // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
           if (handleEnter(e)) return;
@@ -498,7 +559,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               selectionStart: caret.start,
               selectionEnd: caret.end,
             });
-            paintEditor(el, contentWithText(next.value));
+            paintNow(el, contentWithText(next.value));
             setCaretCharOffset(el, next.selectionStart);
             onChangeText(next.value);
             return;
@@ -520,6 +581,18 @@ export function WritePage({ user }) {
   const editArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
   const ctrl = useWriteController(user, { editArticleId });
   const [activeTab, setActiveTab] = useState('공통정보');
+  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
+  // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
+  const alertedRef = useRef(false);
+  useEffect(() => {
+    if (ctrl.lockError && !alertedRef.current) {
+      alertedRef.current = true;
+      window.alert('해당 기사는 다른 페이지/세션에서 편집 중입니다.');
+    }
+    if (!ctrl.lockError) {
+      alertedRef.current = false;
+    }
+  }, [ctrl.lockError]);
   // Action buttons only apply to an RDS (in-progress) article (news.md 기사 작성 페이지 내 버튼).
   const isRds = ctrl.status === 'RDS';
   // SPEC-NEWS-REVISE-001 — 본문 커서 위치 임베드 (Phase C): 메타 패널의 "삽입" 버튼을 클릭하면
@@ -533,6 +606,15 @@ export function WritePage({ user }) {
 
   return (
     <main className="yh-write-layout">
+      {/* SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — lockError banner stays above the editor and is announced
+          assertively to screen readers (D2-1 = C, NFR-A11Y). The editor body is contentEditable=false
+          while lockError is set so the user cannot type into a locked article. */}
+      {ctrl.lockError ? (
+        <div role="alert" aria-live="assertive" className="yh-lock-banner">
+          해당 기사는 다른 페이지/세션에서 편집 중입니다.
+        </div>
+      ) : null}
+
       {/* Left: body editor (60%) — typeable text + ordered inline embeds (DP-F1 adapter behind ctrl). */}
       <section data-testid="editor-region" className="yh-editor-region" aria-label="에디터">
         <BodyEditor
@@ -542,6 +624,8 @@ export function WritePage({ user }) {
           onAltY={ctrl.appendEnd}
           onPasteEmbed={ctrl.embed}
           onCaretChange={handleCaretChange}
+          onRemoveEmbed={ctrl.removeEmbed}
+          readOnly={!!ctrl.lockError}
         />
       </section>
 

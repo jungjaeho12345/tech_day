@@ -16,6 +16,7 @@ import {
   contentFromText,
   appendEmbed,
   insertEmbedAtTextOffset,
+  removeEmbedAt,
   contentToText,
   contentToMarkup,
   deserializeContent,
@@ -68,10 +69,11 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
       content = { blocks: [...contentFromText(text).blocks, ...embeds] };
     },
     /**
-     * Insert "\r\n (끝)" (a NEW LINE + the gold "(끝)" marker) at the END of the body text
-     * (news.md 기사 에디터 Alt+Y). Stored as literal body text so it round-trips through markupVersion
-     * (save -> reload keeps it). IDEMPOTENT: if the body already ends with the "(끝)" marker, this is a
-     * no-op (news.md: Alt+Y를 누를시 이미 "\r\n (끝)"이 있다면 삽입하지 않는다). Embeds are preserved.
+     * Insert the gold "(끝)" marker at the END of the body text (news.md 기사 에디터 Alt+Y).
+     * SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER simplifies the inserted token to exactly "(끝)"
+     * (prefix-free — no CRLF, no leading space). Stored as literal body text so it round-trips through
+     * markupVersion (save -> reload keeps it). IDEMPOTENT: if the body already ends with the "(끝)"
+     * marker (new or legacy "\n (끝)" form), this is a no-op. Embeds are preserved.
      */
     appendEnd() {
       const bodyText = contentToText(content);
@@ -93,6 +95,14 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
       } else {
         content = insertEmbedAtTextOffset(content, descriptor, caretOffset);
       }
+    },
+    /**
+     * SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — Remove a single inline embed by its ordinal index
+     * (0-based among embed blocks; matches the `data-embed-index` attribute the editor paints).
+     * Adjacent text/embed blocks are preserved (AC-EMB-DEL-2). Out-of-range/non-finite is a no-op.
+     */
+    removeEmbed(embedIndex) {
+      content = removeEmbedAt(content, embedIndex);
     },
     /** Current content document (ordered blocks) for rendering. */
     getContent() {

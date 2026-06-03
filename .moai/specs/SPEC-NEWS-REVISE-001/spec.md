@@ -254,7 +254,8 @@ related_specs:
 - **AC-CTRL-D-5 (회귀 — Alt+Y 동작 보존)**
   - Given: 에디터에 본문 텍스트가 있다
   - When: `Alt+Y` 키 이벤트 발화
-  - Then: `news.md` 기존 명세대로 본문 끝에 `\r\n (끝)`이 골드색으로 1회만 삽입된다 (이미 존재 시 noop)
+  - Then: 본문 끝에 `(끝)`이 골드색으로 1회만 삽입된다 (이미 존재 시 noop)
+  - Note: 단언 문자열은 SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER (AC-ENDMARK-4)에 의해 `\r\n (끝)` → `(끝)`로 동기 갱신됨 (prefix-free 단순화)
 
 ---
 

@@ -163,7 +163,8 @@ updated: 2026-06-03
 
 - **Given** 본문에 임의 텍스트
 - **When** `Alt+Y` 발화
-- **Then** news.md 기존 명세대로 본문 끝에 `"\r\n (끝)"`이 1회 삽입되며 골드색 스타일 적용. 이미 존재 시 noop
+- **Then** 본문 끝에 `"(끝)"`이 1회 삽입되며 골드색 스타일 적용. 이미 존재 시 noop
+- **Note**: 단언 문자열은 SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER (AC-ENDMARK-4)에 의해 `"\r\n (끝)"` → `"(끝)"`로 동기 갱신됨 (prefix-free 단순화). 본 회귀 보존 단언의 본질(Ctrl+D 핸들러 도입이 Alt+Y 동작을 방해하지 않음)은 변경 없음.
 
 ### Scenario AC-EMB-INLINE-1: 본문 캐럿 위치에 인라인 임베드 노드 삽입 (commit 850c4cd / c5b12f8)
 

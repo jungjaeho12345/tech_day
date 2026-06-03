@@ -142,6 +142,28 @@ export function createHttpModel({ baseUrl } = {}) {
       return sendJson('PUT', `/api/articles/${encodeURIComponent(articleId)}`, dto, { ok: false });
     },
 
+    // --- Edit lock (SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK, D2-4 = C) -----------
+    // NFR-SEC: userId is NOT sent — the server derives it from the validated x-session-id session.
+    // Only the page-scoped sessionId is sent so the server can distinguish same-user-different-page
+    // attempts (D2-5 = A strict: rejected). The sessionId here is a CLIENT-generated UUID per editor
+    // page (NOT the auth session id) so two tabs of the same user are still mutually exclusive.
+    async acquireEditLock(articleId, { sessionId } = {}) {
+      return sendJson(
+        'POST',
+        `/api/articles/${encodeURIComponent(articleId)}/lock`,
+        { sessionId },
+        { ok: false, reason: 'network-error' },
+      );
+    },
+    async releaseEditLock(articleId, { sessionId } = {}) {
+      return sendJson(
+        'DELETE',
+        `/api/articles/${encodeURIComponent(articleId)}/lock`,
+        { sessionId },
+        { ok: true }, // idempotent default — release failures must not block beforeunload
+      );
+    },
+
     // --- Realtime (SSE, DP-F2) ----------------------------------------------
     subscribe(_filter, onChange) {
       // EventSource is a browser global; guard so importing this module never crashes in non-browser contexts.

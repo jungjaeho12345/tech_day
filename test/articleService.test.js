@@ -1,9 +1,11 @@
-// Tests for SPEC-BACKEND-CORE-001 article model + service (AC-1, AC-2, AC-3, AC-4, AC-13, AC-18).
+// Tests for SPEC-BACKEND-CORE-001 article model + service (AC-1, AC-2, AC-3, AC-4, AC-13, AC-18)
+// + SPEC-NEWS-REVISE-002 edit-lock + update + searchArticles regression guard
+// (AC-EDIT-LOCK-1..7, AC-API-2/3/5, AC-SEARCH-3).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createSchema } from '../src/db/schema.js';
-import { createArticleService } from '../src/services/articleService.js';
+import { createArticleService, EDIT_LOCK_TIMEOUT_MS } from '../src/services/articleService.js';
 
 function freshService() {
   const db = new DatabaseSync(':memory:');
@@ -186,6 +188,144 @@ test('AC-13: applyAction on a missing article returns not-found', () => {
   const result = svc.applyAction('AKR000000000000000000', 'R', 'send');
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'not-found');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-LOCKYN-3: lockYN round-trip through insert → findById → query.
+test('AC-LOCKYN-3: created article has lockYN=\'N\' in findById/query results', () => {
+  const { db, svc } = freshService();
+  const { articleId } = svc.create({ title: '락 테스트', content: '본문', author: 'r1' },
+    { now: new Date('2026-06-04T00:00:00Z') });
+  const byId = db.prepare('SELECT lockYN FROM Contents WHERE articleId = ?').get(articleId);
+  assert.equal(byId.lockYN, 'N');
+  const found = svc.query({ articleId });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].lockYN, 'N');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-1: 빈 락 → 획득 성공 + locker 컬럼 채워짐.
+test('AC-EDIT-LOCK-1: acquireEditLock on a free article succeeds and writes locker info', () => {
+  const { db, svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  const T0 = new Date('2026-06-04T01:00:00Z');
+  const result = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: T0 });
+  assert.equal(result.ok, true);
+  const row = db.prepare('SELECT lockYN, lockerUserId, lockerSessionId, lockedAt FROM Contents WHERE articleId = ?')
+    .get(articleId);
+  assert.equal(row.lockYN, 'Y');
+  assert.equal(row.lockerUserId, 'U1');
+  assert.equal(row.lockerSessionId, 'S1');
+  assert.equal(row.lockedAt, T0.toISOString());
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-2: 다른 user/session 진입 거부.
+test('AC-EDIT-LOCK-2: a different user/session is rejected with reason=locked; existing holder preserved', () => {
+  const { db, svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:00:00Z') });
+  const conflict = svc.acquireEditLock(articleId, { userId: 'U2', sessionId: 'S2', now: new Date('2026-06-04T01:01:00Z') });
+  assert.equal(conflict.ok, false);
+  assert.equal(conflict.reason, 'locked');
+  const row = db.prepare('SELECT lockerUserId FROM Contents WHERE articleId = ?').get(articleId);
+  assert.equal(row.lockerUserId, 'U1');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-3: release 후 재획득.
+test('AC-EDIT-LOCK-3: releaseEditLock clears lock; another user can then acquire', () => {
+  const { svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:00:00Z') });
+  const released = svc.releaseEditLock(articleId, { userId: 'U1', sessionId: 'S1' });
+  assert.equal(released.ok, true);
+  const re = svc.acquireEditLock(articleId, { userId: 'U2', sessionId: 'S2', now: new Date('2026-06-04T01:05:00Z') });
+  assert.equal(re.ok, true);
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-5 (D2-5 = A, 엄격): 동일 user 다른 session 거부.
+test('AC-EDIT-LOCK-5 (D2-5 strict): same user with a different sessionId is rejected', () => {
+  const { svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1-P1', now: new Date('2026-06-04T01:00:00Z') });
+  const otherPage = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1-P2', now: new Date('2026-06-04T01:01:00Z') });
+  assert.equal(otherPage.ok, false);
+  assert.equal(otherPage.reason, 'locked');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-5 sub: same user + same session = idempotent re-acquire success.
+test('AC-EDIT-LOCK-5 sub: same user + same session re-acquire is idempotent (refreshes lockedAt)', () => {
+  const { db, svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:00:00Z') });
+  const re = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:05:00Z') });
+  assert.equal(re.ok, true);
+  const row = db.prepare('SELECT lockedAt FROM Contents WHERE articleId = ?').get(articleId);
+  assert.equal(row.lockedAt, '2026-06-04T01:05:00.000Z');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-6: applyAction gates via assertLockHolder (락 보유자 외 거부).
+test('AC-EDIT-LOCK-6: assertLockHolder rejects callers that do not hold the lock', () => {
+  const { svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:00:00Z') });
+  // Different user/session
+  const r1 = svc.assertLockHolder(articleId, { userId: 'U2', sessionId: 'S2' });
+  assert.equal(r1.ok, false);
+  assert.equal(r1.reason, 'lock-required');
+  // Holder itself: ok
+  const r2 = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'S1' });
+  assert.equal(r2.ok, true);
+});
+
+// SPEC-NEWS-REVISE-002 — AC-EDIT-LOCK-7 (D2-3 = 30분): 좀비 락 자동 해제.
+test('AC-EDIT-LOCK-7 (D2-3=30min): a stale (>30min old) lock is auto-released on next acquire', () => {
+  const { svc } = freshService();
+  const { articleId } = svc.create({ title: 't' });
+  const T0 = new Date('2026-06-04T01:00:00Z');
+  svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: T0 });
+  // 31 minutes later — U1's lock is stale.
+  const T1 = new Date(T0.getTime() + 31 * 60 * 1000);
+  const result = svc.acquireEditLock(articleId, { userId: 'U2', sessionId: 'S2', now: T1 });
+  assert.equal(result.ok, true);
+});
+
+// SPEC-NEWS-REVISE-002 — AC-API-2 + AC-API-5: update is partial (markupVersion + only explicit
+// Contents fields). Fields NOT supplied to update() must keep their previous values (D2-7=A).
+test('AC-API-2 (D2-7=A): update only mutates explicit Article + Contents fields', () => {
+  const { db, svc } = freshService();
+  // Use only columns the Contents table actually has (Contents is a subset of the form fields).
+  const { articleId } = svc.create({
+    title: '원본 제목', content: '원본 본문', author: 'r1', department: '사회부',
+  });
+  const result = svc.update(articleId, { markupVersion: 'v2', title: '편집 제목', author: 'r1-edit' });
+  assert.equal(result.ok, true);
+  const article = db.prepare('SELECT title, markupVersion FROM Article WHERE articleId = ?').get(articleId);
+  const contents = db.prepare('SELECT title, author, department FROM Contents WHERE articleId = ?').get(articleId);
+  assert.equal(article.title, '편집 제목');
+  assert.equal(article.markupVersion, 'v2');
+  assert.equal(contents.title, '편집 제목');
+  assert.equal(contents.author, 'r1-edit');
+  // department was NOT in the update payload -> kept its original value (partial update guarantee).
+  assert.equal(contents.department, '사회부', 'unspecified fields are NOT touched');
+});
+
+test('AC-API-2: update returns not-found when articleId is missing', () => {
+  const { svc } = freshService();
+  const result = svc.update('AKR000000000000000000', { markupVersion: 'v2' });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'not-found');
+});
+
+// SPEC-NEWS-REVISE-002 — AC-SEARCH-3: 글기사 탭 내부 검색.
+test('AC-SEARCH-3: searchArticles performs internal title/content LIKE search', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, title, content, status) VALUES (?,?,?,?)')
+    .run('AKR202606040000000010', '테스트 제목', '본문', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, title, content, status) VALUES (?,?,?,?)')
+    .run('AKR202606040000000011', '다른 제목', '테스트 본문', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, title, content, status) VALUES (?,?,?,?)')
+    .run('AKR202606040000000012', '무관', '무관', 'RDS');
+  const hits = svc.searchArticles('테스트');
+  const ids = hits.map((r) => r.articleId).sort();
+  assert.deepEqual(ids, ['AKR202606040000000010', 'AKR202606040000000011']);
 });
 
 // AC-18: internal article full-text search over title/content

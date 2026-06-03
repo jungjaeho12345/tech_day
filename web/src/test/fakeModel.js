@@ -46,6 +46,14 @@ export function createFakeModel(overrides = {}) {
     async saveArticle(articleId) {
       return { ok: true, articleId: articleId ?? 'A-0001' };
     },
+    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — default succeed so tests that don't care about the lock
+    // path still pass; tests that DO care override via createFakeModel({ acquireEditLock, ... }).
+    async acquireEditLock(_articleId, _opts) {
+      return { ok: true };
+    },
+    async releaseEditLock(_articleId, _opts) {
+      return { ok: true };
+    },
     async logout() {
       // Default: end the session successfully (no real HTTP transport wired).
       return { ok: true };

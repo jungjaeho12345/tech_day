@@ -169,7 +169,82 @@ export function createApp({ controllers, sessionService }) {
     }
   }
   app.post('/api/articles', saveArticle);
-  app.put('/api/articles/:id', saveArticle);
+
+  // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (R-CRIT-2 해소) — PUT /api/articles/:id routes
+  // through articleService.update (D2-7 = A partial update), NOT through articleService.create. The
+  // previous wiring `app.put('/api/articles/:id', saveArticle)` silently invoked .create on every PUT,
+  // which generated a NEW articleId and never updated the original row (REQ-CRIT regression).
+  //
+  // Lock holder is validated BEFORE the update (NFR-SEC + AC-EDIT-LOCK-6). The lock sessionId arrives
+  // in the request body so the same page-scoped UUID used at acquireEditLock is replayed here. When
+  // body.sessionId is missing we attempt the update under the assertLockHolder gate using a synthetic
+  // 'transport' sessionId — assertLockHolder will reject because the locker session won't match, which
+  // is the correct behaviour (lock-required) for clients that lost the page sessionId.
+  app.put('/api/articles/:id', (req, res) => {
+    const sid = sessionIdOf(req);
+    const session = sessionService.validateSession(sid);
+    if (session === undefined) {
+      return res.json({ ok: false, reason: 'unauthenticated' });
+    }
+    if (!['R', 'D', 'Z'].includes(session.role)) {
+      return res.json({ ok: false, reason: 'forbidden' });
+    }
+    const articleId = req.params.id;
+    // Lock guard — the caller MUST hold the page edit lock (AC-EDIT-LOCK-6). The page-scoped sessionId
+    // is supplied either in the body or as an x-page-session-id header so beforeunload (sendBeacon with
+    // a JSON body) and normal PUT (header) both work.
+    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    const holder = controllers.article.assertLockHolder(articleId, {
+      userId: session.userId,
+      sessionId: pageSessionId,
+    });
+    if (!holder.ok) {
+      return res.json({ ok: false, reason: holder.reason ?? 'lock-required' });
+    }
+    // D2-7 = A partial update — strip the transport-only `sessionId` from the persisted fields.
+    const { sessionId: _sessionId, ...fields } = (req.body ?? {});
+    const result = controllers.article.update(articleId, fields);
+    if (result.ok) {
+      bus.emit('change', { type: 'update', articleId });
+    }
+    return res.json(result);
+  });
+
+  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire/release endpoints (NFR-SEC: userId derived from the
+  // server session, never the request body). The page-scoped sessionId arrives from the client (UUID
+  // per editor mount) so the lock distinguishes same-user-different-page attempts (D2-5 = A strict).
+  app.post('/api/articles/:id/lock', (req, res) => {
+    const sid = sessionIdOf(req);
+    const session = sessionService.validateSession(sid);
+    if (session === undefined) {
+      return res.json({ ok: false, reason: 'unauthenticated' });
+    }
+    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    if (!pageSessionId) {
+      return res.json({ ok: false, reason: 'invalid-args' });
+    }
+    const result = controllers.article.acquireEditLock(req.params.id, {
+      userId: session.userId,
+      sessionId: pageSessionId,
+    });
+    return res.json(result);
+  });
+  app.delete('/api/articles/:id/lock', (req, res) => {
+    const sid = sessionIdOf(req);
+    const session = sessionService.validateSession(sid);
+    if (session === undefined) {
+      return res.json({ ok: false, reason: 'unauthenticated' });
+    }
+    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    if (!pageSessionId) {
+      return res.json({ ok: false, reason: 'invalid-args' });
+    }
+    const result = controllers.article.releaseEditLock(req.params.id, {
+      userId: session.userId,
+      sessionId: pageSessionId,
+    });
+    return res.json(result);
+  });
 
   // --- Media ----------------------------------------------------------------
   // GET /api/media/search?q= -> { items, error }.

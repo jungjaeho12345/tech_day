@@ -120,6 +120,39 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(html).toContain('a&amp;b');
   });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-1: 본문 폰트 사이즈 > 제목 폰트 사이즈 (CSS rule regex).
+  it('AC-FONT-1: 본문 폰트 사이즈가 제목 폰트 사이즈보다 크다', () => {
+    const html = buildArticleDetailHtml(fullArticle);
+    const titleMatch = html.match(/\.yh-detail__title\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+    const contentMatch = html.match(/\.yh-detail__content\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+    expect(titleMatch).not.toBeNull();
+    expect(contentMatch).not.toBeNull();
+    expect(parseFloat(contentMatch[1])).toBeGreaterThan(parseFloat(titleMatch[1]));
+  });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-3: 빈 제목 placeholder 케이스에서도 폰트 관계 유지.
+  it('AC-FONT-3: 빈 제목 placeholder 시에도 본문 폰트 > 제목 폰트 관계가 유지된다', () => {
+    for (const blank of ['', null, undefined]) {
+      const html = buildArticleDetailHtml({ ...fullArticle, title: blank });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const h1 = doc.querySelector('h1.yh-detail__title');
+      expect(h1).not.toBeNull();
+      expect(h1.textContent).toBe('(제목 없음)');
+      const titleMatch = html.match(/\.yh-detail__title\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+      const contentMatch = html.match(/\.yh-detail__content\s*\{[^}]*font-size:\s*([\d.]+)rem/);
+      expect(parseFloat(contentMatch[1])).toBeGreaterThan(parseFloat(titleMatch[1]));
+    }
+  });
+
+  // SPEC-NEWS-REVISE-002 — AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 회귀.
+  it('AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 + aria-label 회귀', () => {
+    const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
+    const sections = Array.from(doc.querySelectorAll('body > section'));
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['공통정보', '제목', '본문']);
+    expect(doc.querySelector('.yh-detail__content')).not.toBeNull();
+    expect(doc.querySelector('.yh-detail__title')).not.toBeNull();
+  });
 });
 
 // SPEC-NEWS-REVISE-001 — REQ-DETAIL-LAYOUT-SPLIT
@@ -222,6 +255,117 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
     const sections = Array.from(doc.querySelectorAll('body > section'));
     const labels = sections.map((s) => s.getAttribute('aria-label'));
     expect(labels).toEqual(['공통정보', '제목', '본문']);
+  });
+});
+
+// SPEC-NEWS-REVISE-003 — REQ-DETAIL-BODY-EMPHASIS (토픽 B): 상세보기 본문 폰트 > 제목 폰트.
+// 002 AC-FONT-1/3/4 와 정합하는 회귀 가드 + 003 고유 보강(빈 제목 케이스 + 분리 구조 12 필드 enumerate).
+// 기존 describe 블록을 건드리지 않고 새 블록만 추가한다.
+describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
+  const fullArticle = {
+    articleId: 'A-1',
+    title: '테스트 제목',
+    content: '테스트 본문 내용',
+    author: '홍길동',
+    coAuthor: '김공동',
+    description: '요약 내용',
+    region: '서울',
+    attribute: '속보',
+    keyword: '정치, 외교',
+    internalComment: '내부메모',
+    externalComment: '외부메모',
+    attachmentFile: 'photo.jpg',
+    referenceFile: 'data.csv',
+    embargoAt: '2026-05-01T10:00:00Z',
+    secondEmbargoAt: '2026-05-02T10:00:00Z',
+  };
+
+  // CSS 룰 텍스트에서 해당 클래스의 font-size(rem)를 추출한다.
+  function fontSizeRem(html, className) {
+    const re = new RegExp(`\\.${className}\\s*\\{[^}]*font-size:\\s*([\\d.]+)rem`);
+    const m = html.match(re);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  it('AC-EMPH-1: .yh-detail__content font-size 가 .yh-detail__title font-size 보다 크다 (CSS 룰 정규식)', () => {
+    const html = buildArticleDetailHtml(fullArticle);
+    const titleSize = fontSizeRem(html, 'yh-detail__title');
+    const contentSize = fontSizeRem(html, 'yh-detail__content');
+    expect(titleSize).not.toBeNull();
+    expect(contentSize).not.toBeNull();
+    expect(contentSize).toBeGreaterThan(titleSize);
+  });
+
+  it('AC-EMPH-2: jsdom getComputedStyle 비교 — 미지원 시 AC-EMPH-1 정규식 fallback (둘 중 하나는 GREEN)', () => {
+    const html = buildArticleDetailHtml(fullArticle);
+    document.body.innerHTML = html.slice(html.indexOf('<body>') + '<body>'.length, html.indexOf('</body>'));
+    // <style>은 head에 있으므로 getComputedStyle은 jsdom에서 인라인 스타일만 반영할 수 있다.
+    const titleEl = document.querySelector('.yh-detail__title');
+    const contentEl = document.querySelector('.yh-detail__content');
+    expect(titleEl).not.toBeNull();
+    expect(contentEl).not.toBeNull();
+    const px = (v) => {
+      const f = parseFloat(v);
+      return Number.isFinite(f) ? f : null;
+    };
+    const titlePx = px(getComputedStyle(titleEl).fontSize);
+    const contentPx = px(getComputedStyle(contentEl).fontSize);
+
+    const computedHolds = titlePx !== null && contentPx !== null && contentPx > titlePx;
+    // Fallback: CSS 룰 정규식 비교 (R8 전략 — jsdom getComputedStyle 한계 대응).
+    const regexHolds = fontSizeRem(html, 'yh-detail__content') > fontSizeRem(html, 'yh-detail__title');
+    expect(computedHolds || regexHolds).toBe(true);
+    // jsdom이 외부 <style>을 적용하지 않더라도 정규식 fallback은 반드시 성립한다.
+    expect(regexHolds).toBe(true);
+    document.body.innerHTML = '';
+  });
+
+  it('AC-EMPH-3: 빈 제목/null → "(제목 없음)" placeholder + content 폰트 > title 폰트 유지 (003 고유)', () => {
+    for (const blank of ['', null]) {
+      const html = buildArticleDetailHtml({ ...fullArticle, title: blank });
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      // aria-label="제목" 섹션이 존재하고 그 안에 placeholder가 렌더된다.
+      const titleSection = doc.querySelector('section[aria-label="제목"]');
+      expect(titleSection).not.toBeNull();
+      const h1 = titleSection.querySelector('h1.yh-detail__title');
+      expect(h1).not.toBeNull();
+      expect(h1.textContent).toBe('(제목 없음)');
+      // 본문 섹션도 분리되어 존재.
+      expect(doc.querySelector('section[aria-label="본문"]')).not.toBeNull();
+      // placeholder 케이스에서도 폰트 관계 유지.
+      expect(fontSizeRem(html, 'yh-detail__content')).toBeGreaterThan(fontSizeRem(html, 'yh-detail__title'));
+    }
+  });
+
+  it('AC-EMPH-4: 분리 구조 회귀 — 제목/본문 섹션 각 1개 형제 + 1px 회색 구분선 + 12 공통정보 dt label', () => {
+    const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
+    // aria-label="제목" / "본문" 섹션이 정확히 1개씩.
+    const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
+    const bodySections = doc.querySelectorAll('section[aria-label="본문"]');
+    expect(titleSections.length).toBe(1);
+    expect(bodySections.length).toBe(1);
+    // 두 섹션은 동일 부모의 형제 노드.
+    expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
+
+    // 1px 회색 구분선 (--yh-gray-line 토큰 또는 #DDD 계열). 스타일 텍스트에서 토큰/색상을 확인한다.
+    const styleText = doc.querySelector('style').textContent;
+    expect(styleText).toMatch(/--yh-gray-line:\s*#DD[0-9A-Fa-f]{4}/);
+    expect(styleText).toMatch(/1px solid var\(--yh-gray-line\)/);
+
+    // 공통정보 섹션의 dt label 12개가 각각 정확히 한 번씩 enumerate.
+    const dts = doc.querySelectorAll('section[aria-label="공통정보"] dt');
+    const labels = Array.from(dts).map((dt) => dt.textContent);
+    const required = [
+      '작성자', '공동작성', '내용', '지역', '속성', '키워드',
+      '내부코멘트', '외부코멘트', '첨부파일', '자료파일',
+    ];
+    for (const req of required) {
+      expect(labels.filter((l) => l === req).length).toBe(1);
+    }
+    // 엠바고 / 2차 엠바고는 "시간" 접미사 포함 형태로 각 1회.
+    expect(labels.filter((l) => l === '엠바고' || l.startsWith('엠바고')).length).toBe(1);
+    expect(labels.filter((l) => l === '2차 엠바고' || l.startsWith('2차 엠바고')).length).toBe(1);
+    expect(dts.length).toBe(12);
   });
 });
 

@@ -1,8 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { ModelContext } from '../app/context.js';
 import { createFakeModel } from '../test/fakeModel.js';
 import { useWriteController } from './useWriteController.js';
+import { contentToMarkup, contentFromText } from '../model/editorContent.js';
+
+// SPEC-NEWS-REVISE-003 — edit-load row 의 markupVersion 을 만드는 헬퍼 (editLoad 테스트와 동일 관례).
+function markupFor(text) {
+  return contentToMarkup(contentFromText(text));
+}
 
 // SPEC-UI-EDITOR-001 — AC-4 (adapter-swap does not affect DTO assembly), REQ-EDIT-EMBED-001/007.
 
@@ -48,6 +54,20 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     act(() => result.current.embed({ type: 'article', articleId: 'A-1', title: 'a' }));
     const types = result.current.content.blocks.filter((b) => b.type === 'embed').map((b) => b.embed.type);
     expect(types).toEqual(['image', 'video', 'article']);
+  });
+
+  // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — controller seam for removeEmbed.
+  it('AC-EMB-DEL-1/3: removeEmbed(index) drops the N-th embed and content/markup reflect the deletion', () => {
+    const { result } = renderCtrl();
+    act(() => result.current.embed({ type: 'image', source: 'youtube', title: 'i', url: 'https://i/1' }));
+    act(() => result.current.embed({ type: 'video', source: 'youtube', title: 'v', url: 'https://v/1' }));
+    expect(result.current.content.blocks.filter((b) => b.type === 'embed')).toHaveLength(2);
+    act(() => result.current.removeEmbed(0));
+    const embeds = result.current.content.blocks.filter((b) => b.type === 'embed');
+    expect(embeds).toHaveLength(1);
+    expect(embeds[0].embed.type).toBe('video');
+    // markupVersion reflects the deletion (AC-4 invariant + AC-EMB-DEL-3).
+    expect(result.current.assembleDto().markupVersion).toBe(result.current.getMarkup());
   });
 
   it('USER-REQ: assembleDto().title equals the editor\'s first line (parsed 후보 A title)', () => {
@@ -128,6 +148,53 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     expect(result.current.common.author).toBe('직접 입력');
   });
 
+  // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT — explicit insert/update branching per context
+  // (AC-API-1/AC-API-3). The httpModel routes A-DRAFT id -> POST (insert) and any other id -> PUT
+  // (update); the controller must call saveArticle with the LOADED article id when editing, and with
+  // 'A-DRAFT' when creating, so the transport branch follows the user's intent.
+  describe('REQ-API-INSERT-UPDATE-SPLIT (AC-API-1/AC-API-3/AC-API-4)', () => {
+    it('AC-API-1: 신규 작성 컨텍스트 (articleId=A-DRAFT) → saveArticle("A-DRAFT", ...) — POST 라우팅 보장', async () => {
+      const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
+      const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+      const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+      act(() => result.current.setBodyMarkup('새 제목\n본문'));
+      await act(async () => { await result.current.send(); });
+      expect(saveArticle).toHaveBeenCalledTimes(1);
+      expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+    });
+
+    it('AC-API-4: 제목 없음 → ALERT 후 saveArticle / applyAction 어느 것도 호출되지 않는다 (R 권한 회귀)', async () => {
+      const saveArticle = vi.fn();
+      const applyAction = vi.fn();
+      const reporter = { userId: 'r1', name: 'Reporter', role: 'R', department: 'Politics' };
+      const wrapper = ({ children }) => (
+        <ModelContext.Provider value={createFakeModel({ saveArticle, applyAction })}>{children}</ModelContext.Provider>
+      );
+      const { result } = renderHook(() => useWriteController(reporter), { wrapper });
+      await act(async () => { await result.current.send(); });
+      expect(result.current.actionError).toContain('제목이 없어');
+      expect(saveArticle).not.toHaveBeenCalled();
+      expect(applyAction).not.toHaveBeenCalled();
+    });
+
+    // 매트릭스: 권한 R/D/Z × 신규 컨텍스트 — 모두 saveArticle('A-DRAFT', ...) 호출.
+    // (분기 기준은 권한이 아니라 컨텍스트이므로 동일 분기가 적용된다 — AC-WLC-5 정합.)
+    for (const role of ['R', 'D', 'Z']) {
+      it(`AC-API-1 매트릭스: role=${role} 신규 컨텍스트는 saveArticle('A-DRAFT', ...) 로 호출된다`, async () => {
+        const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
+        const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+        const userInRole = { userId: `${role}1`, name: role, role, department: '정치부' };
+        const wrapper = ({ children }) => (
+          <ModelContext.Provider value={createFakeModel({ saveArticle, applyAction })}>{children}</ModelContext.Provider>
+        );
+        const { result } = renderHook(() => useWriteController(userInRole), { wrapper });
+        act(() => result.current.setBodyMarkup('제목\n본문'));
+        await act(async () => { await result.current.send(); });
+        expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+      });
+    }
+  });
+
   it('reset: a rejected action leaves the page state untouched', async () => {
     const applyAction = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-transition' });
     const { result } = renderCtrl(createFakeModel({ applyAction }));
@@ -137,5 +204,116 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     expect(result.current.bodyText).toBe('keep me');
     expect(result.current.common.author).toBe('Desk');
     expect(result.current.lifecycleStatus).toBeNull();
+  });
+
+  // SPEC-NEWS-REVISE-003 — REQ-WRITE-LIFECYCLE-API (토픽 D): 신규 작성 vs 편집 진입의 Insert/Update 분기.
+  //
+  // 본 리포에는 articleInsert/articleUpdate 모델 메서드가 존재하지 않는다. 분기는 컨텍스트(editArticleId /
+  // A-DRAFT sentinel)로만 결정되며, 그 RESULTANT 동작은: 신규 → saveArticle('A-DRAFT', ...) (httpModel POST=insert),
+  // 편집 → saveArticle('<loaded id>', ...) (httpModel PUT=update) 이다. KILL 은 saveArticle 을 호출하지 않고
+  // applyAction(id, role, 'kill') 만 호출한다. SPEC 의 articleInsert/articleUpdate 명칭은 illustrative 이므로
+  // RESULTANT 동작(어느 id 로 saveArticle 이 불리는지 / 불리지 않는지)을 단언한다.
+  describe('SPEC-NEWS-REVISE-003 REQ-WRITE-LIFECYCLE-API (토픽 D)', () => {
+    // edit 컨텍스트(editArticleId)로 컨트롤러를 마운트하고 해당 row 를 로드한다.
+    function renderEditCtrl(model, editArticleId, user = USER) {
+      const wrapper = ({ children }) => (
+        <ModelContext.Provider value={model}>{children}</ModelContext.Provider>
+      );
+      return renderHook(() => useWriteController(user, { editArticleId }), { wrapper });
+    }
+
+    it('AC-WLC-1: 신규 작성 컨텍스트(editArticleId null) → saveArticle("A-DRAFT", ...) 1회, 편집 경로(다른 id) 0회', async () => {
+      const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
+      const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+      const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+      act(() => result.current.setBodyMarkup('신규 제목\n내용'));
+      await act(async () => { await result.current.send(); });
+      // Insert 경로: saveArticle 이 A-DRAFT sentinel 로 1회 호출 (=POST/insert 라우팅).
+      expect(saveArticle).toHaveBeenCalledTimes(1);
+      expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+      // Update 경로(로드된 기사 id 로의 호출)는 발생하지 않는다.
+      const updateCalls = saveArticle.mock.calls.filter((c) => c[0] !== 'A-DRAFT');
+      expect(updateCalls).toHaveLength(0);
+    });
+
+    it('AC-WLC-2: 편집 컨텍스트("AKR-001") → saveArticle("AKR-001", ...) 1회 (Update), Insert(A-DRAFT) 0회', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([
+        { articleId: 'AKR-001', status: 'RDS', markupVersion: markupFor('편집 제목\n편집 내용'), author: '원작성자' },
+      ]);
+      const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'AKR-001' });
+      const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+      const { result } = renderEditCtrl(
+        createFakeModel({ queryArticles, saveArticle, applyAction }),
+        'AKR-001',
+      );
+      await waitFor(() => expect(result.current.common.author).toBe('원작성자'));
+      await act(async () => { await result.current.send(); });
+      // Update 경로: saveArticle 이 로드된 id 로 1회 (=PUT/update 라우팅).
+      expect(saveArticle).toHaveBeenCalledTimes(1);
+      expect(saveArticle.mock.calls[0][0]).toBe('AKR-001');
+      // Insert(A-DRAFT) 경로는 발생하지 않는다.
+      const insertCalls = saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT');
+      expect(insertCalls).toHaveLength(0);
+      // applyAction 도 동일 id 로.
+      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'send');
+    });
+
+    it('AC-WLC-3: 편집 + KILL → applyAction(loaded id, role, "kill") 1회, Insert(A-DRAFT) 0회', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([
+        { articleId: 'AKR-001', status: 'RDS', markupVersion: markupFor('편집 제목\n편집 내용'), author: '원작성자' },
+      ]);
+      const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'AKR-001' });
+      const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDK' });
+      const { result } = renderEditCtrl(
+        createFakeModel({ queryArticles, saveArticle, applyAction }),
+        'AKR-001',
+      );
+      await waitFor(() => expect(result.current.common.author).toBe('원작성자'));
+      await act(async () => { await result.current.kill(); });
+      // KILL 은 Update lifecycle 전이만 발생 — applyAction 이 로드된 id + 'kill' 로 1회.
+      expect(applyAction).toHaveBeenCalledTimes(1);
+      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'kill');
+      // KILL 컨텍스트에서 Insert(A-DRAFT) saveArticle 은 발생하지 않는다 (신규 작성 오용 방지).
+      const insertCalls = saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT');
+      expect(insertCalls).toHaveLength(0);
+    });
+
+    // 6-combination matrix: 권한 R/D/Z × {신규, 편집}. 분기는 컨텍스트로만 결정되며 권한은 영향 없음.
+    for (const role of ['R', 'D', 'Z']) {
+      const userInRole = { userId: `${role}1`, name: role, role, department: '정치부' };
+
+      it(`AC-WLC-5: role=${role} × 신규 → saveArticle("A-DRAFT", ...) (권한 무관, 컨텍스트만 분기 결정)`, async () => {
+        const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
+        const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+        const wrapper = ({ children }) => (
+          <ModelContext.Provider value={createFakeModel({ saveArticle, applyAction })}>{children}</ModelContext.Provider>
+        );
+        const { result } = renderHook(() => useWriteController(userInRole), { wrapper });
+        act(() => result.current.setBodyMarkup('제목\n본문'));
+        await act(async () => { await result.current.send(); });
+        expect(saveArticle).toHaveBeenCalledTimes(1);
+        expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+      });
+
+      it(`AC-WLC-5: role=${role} × 편집 → saveArticle("AKR-${role}", ...) (권한 무관, 컨텍스트만 분기 결정)`, async () => {
+        const editId = `AKR-${role}`;
+        const queryArticles = vi.fn().mockResolvedValue([
+          { articleId: editId, status: 'RDS', markupVersion: markupFor('편집 제목\n본문'), author: '원작성자' },
+        ]);
+        const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: editId });
+        const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+        const { result } = renderEditCtrl(
+          createFakeModel({ queryArticles, saveArticle, applyAction }),
+          editId,
+          userInRole,
+        );
+        await waitFor(() => expect(result.current.common.author).toBe('원작성자'));
+        await act(async () => { await result.current.send(); });
+        expect(saveArticle).toHaveBeenCalledTimes(1);
+        expect(saveArticle.mock.calls[0][0]).toBe(editId);
+        // 편집 컨텍스트에서는 어떤 권한이든 A-DRAFT(insert) 호출이 없다.
+        expect(saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT')).toHaveLength(0);
+      });
+    }
   });
 });

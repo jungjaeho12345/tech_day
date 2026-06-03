@@ -1,7 +1,7 @@
 ---
 id: SPEC-NEWS-REVISE-003
-version: 0.1.0
-status: Plan
+version: 0.1.1
+status: Complete
 created: 2026-06-03
 updated: 2026-06-04
 author: manager-spec
@@ -20,6 +20,7 @@ related_specs:
 
 ## HISTORY
 
+- 2026-06-04 (v0.1.1): Run 단계 종료 — `/news produce` 하네스 GAN 루프 라운드 1/5 PASS (점수 0.95: Design 0.90 / Originality 0.92 / Completeness 0.97 / Functionality 1.00, AC 30/30, must-pass 3조건 + production-untouched 모두 GREEN). 회귀 가드 테스트 10파일 추가 — 백엔드 신규 5 (`test/editLockBehavior.test.js`, `test/lifecycleRule.test.js`, `test/lifecycleBypass.test.js`, `test/mediaSearch.lifecycleGuard.test.js`, `test/integration.lockLifecycle.test.js`), 프론트 보강 5 (`articleDetail` / `useWriteController` / `WritePage` / `InlineEmbed` / `editorShortcuts` 테스트). production 코드 변경 0 (Δ-only 원칙 준수). 검증: 백엔드 179/179 · 프론트 282/282 · vite build 무경고. 경로 어댑테이션 확정: 백엔드 가드는 리포 컨벤션상 `test/` 에 위치(`npm test` glob), 프론트 검증 명령은 `npm run test:web` (web/package.json 부재). status: Plan → Complete.
 - 2026-06-04 (plan-audit): manager-spec 정합 점검(Plan 인텐트, news.md 무변경 확인 — 마지막 커밋 `da26c72` 2026-06-02). 본 SPEC 의 6 REQ (토픽 A~F) 는 news.md 본문에 모두 커밋 반영된 상태이며, 002 의 7 REQ 와 토픽 영역이 겹치되 본 SPEC 은 *Δ-only 회귀 가드* 역할(코드 변경 없음, 002 spec/plan/acceptance 미수정)을 유지함을 재확인. 토픽 F(REQ-API-LIFECYCLE-RULE)·1 인 1 페이지 정책·빈 제목 케이스(AC-EMPH-3)·외부 API 미호출 단언(AC-MEDIA-3) 4건이 002 미포함 cross-cutting 가드로 확정. status: Plan (untracked) 유지, REQ 본문 변경 없음.
 - 2026-06-03 (v0.1.0): 최초 작성. `news.md` 및 `ContentsVO.md` 의 3차 미커밋 변경분(6 토픽 + ContentsVO `lockYN` 필드)을 단일 SPEC, 6 REQ 로 정리. Brownfield Δ-only — 기존 SPEC AC 를 침범하지 않고 회귀 가드만 추가한다. SPEC-NEWS-REVISE-002 와 토픽 영역이 상당 부분 겹치므로, 본 SPEC 의 6 REQ 는 `news.md` 의 *문장 단위* 미커밋 변경분에 1:1 정합하는 명세 가드로 한정하며 002 의 구현 분담(스키마/서비스/컨트롤러)을 변경하지 않는다.
   - 토픽 A: 이미지탭/영상탭 검색을 Youtube **API** 로 명문화 + Google 폴백 (`news.md` L57~58)
@@ -438,6 +439,6 @@ related_specs:
 
 ---
 
-Version: 0.1.0
-Status: Plan
-Last Updated: 2026-06-03
+Version: 0.1.1
+Status: Complete
+Last Updated: 2026-06-04

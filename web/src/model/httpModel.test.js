@@ -122,6 +122,47 @@ describe('createHttpModel', () => {
     expect(init.method).toBe('POST');
   });
 
+  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK transport
+  it('acquireEditLock POSTs to /api/articles/:id/lock with sessionId in the body', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    const model = createHttpModel();
+
+    const result = await model.acquireEditLock('A-100', { sessionId: 'page-A' });
+    expect(result).toEqual({ ok: true });
+
+    const [url, init] = lastCall();
+    expect(url).toBe(`${BASE}/api/articles/A-100/lock`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ sessionId: 'page-A' });
+  });
+
+  it('acquireEditLock surfaces { ok:false, reason } from the backend on conflict', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: false, reason: 'locked' }));
+    const model = createHttpModel();
+    const result = await model.acquireEditLock('A-100', { sessionId: 'page-B' });
+    expect(result).toEqual({ ok: false, reason: 'locked' });
+  });
+
+  it('releaseEditLock DELETEs /api/articles/:id/lock with sessionId in the body', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+    const model = createHttpModel();
+
+    const result = await model.releaseEditLock('A-100', { sessionId: 'page-A' });
+    expect(result).toEqual({ ok: true });
+
+    const [url, init] = lastCall();
+    expect(url).toBe(`${BASE}/api/articles/A-100/lock`);
+    expect(init.method).toBe('DELETE');
+    expect(JSON.parse(init.body)).toEqual({ sessionId: 'page-A' });
+  });
+
+  it('releaseEditLock degrades to { ok:true } on network failure (idempotent — beforeunload safe)', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('network down'));
+    const model = createHttpModel();
+    const result = await model.releaseEditLock('A-100', { sessionId: 'page-A' });
+    expect(result).toEqual({ ok: true });
+  });
+
   it('saveArticle PUTs to /api/articles/:id for an existing id', async () => {
     global.fetch.mockResolvedValue(jsonResponse({ ok: true, articleId: 'A-0007' }));
     const model = createHttpModel();

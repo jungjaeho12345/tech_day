@@ -18,15 +18,19 @@ export const MARKUP_VERSION = 1;
 // occurrence gold purely presentationally. The gold-colored TOKEN is just "(끝)".
 export const END_MARKER = '(끝)';
 
-// news.md 기사 에디터: Alt+Y inserts "\r\n (끝)" — i.e. the marker on a NEW LINE. The editor content
-// model is '\n'-based, so the inserted block is a newline + space + the "(끝)" token. Only the trailing
-// "(끝)" token is colored gold; the preceding newline is an ordinary line break.
-export const END_MARKER_BLOCK = `\n ${END_MARKER}`;
+// SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER: Alt+Y inserts EXACTLY the "(끝)" token (prefix-free —
+// no CRLF, no leading space). Simplification of the previous "\n (끝)" form which forced an explicit
+// new line before the marker; the new form lets the marker flow inline at the body end. Coloring,
+// idempotence, and persistence (markupVersion round-trip) are preserved (AC-ENDMARK-1/2/3).
+export const END_MARKER_BLOCK = END_MARKER;
 
 /**
  * Whether body text already ends with the "(끝)" end marker (news.md: Alt+Y is idempotent — if the
  * marker is already present at the end, pressing Alt+Y again must NOT append a duplicate). Tolerant of
  * trailing whitespace so a stray space/newline after the marker still counts as "already present".
+ * Backwards-compatible: legacy markup ending with "\n (끝)" (saved before SPEC-NEWS-REVISE-002) still
+ * counts as present (the legacy form still ends in "(끝)"), so re-pressing Alt+Y after loading an
+ * older article is still a no-op.
  * @param {string} text
  * @returns {boolean}
  */
@@ -54,6 +58,40 @@ export function contentFromText(text) {
 export function appendEmbed(content, embed) {
   const blocks = [...(content?.blocks ?? []), { type: 'embed', embed: { ...embed } }];
   return { blocks };
+}
+
+/**
+ * SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — single embed removal by ordinal index.
+ *
+ * Removes the N-th embed block (0-based among embed blocks only — matches the `data-embed-index`
+ * attribute the editor view paints). Adjacent text blocks and other embeds are preserved
+ * verbatim (AC-EMB-DEL-2). Out-of-range index is a no-op; passing a non-finite value is a no-op
+ * to guarantee callers cannot corrupt the content on bad input.
+ *
+ * @param {{blocks: Array<object>}} content
+ * @param {number} embedIndex 0-based ordinal among embed blocks
+ * @returns {{blocks: Array<object>}} new content with the target embed removed
+ */
+export function removeEmbedAt(content, embedIndex) {
+  const blocks = content?.blocks ?? [];
+  if (!Number.isFinite(embedIndex) || embedIndex < 0) {
+    return { blocks: [...blocks] };
+  }
+  let seen = 0;
+  const next = [];
+  let removed = false;
+  for (const b of blocks) {
+    if (b.type === 'embed') {
+      if (!removed && seen === embedIndex) {
+        removed = true;
+        seen += 1;
+        continue; // drop this embed block
+      }
+      seen += 1;
+    }
+    next.push(b);
+  }
+  return { blocks: next };
 }
 
 /**
