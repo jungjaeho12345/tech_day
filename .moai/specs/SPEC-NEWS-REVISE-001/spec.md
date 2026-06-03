@@ -277,17 +277,17 @@ related_specs:
 
 ---
 
-## 6. 현재 진행 상태 (Current Progress — 미커밋 변경분 분석)
+## 6. 현재 진행 상태 (Current Progress)
 
-> 분석 시점: 2026-06-02. 출처: `git status` 미커밋 변경 + `web/src/` Grep/Read.
+> ⚠️ 아래 표는 **2026-06-02 SPEC 작성 시점의 미커밋 변경분 분석(역사적 스냅샷)** 이다. 이후 Run 단계에서 모든 REQ가 구현·커밋되어 테스트 GREEN 상태가 되었다. **최신 검증 결과는 §13 (2026-06-03 구현 완료 검증)** 을 참조하라.
 
-| 파일 | REQ | 진행 상태 | 한 줄 요약 |
+| 파일 | REQ | 진행 상태 (2026-06-02 기준) | 비고 |
 |------|-----|---------|-----------|
-| `web/src/view/WritePage.jsx` | REQ-AUTH-Z-BUTTONS | **부분 — 충돌 가능성** | 현재 버튼 분기가 `(user.role === 'R' \|\| user.role === 'D') && isRds` (송고/보류) 및 `user.role === 'R' && isRds` (KILL)로 구현되어 있어 **Z권한은 어떤 버튼도 보이지 않는다**. 본 SPEC의 EARS를 만족시키려면 분기에 `Z`를 포함해야 한다 |
-| `web/src/view/articleDetail.js` | REQ-DETAIL-LAYOUT-SPLIT | **거의 완료** | 이미 `aria-label="제목"`/`aria-label="본문"`을 가진 두 `<section>`이 분리 렌더링되고 12 공통정보 필드 + escape + 구분선(`--yh-gray-line`) 적용. 잔여 작업 거의 없음 |
-| `web/src/view/articleDetail.test.js` | REQ-DETAIL-LAYOUT-SPLIT | 부분 적용 | 미커밋 변경에 분리 검증 케이스가 추가된 것으로 추정. AC-DTL-1~6에 맞춰 보강 가능 |
-| `web/src/` 전역 (`Ctrl+D` 핸들러) | REQ-EDITOR-EMBED-AND-CTRL-D | **미구현** | `Ctrl+D` / `key === 'd'` / `ctrlKey` 패턴이 `web/src/` 전체에서 검색되지 않음 — 단축키 핸들러 신규 작업 필요 |
-| 인라인 임베딩 (커서 위치/영속성) | REQ-EDITOR-EMBED-AND-CTRL-D | **부분 — SPEC-UI-EDITOR-001 기반** | `InlineEmbed.jsx`, `editorCaret.js`, `clipboardEmbed.js`, `useWriteController.test` 등은 존재. "커서 위치 삽입"·"persist" 의미는 본 SPEC이 EARS로 고정. Run 단계에서 SPEC-UI-EDITOR-001 구현과 동기 검증 필요 |
+| `web/src/view/WritePage.jsx` | REQ-AUTH-Z-BUTTONS | 부분 → **완료 (§13)** | 당시 분기에 `Z` 미포함이었으나 Run에서 `(R\|\|D\|\|Z) && isRds`(송고/보류), `(R\|\|Z) && isRds`(KILL)로 해소 (WritePage.jsx:557/563) |
+| `web/src/view/articleDetail.js` | REQ-DETAIL-LAYOUT-SPLIT | 거의 완료 → **완료 (§13)** | `aria-label="제목"`/`aria-label="본문"` 분리 + 12 공통정보 필드 + escape + 구분선(`--yh-gray-line`) |
+| `web/src/view/articleDetail.test.js` | REQ-DETAIL-LAYOUT-SPLIT | 부분 → **완료 (§13)** | AC-DTL-1~6 단언 17 케이스 GREEN |
+| `web/src/view/editorShortcuts.js` (`Ctrl+D`) | REQ-EDITOR-EMBED-AND-CTRL-D | 미구현 → **완료 (§13)** | `editorShortcuts.js` 신규 + `deleteCurrentLine` 순수 함수, AC-CTRL-D-1~3e 9 케이스 GREEN |
+| 인라인 임베딩 (커서 위치/영속성) | REQ-EDITOR-EMBED-AND-CTRL-D | 부분 → **완료 (§13)** | AC-EMB-INLINE-1/2/3 + AC-EMB-2 영속성 GREEN. 직렬화 round-trip은 SPEC-UI-EDITOR-001 어댑터 계약 위에서 보존 |
 
 ---
 
@@ -390,6 +390,37 @@ related_specs:
 
 ---
 
+## 13. 구현 완료 검증 (Implementation Verification — 2026-06-03)
+
+> Run 단계 검증 결과. 3개 REQ 모두 구현·커밋되고 테스트 GREEN. **단, status는 Plan 유지** — DoD의 "Slack tech-day 보고"(CLAUDE.md HARD)가 미수행이고 plan.md/acceptance.md 버전 동기가 남아 있어, completed 전이는 해당 잔여 항목 해소 후로 보류한다. (검증: `/moai run` 오케스트레이터, 2026-06-03)
+
+### 13.1 테스트 증거
+
+- **web (Vitest + jsdom)**: 17개 파일 **223 tests PASS, 0 fail** (`vitest run --root web`)
+- **backend (node --test)**: **132 tests PASS, 0 fail**, 커버리지 line 93.91% / branch 90.18% (`lifecycle.js` 100%, `authorization.js` 100%)
+- **빌드**: `vite build web` **무경고** (51 modules, dist 생성)
+
+### 13.2 REQ별 충족 현황
+
+| REQ | 구현 위치 | 검증 테스트 | 상태 |
+|-----|----------|-----------|------|
+| REQ-AUTH-Z-BUTTONS | `WritePage.jsx:557/563` (분기에 `Z` 포함) | `WritePage.test.jsx` AC-Z-1/2/3/5 + D-6 lifecycle 회귀 | ✅ |
+| REQ-DETAIL-LAYOUT-SPLIT | `articleDetail.js` (제목/본문 `<section>` 분리 + 12필드 + escape) | `articleDetail.test.js` AC-DTL-1~6 (17) | ✅ |
+| REQ-EDITOR-EMBED-AND-CTRL-D | `editorShortcuts.js` (`deleteCurrentLine`) + 인라인 임베드 모델 | `editorShortcuts.test.js` AC-CTRL-D-1~3e (9), `WritePage.test.jsx` AC-EMB-INLINE/AC-EMB-2 | ✅ |
+| 회귀 가드 (기존 SPEC AC) | — | web 223 + backend 132 = 355 tests 전부 GREEN | ✅ |
+
+### 13.3 Decision Lock 반영
+
+D-1~D-7(plan.md Decision Lock) 전부 구현에 반영됨. 특히 D-1(Z는 RDS gating), D-6(Z 송고/보류/KILL 전이 = D권한 동일), D-7(IME 합성 중 repaint 차단)은 최근 커밋(`ebf7425`, `b1f7155`, `7580d2b`)으로 적용 완료.
+
+### 13.4 잔여 항목 (구현 외 — completed 전이 차단 요소)
+
+- **Slack `tech-day` 채널 완료 보고** (CLAUDE.md HARD 규칙) — 현재 세션에 Slack 도구 미연결로 자동 수행 불가. 사용자 조치 필요.
+- plan.md / acceptance.md 버전 0.2.0 동기 + DoD 체크 동기 (정합성 게이트).
+- 작업 트리의 미커밋 변경(`news.md` 마크다운 재포맷, `ContentsVO.md` LockYN 추가, SPEC-FRONTEND-UI-001 파일)은 **본 SPEC 소관이 아님** — 별도 처리 대상.
+
+---
+
 Version: 0.1.0
 Status: Plan
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
