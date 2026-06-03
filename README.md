@@ -98,10 +98,14 @@ npm run test:web:coverage
 | RDS | D | send | DPS |
 | RDS | D | hold | DDH |
 | RDS | D | kill | DDK (소프트 삭제) |
+| RDS | Z | send | DPS (D-mirror) |
+| RDS | Z | hold | DDH (D-mirror) |
+| RDS | Z | kill | DDK (D-mirror, 소프트 삭제) |
 
 - 최초 생성 상태: **RDS**
 - `DPS` 상태에서 고침/포털고침은 **D 권한만** 가능
 - 역할 코드: R=기자, D=데스크, Z=관리자
+- Z 권한 전이는 D와 동일한 결과 상태를 생성한다 (SPEC-NEWS-REVISE-001 plan.md Decision Lock D-6)
 
 ## Run 단계 미구현 항목 (예정)
 

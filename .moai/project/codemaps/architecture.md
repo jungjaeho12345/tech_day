@@ -69,8 +69,16 @@ graph TD
 | `src/model/editorAdapter.js` | 에디터 어댑터 계약 (구체 라이브러리 미구현) |
 | `src/view/TopBar.jsx` | 상단 바 (로그인 사용자 정보 표시) |
 | `src/view/LoginPage.jsx` | 로그인 페이지 |
-| `src/view/WritePage.jsx` | 기사 작성 페이지 (에디터 + 메타데이터) |
+| `src/view/WritePage.jsx` | 기사 작성 페이지 (에디터 + 메타데이터, Z권한 송고/보류/KILL 버튼 포함) |
 | `src/view/ViewPage.jsx` | 기사 조회 페이지 |
+| `src/view/ContextMenu.jsx` | 우클릭 컨텍스트 메뉴 (상세보기 진입) |
+| `src/view/InlineEmbed.jsx` | 본문 인라인 임베드 컴포넌트 (캐럿 위치 삽입 + persist, SPEC-NEWS-REVISE-001 AC-EMB-INLINE-1·2·3) |
+| `src/view/articleDetail.js` | 상세보기 HTML 빌더 (`buildArticleDetailHtml`, 제목/본문 분리 + 공통정보 12필드) |
+| `src/view/editorNewline.js` | Enter 줄바꿈 핸들러 + IME 합성 가드 (plan.md D-7, AC-IME-1·2) |
+| `src/view/editorShortcuts.js` | 단축키 핸들러: `Ctrl+D` 라인 삭제, `Alt+Y` "(끝)" 삽입 |
+| `src/view/editorCaret.js` | 캐럿 위치 보정 (M3 임베드 모델) |
+| `src/view/editorColoring.js` | 에디터 구문 강조 |
+| `src/view/clipboardEmbed.js` | 클립보드 이미지 임베드 (10%×10%) |
 | `src/controller/useLoginController.js` | 로그인 상태·액션 |
 | `src/controller/useWriteController.js` | 기사 작성 상태·액션 |
 | `src/controller/useViewController.js` | 기사 조회 상태·액션 |
@@ -89,9 +97,14 @@ graph TD
 | RDS + D + send | DPS | 데스크 송고 |
 | RDS + D + hold | DDH | 데스크 보류 |
 | RDS + D + kill | DDK | 데스크 KILL (소프트 삭제) |
+| RDS + Z + send | DPS | 관리자 송고 (D-mirror, SPEC-NEWS-REVISE-001 AC-Z-LIFECYCLE-1) |
+| RDS + Z + hold | DDH | 관리자 보류 (D-mirror) |
+| RDS + Z + kill | DDK | 관리자 KILL (D-mirror, 소프트 삭제) |
 | 기타 모든 조합 | 거부 (`{ ok: false }`) | |
 
 `canEdit(state, role, action)`: `DPS` 상태 + 고침/포털고침 액션이면 D 권한만 허용; 나머지는 R/D/Z 모두 허용.
+
+Z 권한 전이는 `lifecycle.js` TRANSITIONS 매트릭스와 `articleService.js` `KILL_BY_ROLE` 셋에 `Z`를 포함하여 구현한다 (plan.md Decision Lock D-6).
 
 ## 인증 역할
 

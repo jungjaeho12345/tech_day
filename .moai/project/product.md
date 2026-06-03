@@ -27,6 +27,7 @@
 - 최초 작성: **RDS**
 - R 권한: 송고→RDS, 보류→RRH, KILL→RRK
 - D 권한: 송고→DPS, 보류→DDH, KILL→DDK
+- Z 권한: 송고→DPS, 보류→DDH, KILL→DDK (D 권한과 동일한 전이 규칙, plan.md D-6 / SPEC-NEWS-REVISE-001 AC-Z-LIFECYCLE-1)
 - 상태값 **DPS**: D 권한 사용자만 고침/포털고침 가능
 
 ## 워크플로우

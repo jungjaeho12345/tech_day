@@ -17,9 +17,9 @@ tech_day/
 │   │   ├── articleModel.js     # Article/Contents SQL
 │   │   └── userModel.js        # User SQL
 │   ├── services/               # 비즈니스 로직
-│   │   ├── articleService.js   # 기사 CRUD + 생애주기 오케스트레이션
+│   │   ├── articleService.js   # 기사 CRUD + 생애주기 오케스트레이션 (KILL_BY_ROLE 셋에 Z 포함)
 │   │   ├── userService.js      # 사용자 CRUD + 로그인 (bcryptjs)
-│   │   ├── lifecycle.js        # 상태 머신 순수 함수
+│   │   ├── lifecycle.js        # 상태 머신 순수 함수 (Z 권한: D-mirror 전이 RDS→DPS/DDH/DDK)
 │   │   └── mediaSearch.js      # 미디어 검색 프록시 (YouTube→Google)
 │   └── controllers/
 │       └── index.js            # Controller: 요청→서비스 위임
@@ -28,11 +28,19 @@ tech_day/
 │   │   ├── model/              # 주입 가능한 Model 인터페이스
 │   │   │   ├── contract.js     # 8개 메서드 계약 + assertModel
 │   │   │   └── editorAdapter.js# 에디터 어댑터 계약
-│   │   ├── view/               # 페이지 컴포넌트
+│   │   ├── view/               # 페이지 컴포넌트 + 에디터 유틸
 │   │   │   ├── TopBar.jsx
 │   │   │   ├── LoginPage.jsx
 │   │   │   ├── WritePage.jsx
-│   │   │   └── ViewPage.jsx
+│   │   │   ├── ViewPage.jsx
+│   │   │   ├── ContextMenu.jsx     # 우클릭 컨텍스트 메뉴 (상세보기 진입)
+│   │   │   ├── InlineEmbed.jsx     # 본문 인라인 임베드 컴포넌트 (SPEC-NEWS-REVISE-001 AC-EMB-INLINE-*)
+│   │   │   ├── articleDetail.js    # 상세보기 HTML 생성 (buildArticleDetailHtml)
+│   │   │   ├── clipboardEmbed.js   # 클립보드 이미지 임베드 처리
+│   │   │   ├── editorCaret.js      # 캐럿 위치 보정 (M3 임베드 모델)
+│   │   │   ├── editorColoring.js   # 에디터 구문 강조
+│   │   │   ├── editorNewline.js    # Enter 줄바꿈 처리 (IME 합성 가드 포함, plan.md D-7)
+│   │   │   └── editorShortcuts.js  # 단축키 핸들러 (Ctrl+D 라인 삭제, Alt+Y "(끝)" 삽입)
 │   │   ├── controller/         # React 훅 (use*Controller)
 │   │   ├── app/                # App.jsx + context.js
 │   │   └── test/               # fakeModel.js
