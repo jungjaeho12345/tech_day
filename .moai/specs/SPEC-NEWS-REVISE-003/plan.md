@@ -1,9 +1,9 @@
 ---
 id: SPEC-NEWS-REVISE-003
 artifact: plan
-version: 0.1.0
+version: 0.1.1
 created: 2026-06-03
-updated: 2026-06-03
+updated: 2026-06-04
 ---
 
 # Plan — SPEC-NEWS-REVISE-003
@@ -338,6 +338,6 @@ node -e "const { createSchema, ensureContentsLockYNColumn } = require('./src/db/
 
 ---
 
-Version: 0.1.0
-Status: Plan
-Last Updated: 2026-06-03
+Version: 0.1.1
+Status: Complete (Run 단계 종료 — spec.md HISTORY v0.1.1 참조)
+Last Updated: 2026-06-04
