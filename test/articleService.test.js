@@ -266,12 +266,12 @@ test('AC-EDIT-LOCK-6: assertLockHolder rejects callers that do not hold the lock
   const { svc } = freshService();
   const { articleId } = svc.create({ title: 't' });
   svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:00:00Z') });
-  // Different user/session
-  const r1 = svc.assertLockHolder(articleId, { userId: 'U2', sessionId: 'S2' });
+  // Different user/session — now 를 고정 전달해 실시간 시계 기준 30분 stale 판정(time-bomb)을 막는다.
+  const r1 = svc.assertLockHolder(articleId, { userId: 'U2', sessionId: 'S2', now: new Date('2026-06-04T01:05:00Z') });
   assert.equal(r1.ok, false);
   assert.equal(r1.reason, 'lock-required');
   // Holder itself: ok
-  const r2 = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'S1' });
+  const r2 = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'S1', now: new Date('2026-06-04T01:05:00Z') });
   assert.equal(r2.ok, true);
 });
 

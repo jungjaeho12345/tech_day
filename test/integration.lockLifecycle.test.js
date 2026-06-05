@@ -40,11 +40,12 @@ test('AC-INT-1: U1 송고(RDS) → U2 락 획득 → U2 KILL(RRK) → U2 락 해
   assert.equal(lockedRow.lockerSessionId, 'P-U2');
 
   // --- 3) U2 KILL via update path: 서버 PUT 게이트(assertLockHolder)가 보유자 U2를 통과시킨 뒤 전이.
-  const holderGate = svc.assertLockHolder(articleId, { userId: 'U2', sessionId: 'P-U2' });
+  // now 를 고정 전달 — 실시간 시계 기준 30분 stale 판정으로 다음 날부터 FAIL 하는 time-bomb 방지.
+  const holderGate = svc.assertLockHolder(articleId, { userId: 'U2', sessionId: 'P-U2', now: new Date('2026-06-04T01:05:00Z') });
   assert.equal(holderGate.ok, true, '락 보유자 U2는 update 게이트를 통과한다');
 
   // 비보유자(U1 다른 페이지)는 같은 게이트에서 막혀야 한다 (락 우회 불가, AC-LOCK-6 교차).
-  const intruderGate = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'P-U1' });
+  const intruderGate = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'P-U1', now: new Date('2026-06-04T01:05:00Z') });
   assert.equal(intruderGate.ok, false);
   assert.equal(intruderGate.reason, 'lock-required');
 
