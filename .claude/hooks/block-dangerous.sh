@@ -12,7 +12,8 @@ if command -v jq >/dev/null 2>&1; then
   CMD="$(printf '%s' "$INPUT" | jq -r '.toolInput.command // .tool_input.command // ""')"
 else
   TOOL_NAME="$(printf '%s' "$INPUT" | grep -oE '"tool[_]?[Nn]ame"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*:"([^"]+)"/\1/')"
-  CMD="$(printf '%s' "$INPUT" | grep -oE '"command"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed -E 's/.*:"([^"]+)"/\1/')"
+  # Escape-aware extraction: capture the full JSON string value (handles \" inside commands).
+  CMD="$(printf '%s' "$INPUT" | grep -oE '"command"[[:space:]]*:[[:space:]]*"(\\.|[^"\\])*"' | head -1 | sed -E 's/^"command"[[:space:]]*:[[:space:]]*"//; s/"$//' | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')"
 fi
 
 # Only inspect Bash invocations
@@ -56,6 +57,9 @@ DANGEROUS_PATTERNS=(
 for pat in "${DANGEROUS_PATTERNS[@]}"; do
   if printf '%s' "$CMD_LC" | grep -Eq -- "$pat"; then
     REASON="Blocked: command matches dangerous pattern (${pat})."
+    # Notify Slack tech-day channel (detached; never delays the block).
+    ( NOTIFY_EVENT="HookBlocked" NOTIFY_TOOL="Bash" NOTIFY_TARGET="$CMD" NOTIFY_REASON="$REASON" \
+        bash "$(dirname "$0")/notify-slack-block.sh" </dev/null >/dev/null 2>&1 & )
     # Emit reason via stdout JSON and exit 2 to deny.
     printf '{"reason":%s}\n' "\"$(printf '%s' "$REASON" | sed 's/"/\\"/g')\""
     >&2 echo "block-dangerous: $REASON"

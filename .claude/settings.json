@@ -336,6 +336,16 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/notify-slack-block.sh\"",
+            "timeout": 10000,
+            "async": true
+          }
+        ]
       }
     ],
     "PermissionRequest": [
