@@ -1,10 +1,15 @@
 ---
 id: SPEC-NEWS-REVISE-006
 artifact: plan
-version: 0.1.0
+version: 0.1.1
 created: 2026-06-05
 updated: 2026-06-05
 ---
+
+## HISTORY
+
+- 2026-06-05 (v0.1.1): 구현 완료 동기화 — 계획대로 production 코드 0 변경, 테스트 3 파일만 수정 (editLockBehavior / useWriteController / articleDetail). 내용 무변경. (sync)
+
 
 # Plan — SPEC-NEWS-REVISE-006
 

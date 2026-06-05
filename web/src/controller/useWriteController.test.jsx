@@ -425,4 +425,45 @@ describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', (
     expect(saveArticle).not.toHaveBeenCalled();
     expect(applyAction).not.toHaveBeenCalled();
   });
+
+  // SPEC-NEWS-REVISE-006 REQ-SEND-EDGE-LOCK — 005 의 edge-case 불릿(EC-3/EC-4)을 Named AC 로 격상한다.
+  // 구현 정합: 이 리포의 title 은 본문 첫 줄에서 파생되고(parseArticleStructure), (끝) 가드는 bodyText 를
+  // trimEnd 후 판정한다. 따라서 "제목 있음 + 본문(body) 빈 문자열" 은 제목 줄만 있고 본문 본체가 비어
+  // (끝) 마커가 없는 상태(`'제목\n'`)로 모사하며, hasEndMarker('제목\n')===false 로 (끝) 가드가 발동한다.
+  it('AC-EDGE-EMPTY-BODY (EC-3 격상): 제목 있음 + 본문 빈 문자열 송고 → (끝) ALERT 1회 + saveArticle/applyAction 미호출', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 제목 줄은 채우되 본문 본체는 빈 문자열 — (끝) 마커가 없으므로 hasEndMarker 가 false 다.
+    act(() => result.current.setBodyMarkup('제목\n'));
+    await act(async () => { await result.current.send(); });
+    // (끝) 가드 ALERT 가 정확히 1회, 정확한 문구로 표시된다.
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(GUARD_ALERT);
+    // 저장/액션 경로에 진입하지 않는다 (call count 0).
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+    // 페이지 상태 변화 없음 (리셋/lifecycleStatus 미설정).
+    expect(result.current.lifecycleStatus).toBeNull();
+  });
+
+  // EC-4: 제목 비고 + 본문 (끝) 있음 → 제목 가드가 (끝) 가드보다 우선임을 본문에 마커가 있어도 잠근다.
+  // AC-SEND-GUARD-5(제목 비고 + 본문 (끝) 없음)와 구별되는 시나리오다.
+  it('AC-EDGE-TITLE-FIRST (EC-4 격상): 제목 비고 + 본문 (끝) 있음 송고 → 제목 가드만 발동 (actionError) + (끝) alert 미호출 + saveArticle/applyAction 미호출', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 첫 줄(제목)을 빈 문자열로 두고 본문은 (끝) 마커로 끝나게 한다 — 제목 가드가 먼저 return 한다.
+    act(() => result.current.setBodyMarkup('\n본문(끝)'));
+    await act(async () => { await result.current.send(); });
+    // 제목 가드만 발동 — inline actionError 로 표면화된다 (acceptance.md 명세 정확 일치).
+    expect(result.current.actionError).toBe('제목이 없어 송고/보류할 수 없습니다.');
+    // 본문에 (끝) 가 있어도 제목 가드에서 이미 return 하므로 (끝) ALERT(window.alert)는 호출되지 않는다.
+    expect(alertSpy).not.toHaveBeenCalled();
+    // 저장/액션 경로 미진입 (call count 0).
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+  });
 });

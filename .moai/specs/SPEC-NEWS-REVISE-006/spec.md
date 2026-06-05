@@ -1,7 +1,7 @@
 ---
 id: SPEC-NEWS-REVISE-006
-version: 0.1.0
-status: Plan
+version: 0.1.1
+status: completed
 created: 2026-06-05
 updated: 2026-06-05
 author: manager-spec
@@ -18,6 +18,7 @@ related_specs:
 
 ## HISTORY
 
+- 2026-06-05 (v0.1.1): 구현 완료 — 상태 Plan → completed. 3 REQ 충족: REQ-GUARD-ASSERT-HARDEN(AC-LOCKV-4 `SELECT *` 단언 교체 + AC-GRAY-3 주석 명확화 + AC-LOCK-4 어휘 정리), REQ-SEND-EDGE-LOCK(AC-EDGE-EMPTY-BODY / AC-EDGE-TITLE-FIRST Named AC 신설), REQ-DOC-FREEZE-EXCEPTION(본 spec.md §명문화 — v0.1.0 에 기수록). production 코드 0 변경(Δ-only 준수). 게이트: 백엔드 183/183 PASS, 웹 294/294 PASS, vite build 무경고. (sync)
 - 2026-06-05 (v0.1.0): 최초 작성. 두 평가의 *비차단(non-blocking) 권고 5건* 을 흡수하는 Brownfield Δ-only SPEC (004 의 production 코드 변경 0 선례 계승 — 테스트/주석/문서만). 3 REQ 로 한정:
   - REQ-GUARD-ASSERT-HARDEN (출처 A 권고 1+2+3): (1) AC-LOCKV-4 항진식 단언 보강 — `SELECT lockerUserId, lockerSessionId, lockedAt` 3컬럼 SELECT 라 `lockerPageId` 부재가 항상 PASS(방어력 0) → `SELECT *` 행의 `Object.keys(row)` 기준 정본 3컬럼 존재 + `lockerPageId` 부재 단언으로 교체(방어력 회복). (2) AC-GRAY-3 범위 명확화 — AC-GRAY-1 과 구조 검증 중복 → 역할을 "정밀화 이후 최소 회귀 확인" 으로 *주석* 명확화(PD1 기본값; 삭제·통합 거부). (3) AC-LOCK-4 주석 어휘 정리(forward-fix) — `lockerPageId(=sessionId)` 혼용 → `lockerSessionId(페이지 단위 식별자)` 단일 표기. 코드/단언 무변경.
   - REQ-SEND-EDGE-LOCK (출처 B 권고 4+5): (4) EC-3 Named AC 격상 — 빈 본문(빈 문자열) 송고 → `(끝)` ALERT 차단 전용 `it` 신설(`hasEndMarker('')===false` 로 구현 이미 정상; 테스트 잠금만). (5) EC-4 Named AC 격상 — 제목 비고 + 본문 `(끝)` 있음 → 제목 가드만 발동(`actionError`, `(끝)` alert 미호출) 전용 `it` 신설.
@@ -32,7 +33,7 @@ related_specs:
 |------|---|
 | SPEC ID | SPEC-NEWS-REVISE-006 |
 | 제목 | 두 평가의 비차단 권고 5건 흡수 — 가드 단언 보강 + 송고 엣지 Named AC 격상 + 동결 예외 명문화 |
-| 상태 | Plan |
+| 상태 | completed |
 | 생성일 | 2026-06-05 |
 | 라이프사이클 | spec-anchored (구현과 함께 유지) |
 | 관련 SPEC | SPEC-NEWS-REVISE-004, SPEC-NEWS-REVISE-005, SPEC-NEWS-REVISE-003, SPEC-NEWS-REVISE-002 |
@@ -57,7 +58,7 @@ SPEC-NEWS-REVISE-004(evaluator GAN 라운드 1 PASS 0.838) 와 SPEC-NEWS-REVISE-
 - **출처 B 권고 5 (EC-4 Named AC 격상)**: 005 §EC-4(라인 109)는 "제목 비고 본문 `(끝)` 있음 → 제목 가드 우선" 을 edge-case 불릿으로만 둔다. AC-SEND-GUARD-3 은 *제목 있음 + 본문 `(끝)` 있음* 정상 송고를, AC-SEND-GUARD-5 는 *제목 비고 + 본문 `(끝)` 없음* 을 커버한다. 개선: **제목 비고 + 본문 `(끝)` 있음** → 제목 가드만 발동(`actionError='제목이 없어 송고/보류할 수 없습니다.'`, `(끝)` alert 미호출, saveArticle/applyAction 미호출) 전용 케이스를 신설한다. 가드 순서(제목 → `(끝)`)가 *본문에 마커가 있어도* 성립함을 잠근다.
 - **출처 B 추가 (동결 예외 명문화)**: 005 acceptance.md AC-ALIGN-4(라인 78)는 "검증 의도 보존(단언 동결)" 을 규정한다. 한편 본문 입력 변경에 따른 *파생 기대값 강화*(예: 본문 강조 기대 문자열 `'하세요'`→`'하세요(끝)'`)는 입력이 결정론적으로 바뀜에 따라 따라오는 변경이라 동결과 표면적으로 충돌한다. 개선: 본 SPEC spec.md 에서 forward-fix 로 "본문 입력 변경의 *파생 기대값 변경(강화)* 은 동결 예외" 원칙을 정본화한다. 005 문서 자체는 수정하지 않는다(004 PD4 선례).
 
-본 SPEC 은 코드를 작성하지 않는다(Plan 단계 문서만). Run 단계에서도 production 코드 변경은 0 을 기본값으로 하며, 테스트 파일의 *단언 보강 / Named AC 격상 / 주석 정리* 와 본 SPEC spec.md 의 *문서 명문화* 만 수행한다 (004 의 Δ-only precedent 계승).
+본 SPEC 의 Plan 단계는 코드를 작성하지 않았다(문서만; v0.1.1 에서 Run 완료로 상태 전환). Run 단계에서도 production 코드 변경은 0 을 기본값으로 하며, 테스트 파일의 *단언 보강 / Named AC 격상 / 주석 정리* 와 본 SPEC spec.md 의 *문서 명문화* 만 수행한다 (004 의 Δ-only precedent 계승).
 
 ---
 
@@ -167,7 +168,7 @@ SPEC-NEWS-REVISE-004(evaluator GAN 라운드 1 PASS 0.838) 와 SPEC-NEWS-REVISE-
 ### 5.1 인코딩
 
 - 모든 문서/테스트 파일은 UTF-8 BOM 없음 (CLAUDE.md HARD 규칙).
-- 본 SPEC 의 3 파일(spec.md / plan.md / acceptance.md) 도 UTF-8 BOM 없음, 3종 version 0.1.0 일치 (버전 정합 게이트 통과).
+- 본 SPEC 의 3 파일(spec.md / plan.md / acceptance.md) 도 UTF-8 BOM 없음, 3종 version 일치 (버전 정합 게이트 통과; 현행 v0.1.1 — 구현 완료 동기화).
 
 ### 5.2 디자인 토큰
 

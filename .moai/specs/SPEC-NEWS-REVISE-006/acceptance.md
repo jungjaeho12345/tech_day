@@ -1,10 +1,15 @@
 ---
 id: SPEC-NEWS-REVISE-006
 artifact: acceptance
-version: 0.1.0
+version: 0.1.1
 created: 2026-06-05
 updated: 2026-06-05
 ---
+
+## HISTORY
+
+- 2026-06-05 (v0.1.1): 구현 완료 동기화 — 전 AC GREEN 확인 (백엔드 183/183, 웹 294/294, build 무경고). 내용 무변경. (sync)
+
 
 # Acceptance — SPEC-NEWS-REVISE-006
 

@@ -386,6 +386,12 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
 
   // SPEC-NEWS-REVISE-004 AC-GRAY-3: gray-line 정밀화가 003 AC-EMPH-4 의 나머지 구조 단언을 회귀시키지 않음을
   // production 출력(buildArticleDetailHtml)에 대해 재확인한다 — 제목/본문 형제 섹션 + 12 공통정보 dt label.
+  //
+  // [SPEC-NEWS-REVISE-006 AC-HARDEN-2 역할 명확화] 이 케이스는 AC-GRAY-1 과 구조 검증이 의도적으로
+  // 중복된다. 역할은 "gray-line 토큰 정밀화(AC-GRAY-1) 이후 분리 구조(제목/본문 형제 + 12 dt label)가
+  // 회귀하지 않았음을 확인하는 최소 회귀 가드" 전용이다. 실질 gray-line 가드는 AC-GRAY-1(정확 토큰
+  // #DDE3EC 수용 + 오변경 거부)이 담당하며, 본 케이스는 그 정밀화의 부수효과로 구조가 깨지지 않았음만
+  // 잠근다. PD1 기본값에 따라 단언 코드는 무변경(주석만 명확화)이며 삭제/통합하지 않는다.
   it('AC-GRAY-3: 정밀화 후에도 제목/본문 섹션 각 1개 형제 + 12 공통정보 dt label 구조가 회귀 없이 유지된다', () => {
     const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
     // aria-label="제목" / "본문" 섹션이 정확히 1개씩이며 동일 부모의 형제다.
