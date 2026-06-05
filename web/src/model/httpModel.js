@@ -12,6 +12,36 @@ import { assertModel } from './contract.js';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3001';
 
+// 세션 영속화 키 — sessionStorage 충돌 방지를 위해 'tech_day.' prefix를 쓴다.
+// 새로고침(F5)에는 세션 유지, 탭을 닫으면 만료되도록 sessionStorage를 선택했다.
+const SESSION_ID_KEY = 'tech_day.sessionId';
+
+// SSR/비브라우저/jsdom-없음 안전 가드: sessionStorage가 없으면 메모리에만 보관한다.
+function hasSessionStorage() {
+  return typeof sessionStorage !== 'undefined' && sessionStorage !== null;
+}
+
+/** sessionStorage에서 영속된 세션 id를 복원한다(없거나 접근 실패 시 null). */
+function loadPersistedSessionId() {
+  if (!hasSessionStorage()) return null;
+  try {
+    return sessionStorage.getItem(SESSION_ID_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 세션 id를 sessionStorage에 저장(null이면 제거). 접근 실패는 무시(메모리만). */
+function persistSessionId(id) {
+  if (!hasSessionStorage()) return;
+  try {
+    if (id) sessionStorage.setItem(SESSION_ID_KEY, id);
+    else sessionStorage.removeItem(SESSION_ID_KEY);
+  } catch {
+    /* private mode 등 접근 실패 — 메모리 보관으로 degrade */
+  }
+}
+
 /** Resolve the API base URL: explicit opt > Vite env > hardcoded default. */
 function resolveBaseUrl(baseUrl) {
   if (baseUrl) return baseUrl;
@@ -29,7 +59,8 @@ export function createHttpModel({ baseUrl } = {}) {
   const base = resolveBaseUrl(baseUrl);
 
   // Transport state: the server-issued session id, replayed on every request and cleared on logout.
-  let sessionId = null;
+  // 부팅 시 sessionStorage에서 복원해 새로고침 후에도 보호 라우트 API 호출이 인증된 상태로 이어진다.
+  let sessionId = loadPersistedSessionId();
 
   /** Build request headers, attaching x-session-id only when a session is active. */
   function headers() {
@@ -63,13 +94,23 @@ export function createHttpModel({ baseUrl } = {}) {
     }
   }
 
-  /** Encode a flat filters object into a query string (empty -> ''). */
+  /** Encode a flat filters object into a query string (empty -> '').
+   * Array values are serialized as repeated key params: status=['RDS','DDH'] → status=RDS&status=DDH.
+   * undefined/null array elements are skipped. Scalar values use a single append.
+   */
   function toQueryString(filters) {
     const params = new URLSearchParams();
     if (filters && typeof filters === 'object') {
       for (const [key, value] of Object.entries(filters)) {
         if (value === undefined || value === null) continue;
-        params.append(key, String(value));
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item === undefined || item === null) continue;
+            params.append(key, String(item));
+          }
+        } else {
+          params.append(key, String(value));
+        }
       }
     }
     const qs = params.toString();
@@ -84,6 +125,7 @@ export function createHttpModel({ baseUrl } = {}) {
       if (result?.ok) {
         // Capture transport state; DROP sessionId from the returned object to match the contract.
         sessionId = result.sessionId ?? null;
+        persistSessionId(sessionId); // 새로고침 유지를 위해 sessionStorage에도 영속화.
         return { ok: true, user: result.user };
       }
       return { ok: false };
@@ -92,6 +134,7 @@ export function createHttpModel({ baseUrl } = {}) {
     async logout() {
       const result = await sendJson('POST', '/api/logout', {}, { ok: true });
       sessionId = null; // Clear locally regardless of the server response.
+      persistSessionId(null); // sessionStorage의 영속 세션도 제거.
       return { ok: result?.ok ?? true };
     },
 
@@ -142,26 +185,34 @@ export function createHttpModel({ baseUrl } = {}) {
       return sendJson('PUT', `/api/articles/${encodeURIComponent(articleId)}`, dto, { ok: false });
     },
 
-    // --- Edit lock (SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK, D2-4 = C) -----------
-    // NFR-SEC: userId is NOT sent — the server derives it from the validated x-session-id session.
-    // Only the page-scoped sessionId is sent so the server can distinguish same-user-different-page
-    // attempts (D2-5 = A strict: rejected). The sessionId here is a CLIENT-generated UUID per editor
-    // page (NOT the auth session id) so two tabs of the same user are still mutually exclusive.
-    async acquireEditLock(articleId, { sessionId } = {}) {
+    // --- Edit lock (SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK) ----------------------
+    // holder IS the login session: the server derives it from the validated x-session-id header
+    // (injected by headers()), so both calls carry NO body and take ONLY articleId.
+    //   lockArticle   -> POST /api/articles/:id/lock    { ok:true, article? } | { ok:false, reason }
+    //   unlockArticle -> POST /api/articles/:id/unlock  { ok:true, released }  (keepalive for beforeunload)
+    async lockArticle(articleId) {
       return sendJson(
         'POST',
         `/api/articles/${encodeURIComponent(articleId)}/lock`,
-        { sessionId },
+        undefined,
         { ok: false, reason: 'network-error' },
       );
     },
-    async releaseEditLock(articleId, { sessionId } = {}) {
-      return sendJson(
-        'DELETE',
-        `/api/articles/${encodeURIComponent(articleId)}/lock`,
-        { sessionId },
-        { ok: true }, // idempotent default — release failures must not block beforeunload
-      );
+    async unlockArticle(articleId) {
+      // keepalive:true so the release still flushes when fired from a beforeunload handler during page
+      // teardown (the request must outlive the unloading document). Network failures degrade to
+      // { ok:true, released:false } — release must never block unload.
+      try {
+        const res = await fetch(`${base}/api/articles/${encodeURIComponent(articleId)}/unlock`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({}),
+          keepalive: true,
+        });
+        return await res.json();
+      } catch {
+        return { ok: true, released: false };
+      }
     },
 
     // --- Realtime (SSE, DP-F2) ----------------------------------------------

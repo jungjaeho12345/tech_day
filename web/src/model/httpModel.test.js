@@ -122,45 +122,47 @@ describe('createHttpModel', () => {
     expect(init.method).toBe('POST');
   });
 
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK transport
-  it('acquireEditLock POSTs to /api/articles/:id/lock with sessionId in the body', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK transport — holder는 로그인 세션(x-session-id 헤더)이므로 body 없음.
+  it('lockArticle POSTs to /api/articles/:id/lock with NO sessionId body (session holder)', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true, article: { articleId: 'A-100' } }));
     const model = createHttpModel();
 
-    const result = await model.acquireEditLock('A-100', { sessionId: 'page-A' });
-    expect(result).toEqual({ ok: true });
+    const result = await model.lockArticle('A-100');
+    expect(result).toEqual({ ok: true, article: { articleId: 'A-100' } });
 
     const [url, init] = lastCall();
     expect(url).toBe(`${BASE}/api/articles/A-100/lock`);
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ sessionId: 'page-A' });
+    // body carries no page-scoped sessionId — the server derives the holder from x-session-id.
+    expect(JSON.parse(init.body)).toEqual({});
   });
 
-  it('acquireEditLock surfaces { ok:false, reason } from the backend on conflict', async () => {
+  it('lockArticle surfaces { ok:false, reason } from the backend on conflict', async () => {
     global.fetch.mockResolvedValueOnce(jsonResponse({ ok: false, reason: 'locked' }));
     const model = createHttpModel();
-    const result = await model.acquireEditLock('A-100', { sessionId: 'page-B' });
+    const result = await model.lockArticle('A-100');
     expect(result).toEqual({ ok: false, reason: 'locked' });
   });
 
-  it('releaseEditLock DELETEs /api/articles/:id/lock with sessionId in the body', async () => {
-    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+  it('unlockArticle POSTs to /api/articles/:id/unlock with keepalive (beforeunload safe)', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true, released: true }));
     const model = createHttpModel();
 
-    const result = await model.releaseEditLock('A-100', { sessionId: 'page-A' });
-    expect(result).toEqual({ ok: true });
+    const result = await model.unlockArticle('A-100');
+    expect(result).toEqual({ ok: true, released: true });
 
     const [url, init] = lastCall();
-    expect(url).toBe(`${BASE}/api/articles/A-100/lock`);
-    expect(init.method).toBe('DELETE');
-    expect(JSON.parse(init.body)).toEqual({ sessionId: 'page-A' });
+    expect(url).toBe(`${BASE}/api/articles/A-100/unlock`);
+    expect(init.method).toBe('POST');
+    // keepalive guarantees the release flushes even while the document is unloading.
+    expect(init.keepalive).toBe(true);
   });
 
-  it('releaseEditLock degrades to { ok:true } on network failure (idempotent — beforeunload safe)', async () => {
+  it('unlockArticle degrades to { ok:true, released:false } on network failure (idempotent)', async () => {
     global.fetch.mockRejectedValueOnce(new Error('network down'));
     const model = createHttpModel();
-    const result = await model.releaseEditLock('A-100', { sessionId: 'page-A' });
-    expect(result).toEqual({ ok: true });
+    const result = await model.unlockArticle('A-100');
+    expect(result).toEqual({ ok: true, released: false });
   });
 
   it('saveArticle PUTs to /api/articles/:id for an existing id', async () => {
@@ -240,6 +242,97 @@ describe('createHttpModel', () => {
     await model.queryArticles({});
     const [url] = lastCall();
     expect(url).toBe('http://example.test:9000/api/articles');
+  });
+
+  // 새로고침(F5) 유지: sessionId를 sessionStorage('tech_day.sessionId')에 영속화/복원/삭제한다.
+  // httpModel.js는 loadPersistedSessionId(부트 복원)/persistSessionId(login 저장·logout 삭제)를
+  // 이미 구현한다. jsdom은 sessionStorage를 제공하므로 직접 단언한다(격리는 setup.js afterEach가 clear).
+  describe('sessionId 영속화 (sessionStorage)', () => {
+    const SESSION_ID_KEY = 'tech_day.sessionId';
+
+    it('login 성공 시 sessionId를 sessionStorage에 저장한다', async () => {
+      global.fetch.mockResolvedValueOnce(
+        jsonResponse({ ok: true, user: { userId: 'r1' }, sessionId: 'sess-persist' }),
+      );
+      const model = createHttpModel();
+      await model.login('r1', 'pw');
+      expect(sessionStorage.getItem(SESSION_ID_KEY)).toBe('sess-persist');
+    });
+
+    it('부팅 시 sessionStorage의 sessionId를 복원해 x-session-id로 재생한다 (새로고침 복원)', async () => {
+      // 새로고침 직후처럼 sessionStorage에 세션이 남아있는 상태에서 새 모델 인스턴스를 만든다.
+      sessionStorage.setItem(SESSION_ID_KEY, 'sess-restored');
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ department: 'Politics' });
+      const [, init] = lastCall();
+      expect(init.headers['x-session-id']).toBe('sess-restored');
+    });
+
+    it('logout 시 sessionStorage의 sessionId를 제거한다', async () => {
+      sessionStorage.setItem(SESSION_ID_KEY, 'sess-bye');
+      global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true })); // logout
+      const model = createHttpModel();
+
+      await model.logout();
+      expect(sessionStorage.getItem(SESSION_ID_KEY)).toBeNull();
+    });
+
+    it('login 실패 시 sessionStorage에 sessionId를 저장하지 않는다', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse({ ok: false }));
+      const model = createHttpModel();
+      await model.login('bad', 'creds');
+      expect(sessionStorage.getItem(SESSION_ID_KEY)).toBeNull();
+    });
+  });
+
+  describe('toQueryString array serialization', () => {
+    it('serializes a status array as repeated params: status=RDS&status=DDH', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ status: ['RDS', 'DDH'] });
+      const [url] = lastCall();
+      expect(url).toBe(`${BASE}/api/articles?status=RDS&status=DDH`);
+    });
+
+    it('serializes author+status array as AND repeated params', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ author: 'u1', status: ['RRK', 'RDS'] });
+      const [url] = lastCall();
+      // URLSearchParams preserves insertion order: author first, then repeated status
+      expect(url).toBe(`${BASE}/api/articles?author=u1&status=RRK&status=RDS`);
+    });
+
+    it('serializes a scalar status as a single param (regression)', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ status: 'DPS' });
+      const [url] = lastCall();
+      expect(url).toBe(`${BASE}/api/articles?status=DPS`);
+    });
+
+    it('skips null/undefined array elements', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ status: ['RDS', null, undefined, 'DDH'] });
+      const [url] = lastCall();
+      expect(url).toBe(`${BASE}/api/articles?status=RDS&status=DDH`);
+    });
+
+    it('empty array produces no query param for that key', async () => {
+      global.fetch.mockResolvedValueOnce(jsonResponse([]));
+      const model = createHttpModel();
+
+      await model.queryArticles({ status: [], department: 'Politics' });
+      const [url] = lastCall();
+      expect(url).toBe(`${BASE}/api/articles?department=Politics`);
+    });
   });
 
   describe('subscribe (SSE)', () => {

@@ -3,18 +3,23 @@
 // unchanged when no editArticleId is supplied.
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { ModelContext } from '../app/context.js';
+import { ModelContext, SessionContext } from '../app/context.js';
+import { ROUTES } from '../app/routing.js';
 import { createFakeModel } from '../test/fakeModel.js';
 import { useWriteController } from './useWriteController.js';
 import { contentToMarkup, contentFromText } from '../model/editorContent.js';
 
 const USER = { userId: 'd1', name: 'Desk', role: 'D', department: 'Politics' };
 
-function renderCtrl(model, options) {
+function renderCtrl(model, options, session = {}) {
+  const sessionValue = { navigate: vi.fn(), registerEditLockRelease: vi.fn(), ...session };
   const wrapper = ({ children }) => (
-    <ModelContext.Provider value={model}>{children}</ModelContext.Provider>
+    <ModelContext.Provider value={model}>
+      <SessionContext.Provider value={sessionValue}>{children}</SessionContext.Provider>
+    </ModelContext.Provider>
   );
-  return renderHook(() => useWriteController(USER, options), { wrapper });
+  const hook = renderHook(() => useWriteController(USER, options), { wrapper });
+  return { ...hook, sessionValue };
 }
 
 // Build a realistic markupVersion string for the loaded row (versioned JSON from the editor model).
@@ -87,81 +92,41 @@ describe('useWriteController edit-load (Feature 3)', () => {
     expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
   });
 
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — frontend lock integration (AC-EDIT-LOCK-1/2/4/5).
-  describe('edit lock integration (AC-EDIT-LOCK-1/2/4/5)', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lock-before-load + 409 차단(목록 복귀). holder는 로그인 세션이며
+  // 상세 잠금 생애주기(해제 4지점)는 useWriteController.lock.test.jsx 가 담당한다.
+  describe('edit lock integration (SPEC-EDIT-LOCK-001)', () => {
+    it('lock-before-load: editArticleId 마운트 시 lockArticle(id)가 queryArticles 보다 먼저 호출된다', async () => {
+      const order = [];
+      const lockArticle = vi.fn(async () => { order.push('lock'); return { ok: true }; });
+      const queryArticles = vi.fn(async () => { order.push('query'); return [{ articleId: 'A-LOCK-1', markupVersion: markupFor('본문'), author: 'a' }]; });
+      renderCtrl(createFakeModel({ lockArticle, queryArticles }), { editArticleId: 'A-LOCK-1' });
+      await waitFor(() => expect(lockArticle).toHaveBeenCalledWith('A-LOCK-1'));
+      await waitFor(() => expect(queryArticles).toHaveBeenCalledWith({ articleId: 'A-LOCK-1' }));
+      expect(order).toEqual(['lock', 'query']);
     });
 
-    it('AC-EDIT-LOCK-1: editArticleId 마운트 시 acquireEditLock(articleId, { sessionId })가 호출된다', async () => {
-      const acquireEditLock = vi.fn().mockResolvedValue({ ok: true });
-      const releaseEditLock = vi.fn().mockResolvedValue({ ok: true });
-      const row = { articleId: 'A-LOCK-1', markupVersion: markupFor('본문'), author: 'a' };
-      const queryArticles = vi.fn().mockResolvedValue([row]);
-      renderCtrl(
-        createFakeModel({ queryArticles, acquireEditLock, releaseEditLock }),
-        { editArticleId: 'A-LOCK-1' },
-      );
-      await waitFor(() => expect(acquireEditLock).toHaveBeenCalled());
-      const [callArticleId, opts] = acquireEditLock.mock.calls[0];
-      expect(callArticleId).toBe('A-LOCK-1');
-      expect(opts).toEqual(expect.objectContaining({ sessionId: expect.any(String) }));
-      // page-scoped sessionId은 비어 있지 않다.
-      expect(opts.sessionId.length).toBeGreaterThan(0);
-    });
-
-    it('AC-EDIT-LOCK-2: acquireEditLock이 { ok:false, reason:"locked" } 반환 → lockError state 설정', async () => {
-      const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
-      const releaseEditLock = vi.fn().mockResolvedValue({ ok: true });
-      const row = { articleId: 'A-LOCK-2', markupVersion: markupFor('본문'), author: 'a' };
-      const queryArticles = vi.fn().mockResolvedValue([row]);
-      const { result } = renderCtrl(
-        createFakeModel({ queryArticles, acquireEditLock, releaseEditLock }),
+    it('409(locked): lockError 문자열 설정 + queryArticles 미호출 + 목록(VIEW) 복귀', async () => {
+      const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+      const queryArticles = vi.fn();
+      const { result, sessionValue } = renderCtrl(
+        createFakeModel({ lockArticle, queryArticles }),
         { editArticleId: 'A-LOCK-2' },
       );
-      await waitFor(() => expect(result.current.lockError).toBeTruthy());
-      // locked는 명시적 distinguishable reason이 노출되어야 한다.
-      expect(result.current.lockError).toEqual(expect.objectContaining({ reason: 'locked' }));
+      await waitFor(() => expect(result.current.lockError).toBe('다른 사용자가 편집 중입니다.'));
+      expect(queryArticles).not.toHaveBeenCalled();
+      expect(sessionValue.navigate).toHaveBeenCalledWith(ROUTES.VIEW);
     });
 
-    it('AC-EDIT-LOCK-4: beforeunload + visibilitychange:hidden 둘 다 navigator.sendBeacon으로 락 해제', async () => {
-      const sendBeacon = vi.fn().mockReturnValue(true);
-      vi.stubGlobal('navigator', { ...globalThis.navigator, sendBeacon });
-      const acquireEditLock = vi.fn().mockResolvedValue({ ok: true });
-      const releaseEditLock = vi.fn().mockResolvedValue({ ok: true });
-      const row = { articleId: 'A-LOCK-4', markupVersion: markupFor('본문'), author: 'a' };
-      const queryArticles = vi.fn().mockResolvedValue([row]);
-      renderCtrl(
-        createFakeModel({ queryArticles, acquireEditLock, releaseEditLock }),
-        { editArticleId: 'A-LOCK-4' },
-      );
-      await waitFor(() => expect(acquireEditLock).toHaveBeenCalled());
-      // 채널 1 — beforeunload
-      act(() => { window.dispatchEvent(new Event('beforeunload')); });
-      // 채널 2 — visibilitychange (hidden)
-      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
-      act(() => { document.dispatchEvent(new Event('visibilitychange')); });
-      // sendBeacon은 두 채널 모두에서 호출되어야 한다.
-      expect(sendBeacon).toHaveBeenCalledTimes(2);
-      // 호출 URL이 락 해제 endpoint를 가리킨다.
-      for (const call of sendBeacon.mock.calls) {
-        expect(call[0]).toContain('/api/articles/A-LOCK-4/lock');
-      }
-    });
-
-    it('AC-EDIT-LOCK-2: lockError 보유 시 submitAction은 ALERT만 띄우고 모델 호출 없음', async () => {
-      const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+    it('lockError 보유 시 submitAction은 어떤 transport 호출도 하지 않는다', async () => {
+      const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
       const saveArticle = vi.fn();
       const applyAction = vi.fn();
-      const row = { articleId: 'A-LOCK-2b', markupVersion: markupFor('본문'), author: 'a' };
-      const queryArticles = vi.fn().mockResolvedValue([row]);
       const { result } = renderCtrl(
-        createFakeModel({ queryArticles, acquireEditLock, saveArticle, applyAction }),
+        createFakeModel({ lockArticle, saveArticle, applyAction }),
         { editArticleId: 'A-LOCK-2b' },
       );
       await waitFor(() => expect(result.current.lockError).toBeTruthy());
       await act(async () => { await result.current.send(); });
-      // 락 거부 상태에선 어떤 transport 호출도 발생하지 않는다.
       expect(saveArticle).not.toHaveBeenCalled();
       expect(applyAction).not.toHaveBeenCalled();
     });

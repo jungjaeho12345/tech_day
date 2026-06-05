@@ -32,12 +32,14 @@ export function sortByCreatedAtDesc(rows) {
 function filterForMenu(menu, user, selectedDepartment) {
   switch (menu) {
     case '부서별 작성':
+      // All statuses for the logged-in user's department (no status filter).
       return { department: user.department };
     case '개인별 수정':
-      return { author: user.userId };
+      // Articles authored by the logged-in user with status RRK or RDS only.
+      return { author: user.userId, status: ['RRK', 'RDS'] };
     case '데스크 미송고':
-      // RDS-state articles only (news.md: "데스크 미송고 페이지는 RDS기사만 보여준다"; REQ-FE-VIEW-008).
-      return { status: 'RDS' };
+      // Status RDS or DDH articles only (news.md: "상태값이 RDS 또는 DDH 인 기사만").
+      return { status: ['RDS', 'DDH'] };
     case '부서별 송고':
       // DPS-only (news.md: "부서별 송고페이지는 DPS기사만 조회"). Query only after a
       // department is selected and 조회 is pressed (handled by caller).

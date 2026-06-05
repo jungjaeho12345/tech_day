@@ -11,6 +11,8 @@ const QUERY_FILTERS = Object.freeze({
   articleId: 'articleId',
   author: 'author',
   sender: 'sender',
+  status: 'status',
+  department: 'department',
 });
 
 /**
@@ -45,14 +47,29 @@ export function createArticleModel(db) {
       return db.prepare('SELECT * FROM Contents WHERE articleId = ?').get(articleId);
     },
 
-    /** Query Contents by an AND-combination of the supported metadata filters. */
+    /** Query Contents by an AND-combination of the supported metadata filters.
+     * Array values use IN (?,?,...) — each element is bound individually.
+     * Empty arrays produce a always-false clause (0 rows) safely via parameterized SQL.
+     * Scalar values use the existing column = ? path.
+     */
     query(filters = {}) {
       const clauses = [];
       const values = [];
       for (const [key, column] of Object.entries(QUERY_FILTERS)) {
-        if (filters[key] !== undefined && filters[key] !== null) {
+        const val = filters[key];
+        if (val === undefined || val === null) continue;
+        if (Array.isArray(val)) {
+          if (val.length === 0) {
+            // Empty array: match nothing — inject a reliably false clause without values.
+            clauses.push('1 = 0');
+          } else {
+            const placeholders = val.map(() => '?').join(', ');
+            clauses.push(`${column} IN (${placeholders})`);
+            values.push(...val);
+          }
+        } else {
           clauses.push(`${column} = ?`);
-          values.push(filters[key]);
+          values.push(val);
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';

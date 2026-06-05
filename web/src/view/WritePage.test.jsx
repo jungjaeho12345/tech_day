@@ -5,7 +5,7 @@ import { WritePage } from './WritePage.jsx';
 import { ModelContext } from '../app/context.js';
 import { createFakeModel } from '../test/fakeModel.js';
 import { contentToMarkup, contentFromText } from '../model/editorContent.js';
-import { setCaretCharOffset, findEmbedIndexBeforeCaret } from './editorCaret.js';
+import { setCaretCharOffset, findEmbedIndexBeforeCaret, getBodyTextFromDom } from './editorCaret.js';
 
 const USER = { userId: 'd1', name: 'Desk', role: 'D', department: 'Politics' };
 // Reporter (role R) sees 송고/보류/KILL on an RDS article; editor (role Z) sees none of the three.
@@ -1101,6 +1101,40 @@ describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
     expect(embeds.length).toBe(1);
     expect(findEmbedIndexBeforeCaret(body)).toBe(0);
   });
+
+  // SPEC-NEWS-REVISE-001 (첫 줄 점프 회귀) — 본문 끝에 임베드(트레일링)가 오면 Chrome 은
+  // contenteditable=false 스팬 뒤에 편집 가능한 캐럿 위치가 없어, 다음 입력이 문서 첫 줄로 튄다.
+  // paintEditor 는 트레일링 임베드 뒤에 빈 편집 라인(<br data-embed-trailing-br>)을 붙여 캐럿이
+  // 임베드 바로 뒤 편집 가능한 자리에 놓이도록 보장한다. 이 <br> 은 0 글자라 bodyText/offset 계산 불변.
+  it('AC-EMB-TRAILING-BR: 본문 끝 임베드 삽입 시 캐럿 정착용 트레일링 <br> 가 임베드 뒤에 렌더된다', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'tail', url: 'https://yt/t', thumbnailUrl: 'https://th/t' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '본문끝');
+    // 캐럿을 본문 맨 끝(offset 3)에 두어 임베드가 트레일링으로 append 되게 한다.
+    setCaretCharOffset(body, 3);
+    fireEvent.mouseUp(body);
+
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 tail' }));
+
+    const embed = body.querySelector('[data-embed-index]');
+    expect(embed).not.toBeNull();
+    // 임베드가 마지막 의미 노드일 때 그 바로 뒤에 트레일링 <br> 가 존재한다 (캐럿 편집 가능 자리 확보).
+    const trailingBr = body.querySelector('br[data-embed-trailing-br]');
+    expect(trailingBr).not.toBeNull();
+    expect(embed.nextElementSibling).toBe(trailingBr);
+    // 캐럿은 여전히 임베드 바로 뒤로 보고된다 (findEmbedIndexBeforeCaret).
+    expect(findEmbedIndexBeforeCaret(body)).toBe(0);
+    // 트레일링 <br> 은 bodyText 에 0 글자만 기여한다 (모델 정합 불변).
+    expect(getBodyTextFromDom(body)).toBe('본문끝');
+  });
 });
 
 // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D — Ctrl+D 라인 삭제 React 통합.
@@ -1351,8 +1385,8 @@ describe('WritePage edit lock rejection UI (AC-EDIT-LOCK-2, NFR-A11Y)', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const row = { articleId: 'A-LOCKED', markupVersion: contentToMarkup(contentFromText('편집중')), author: '편집기자' };
     const queryArticles = vi.fn().mockResolvedValue([row]);
-    const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
-    renderWrite(createFakeModel({ queryArticles, acquireEditLock }));
+    const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+    renderWrite(createFakeModel({ queryArticles, lockArticle }));
 
     // ALERT가 호출된다 — "다른 페이지/세션" 메시지를 포함한다.
     await screen.findByRole('alert');
@@ -1368,8 +1402,8 @@ describe('WritePage edit lock rejection UI (AC-EDIT-LOCK-2, NFR-A11Y)', () => {
     vi.spyOn(window, 'alert').mockImplementation(() => {});
     const row = { articleId: 'A-LOCKED2', markupVersion: contentToMarkup(contentFromText('잠김')), author: '편집기자' };
     const queryArticles = vi.fn().mockResolvedValue([row]);
-    const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
-    renderWrite(createFakeModel({ queryArticles, acquireEditLock }));
+    const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+    renderWrite(createFakeModel({ queryArticles, lockArticle }));
     await screen.findByRole('alert');
     const body = screen.getByTestId('editor-body');
     // contentEditable=false 또는 readonly 속성으로 비활성화 — 어느 형태든 입력 차단되어야 한다.

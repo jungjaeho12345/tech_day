@@ -47,7 +47,7 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     await act(async () => {}); // flush the initial menu query
   });
 
-  it('AC-7.1: 부서별 작성 queries by the department', async () => {
+  it('AC-7.1: 부서별 작성 queries by the department only (no status filter)', async () => {
     const user = userEvent.setup();
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-1', title: 'dep art' }]);
     renderView(createFakeModel({ queryArticles }));
@@ -77,37 +77,38 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     expect(call).toEqual({ department: 'Economy', status: 'DPS' });
   });
 
-  it('AC-7.3: 개인별 수정 filters by current user as author', async () => {
+  it('AC-7.3: 개인별 수정 filters by current user as author with status RRK or RDS', async () => {
     const user = userEvent.setup();
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-3', title: 'mine' }]);
     renderView(createFakeModel({ queryArticles }));
     await user.click(screen.getByRole('button', { name: '개인별 수정' }));
-    expect(queryArticles).toHaveBeenCalledWith(expect.objectContaining({ author: 'd1' }));
+    const call = queryArticles.mock.calls.at(-1)[0];
+    expect(call).toEqual({ author: 'd1', status: ['RRK', 'RDS'] });
     expect(await screen.findByText('mine')).toBeInTheDocument();
   });
 
-  it('AC-7.4: 데스크 미송고 shows RDS-state articles only', async () => {
+  it('AC-7.4: 데스크 미송고 shows RDS or DDH status articles only', async () => {
     const user = userEvent.setup();
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-4', title: 'unsent', status: 'RDS' }]);
     renderView(createFakeModel({ queryArticles }));
     await user.click(screen.getByRole('button', { name: '데스크 미송고' }));
     const call = queryArticles.mock.calls.at(-1)[0];
-    expect(call).toEqual({ status: 'RDS' });
+    expect(call).toEqual({ status: ['RDS', 'DDH'] });
     expect(await screen.findByText('unsent')).toBeInTheDocument();
   });
 });
 
 describe('ViewPage default menu = 데스크 미송고 (news.md 기사 조회페이지)', () => {
-  it('on load the active menu is 데스크 미송고 and it queries with { status: RDS }', async () => {
+  it('on load the active menu is 데스크 미송고 and it queries with { status: [RDS, DDH] }', async () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-0', title: 'desk unsent', status: 'RDS' }]);
     renderView(createFakeModel({ queryArticles }));
     // The 데스크 미송고 menu button is active on load.
     const active = await screen.findByRole('button', { name: '데스크 미송고' });
     expect(active).toHaveAttribute('aria-pressed', 'true');
-    // And it auto-queries the RDS-state-only filter without any interaction.
+    // And it auto-queries the RDS/DDH-state filter without any interaction.
     await act(async () => {});
     const call = queryArticles.mock.calls.at(-1)[0];
-    expect(call).toEqual({ status: 'RDS' });
+    expect(call).toEqual({ status: ['RDS', 'DDH'] });
     expect(await screen.findByText('desk unsent')).toBeInTheDocument();
   });
 });
