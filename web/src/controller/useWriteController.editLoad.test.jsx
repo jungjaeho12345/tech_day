@@ -54,7 +54,7 @@ describe('useWriteController edit-load (Feature 3)', () => {
   });
 
   it('saving an edited article uses the loaded id (update/PUT path), not A-DRAFT', async () => {
-    const row = { articleId: 'A-200', markupVersion: markupFor('기존 본문'), author: '원작성자' };
+    const row = { articleId: 'A-200', markupVersion: markupFor('기존 본문(끝)'), author: '원작성자' };
     const queryArticles = vi.fn().mockResolvedValue([row]);
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-200' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -82,7 +82,7 @@ describe('useWriteController edit-load (Feature 3)', () => {
     // No edit-load query is fired.
     expect(queryArticles).not.toHaveBeenCalled();
     // Blank editor + a save uses the A-DRAFT id (POST/create path in the model).
-    act(() => result.current.setBodyMarkup('새 본문'));
+    act(() => result.current.setBodyMarkup('새 본문(끝)'));
     await act(async () => { await result.current.send(); });
     expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
   });
@@ -168,7 +168,7 @@ describe('useWriteController edit-load (Feature 3)', () => {
   });
 
   it('after a successful action the edit id is cleared (articleId back to A-DRAFT) so a new save creates', async () => {
-    const row = { articleId: 'A-300', markupVersion: markupFor('reset me'), author: 'A' };
+    const row = { articleId: 'A-300', markupVersion: markupFor('reset me(끝)'), author: 'A' };
     const queryArticles = vi.fn().mockResolvedValue([row]);
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-300' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -185,7 +185,7 @@ describe('useWriteController edit-load (Feature 3)', () => {
 
     // A subsequent send now targets A-DRAFT (create), not the old A-300.
     saveArticle.mockClear();
-    act(() => result.current.setBodyMarkup('a brand new article'));
+    act(() => result.current.setBodyMarkup('a brand new article(끝)'));
     await act(async () => { await result.current.send(); });
     expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
   });

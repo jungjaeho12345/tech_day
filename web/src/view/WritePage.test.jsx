@@ -221,7 +221,7 @@ describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     renderWrite(createFakeModel({ saveArticle, applyAction }));
-    await user.type(screen.getByTestId('editor-body'), 'hello body');
+    await user.type(screen.getByTestId('editor-body'), 'hello body(끝)');
     // 작성자 is now pre-filled with the logged-in user name (USER.name='Desk') per news.md 공통정보;
     // it is sent in the DTO without retyping.
     await user.click(screen.getByRole('button', { name: '송고' }));
@@ -251,7 +251,7 @@ describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
     const applyAction = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-transition' });
     renderWrite(createFakeModel({ applyAction }));
     // Provide a title so the title-check passes and the request reaches the (rejecting) backend.
-    await user.type(screen.getByTestId('editor-body'), '거부 제목');
+    await user.type(screen.getByTestId('editor-body'), '거부 제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/거부|invalid/i);
     expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
@@ -287,7 +287,7 @@ describe('WritePage 송고/보류 title requirement (news.md: 제목이 없으�
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     renderWrite(createFakeModel({ saveArticle, applyAction }));
-    await user.type(screen.getByTestId('editor-body'), '있는 제목');
+    await user.type(screen.getByTestId('editor-body'), '있는 제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle).toHaveBeenCalled();
     expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
@@ -467,7 +467,7 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     renderWrite(createFakeModel({ applyAction }), EDITOR_Z);
     // send/hold는 제목(에디터 첫 라인)이 비어있으면 client-side에서 차단되므로 제목 입력 필요.
-    await user.type(screen.getByTestId('editor-body'), 'Z테스트제목');
+    await user.type(screen.getByTestId('editor-body'), 'Z테스트제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'send');
     expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DPS');
@@ -514,7 +514,7 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
     renderWrite(createFakeModel({ searchMedia, applyAction }));
 
     // Author a body, an embed, and a common field.
-    await user.type(screen.getByTestId('editor-body'), 'draft body');
+    await user.type(screen.getByTestId('editor-body'), 'draft body(끝)');
     await user.click(screen.getByRole('tab', { name: '이미지' }));
     await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'a');
     await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
@@ -558,7 +558,7 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
     const applyAction = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-transition' });
     renderWrite(createFakeModel({ applyAction }));
     // Title present so the request reaches the (rejecting) backend rather than being blocked locally.
-    await user.type(screen.getByTestId('editor-body'), '거부될 제목');
+    await user.type(screen.getByTestId('editor-body'), '거부될 제목(끝)');
     // 작성자 is pre-filled; overwrite it so we can assert the edited value is preserved on rejection.
     const authorInput = within(screen.getByTestId('panel-공통정보')).getByLabelText('작성자');
     await user.clear(authorInput);
@@ -689,7 +689,7 @@ describe('WritePage Enter inserts a model "\\n" (caret-jump bug fix)', () => {
     const body = screen.getByTestId('editor-body');
     await user.type(body, '제목');
     fireEnter(body);
-    await user.type(body, '본문');
+    await user.type(body, '본문(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle).toHaveBeenCalled();
     const markup = saveArticle.mock.calls[0][1].markupVersion;
@@ -794,6 +794,37 @@ describe('WritePage IME compositionEnd Enter (AC-IME-ENTER)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE-002 IME 보강 — 연속 한글 합성(compositionstart→end ×2)에서 음절 손실/줄바꿈 없음.
+// 실브라우저 한정 race(첫 음절 compositionend ↔ 둘째 음절 compositionstart 사이에 passive useEffect 가
+// 살아있는 IME 노드를 replaceChildren 으로 파괴)는 jsdom 동기 fireEvent 로는 그대로 재현되지 않지만,
+// 본 테스트는 둘째 compositionstart 가 직전 just-composed 예약을 취소하는 경로(연속 타이핑)와 마지막
+// compositionend 의 텍스트 flush 가 함께 동작해 두 음절이 모두 보존되는지를 회귀 가드로 잠근다.
+describe('WritePage 연속 한글 IME 보강 (compositionend→compositionstart race 흡수)', () => {
+  it('연속 2음절 합성: 두 음절 모두 보존되고 stray 줄바꿈이 없다', () => {
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    body.focus();
+
+    // 1음절 '가' 합성
+    fireEvent.compositionStart(body, { data: '' });
+    body.textContent = '가';
+    fireEvent.input(body, { data: '가' });
+    fireEvent.compositionEnd(body, { data: '가' });
+
+    // 2음절 '나' 합성 — compositionStart 가 직전 just-composed 예약을 취소(연속 타이핑 경로).
+    fireEvent.compositionStart(body, { data: '' });
+    body.textContent = '가나';
+    fireEvent.input(body, { data: '나' });
+    fireEvent.compositionEnd(body, { data: '나' });
+
+    // 두 음절 모두 본문에 남아야 한다(손실 없음). Enter 가 없었으므로 줄바꿈도 없어야 한다.
+    expect(body.textContent).toContain('가');
+    expect(body.textContent).toContain('나');
+    expect(body.textContent).toBe('가나');
+    expect((body.textContent.match(/\n/g) || []).length).toBe(0);
+  });
+});
+
 // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D — AC-EMB-2 임베드 영속성 회귀 가드.
 describe('WritePage inline embed persistence (AC-EMB-2)', () => {
   it('AC-EMB-2: 이미지 임베드 후 본문 텍스트 추가 입력해도 embed가 동일 위치에 유지된다', async () => {
@@ -838,7 +869,10 @@ describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     renderWrite(createFakeModel({ searchMedia, saveArticle, applyAction }));
     const body = screen.getByTestId('editor-body');
-    await user.type(body, '안녕하세요');
+    // SPEC-NEWS-REVISE-005 송고 (끝) 가드: 본문 끝에 (끝) 마커가 있어야 송고가 통과한다.
+    // 본문을 "안녕하세요(끝)"로 두고 offset 2(안녕|하세요(끝))에 임베드를 삽입하므로
+    // 마지막 텍스트 블록은 "하세요(끝)"가 된다 (블록 분할 의도는 그대로 보존).
+    await user.type(body, '안녕하세요(끝)');
     // 캐럿을 '안녕' 다음(offset=2)에 둔다 — onMouseUp으로 lastCaretRef 갱신.
     setCaretCharOffset(body, 2);
     fireEvent.mouseUp(body);
@@ -854,11 +888,11 @@ describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
     expect(saveArticle).toHaveBeenCalled();
     const dto = saveArticle.mock.calls[0][1];
     const parsed = JSON.parse(dto.markupVersion);
-    // 기대: [text:"안녕", embed:video, text:"하세요"]
+    // 기대: [text:"안녕", embed:video, text:"하세요(끝)"] — 블록 분할/순서 단언은 보존, 끝 텍스트만 (끝) 정합.
     expect(parsed.blocks.length).toBe(3);
     expect(parsed.blocks[0]).toMatchObject({ type: 'text', text: '안녕' });
     expect(parsed.blocks[1]).toMatchObject({ type: 'embed', embed: { type: 'video' } });
-    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요' });
+    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요(끝)' });
   });
 
   it('AC-EMB-INLINE-2: contentEditable 내부에 인라인 embed 스팬이 올바른 위치에 렌더된다', async () => {
@@ -1170,7 +1204,7 @@ describe('WritePage edit-load from ?id= (Feature 3 — 데스크 미송고 편�
 
   it('saving the loaded article persists with the loaded id (update path)', async () => {
     window.history.replaceState({}, '', '/writer.do?id=A-777');
-    const row = { articleId: 'A-777', markupVersion: contentToMarkup(contentFromText('기존')), author: '원본' };
+    const row = { articleId: 'A-777', markupVersion: contentToMarkup(contentFromText('기존(끝)')), author: '원본' };
     const queryArticles = vi.fn().mockResolvedValue([row]);
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-777' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });

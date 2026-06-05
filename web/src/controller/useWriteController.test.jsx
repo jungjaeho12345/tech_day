@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { ModelContext } from '../app/context.js';
 import { createFakeModel } from '../test/fakeModel.js';
@@ -82,7 +82,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
-    act(() => result.current.setBodyMarkup('DB 제목\n본문'));
+    act(() => result.current.setBodyMarkup('DB 제목\n본문(끝)'));
     await act(async () => { await result.current.send(); });
     expect(saveArticle).toHaveBeenCalled();
     expect(saveArticle.mock.calls[0][1].title).toBe('DB 제목');
@@ -92,7 +92,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
-    act(() => result.current.setBodyMarkup('hello body'));
+    act(() => result.current.setBodyMarkup('hello body(끝)'));
     await act(async () => { await result.current.send(); });
     expect(saveArticle).toHaveBeenCalled();
     expect(saveArticle.mock.calls[0][1].markupVersion).toContain('hello body');
@@ -157,7 +157,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
       const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
       const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
       const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
-      act(() => result.current.setBodyMarkup('새 제목\n본문'));
+      act(() => result.current.setBodyMarkup('새 제목\n본문(끝)'));
       await act(async () => { await result.current.send(); });
       expect(saveArticle).toHaveBeenCalledTimes(1);
       expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
@@ -188,7 +188,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
           <ModelContext.Provider value={createFakeModel({ saveArticle, applyAction })}>{children}</ModelContext.Provider>
         );
         const { result } = renderHook(() => useWriteController(userInRole), { wrapper });
-        act(() => result.current.setBodyMarkup('제목\n본문'));
+        act(() => result.current.setBodyMarkup('제목\n본문(끝)'));
         await act(async () => { await result.current.send(); });
         expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
       });
@@ -226,7 +226,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
       const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW' });
       const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
       const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
-      act(() => result.current.setBodyMarkup('신규 제목\n내용'));
+      act(() => result.current.setBodyMarkup('신규 제목\n내용(끝)'));
       await act(async () => { await result.current.send(); });
       // Insert 경로: saveArticle 이 A-DRAFT sentinel 로 1회 호출 (=POST/insert 라우팅).
       expect(saveArticle).toHaveBeenCalledTimes(1);
@@ -238,7 +238,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
 
     it('AC-WLC-2: 편집 컨텍스트("AKR-001") → saveArticle("AKR-001", ...) 1회 (Update), Insert(A-DRAFT) 0회', async () => {
       const queryArticles = vi.fn().mockResolvedValue([
-        { articleId: 'AKR-001', status: 'RDS', markupVersion: markupFor('편집 제목\n편집 내용'), author: '원작성자' },
+        { articleId: 'AKR-001', status: 'RDS', markupVersion: markupFor('편집 제목\n편집 내용(끝)'), author: '원작성자' },
       ]);
       const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'AKR-001' });
       const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -289,7 +289,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
           <ModelContext.Provider value={createFakeModel({ saveArticle, applyAction })}>{children}</ModelContext.Provider>
         );
         const { result } = renderHook(() => useWriteController(userInRole), { wrapper });
-        act(() => result.current.setBodyMarkup('제목\n본문'));
+        act(() => result.current.setBodyMarkup('제목\n본문(끝)'));
         await act(async () => { await result.current.send(); });
         expect(saveArticle).toHaveBeenCalledTimes(1);
         expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
@@ -298,7 +298,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
       it(`AC-WLC-5: role=${role} × 편집 → saveArticle("AKR-${role}", ...) (권한 무관, 컨텍스트만 분기 결정)`, async () => {
         const editId = `AKR-${role}`;
         const queryArticles = vi.fn().mockResolvedValue([
-          { articleId: editId, status: 'RDS', markupVersion: markupFor('편집 제목\n본문'), author: '원작성자' },
+          { articleId: editId, status: 'RDS', markupVersion: markupFor('편집 제목\n본문(끝)'), author: '원작성자' },
         ]);
         const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: editId });
         const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -315,5 +315,114 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
         expect(saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT')).toHaveLength(0);
       });
     }
+  });
+});
+
+// SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD — 송고 "(끝)" 마커 가드 (AC-SEND-GUARD-1~6).
+// news.md L66: 송고는 본문에 "(끝)" 표시가 있어야 한다. 없으면 ALERT 후 송고 차단. 보류/KILL 은 마커 없이 진행.
+// 가드 위치: 제목 가드 직후·transport 진입 전 (useWriteController.js). 정본 hasEndMarker 를 소비.
+describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', () => {
+  const GUARD_ALERT = '본문에 (끝) 표시가 없어 송고할 수 없습니다.';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('AC-SEND-GUARD-1/2: 본문 (끝) 미존재 송고 → ALERT 1회 + saveArticle/applyAction 미호출', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 제목은 채우되 본문은 (끝) 마커로 끝나지 않게 둔다.
+    act(() => result.current.setBodyMarkup('제목\n마커 없는 본문'));
+    await act(async () => { await result.current.send(); });
+    // ALERT 가 정확히 1회, 정확한 문구로 표시된다.
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(alertSpy).toHaveBeenCalledWith(GUARD_ALERT);
+    // 저장/액션 경로에 진입하지 않는다 (call count 0).
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+    // 페이지 상태(리셋/lifecycleStatus) 변화 없음.
+    expect(result.current.lifecycleStatus).toBeNull();
+    expect(result.current.bodyText).toContain('마커 없는 본문');
+  });
+
+  it('AC-SEND-GUARD-3: 본문 (끝) 존재 송고 → ALERT 없이 saveArticle → applyAction 정상 진행', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    act(() => result.current.setBodyMarkup('제목\n본문(끝)'));
+    await act(async () => { await result.current.send(); });
+    // (끝) ALERT 가 발생하지 않는다.
+    expect(alertSpy).not.toHaveBeenCalled();
+    // 기존 송고 경로(Insert 분기 → saveArticle → applyAction)가 정상 진행된다.
+    expect(saveArticle).toHaveBeenCalledTimes(1);
+    expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
+    expect(result.current.lifecycleStatus).toBe('DPS');
+  });
+
+  it('AC-SEND-GUARD-4: 보류(hold)는 (끝) 없이도 비차단 진행 (제목만 요구)', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDH' });
+    const { result } = renderCtrl(createFakeModel({ applyAction }));
+    // 제목은 있고 본문에 (끝) 없음 — 보류는 통과해야 한다.
+    act(() => result.current.setBodyMarkup('제목\n마커 없는 본문'));
+    await act(async () => { await result.current.hold(); });
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'D', 'hold');
+    expect(result.current.lifecycleStatus).toBe('DDH');
+  });
+
+  it('AC-SEND-GUARD-4: KILL(kill)은 (끝)/제목 모두 없이도 비차단 진행', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDK' });
+    const { result } = renderCtrl(createFakeModel({ applyAction }));
+    // 본문 비움 (제목도 (끝)도 없음) — KILL 은 통과해야 한다.
+    await act(async () => { await result.current.kill(); });
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'D', 'kill');
+    expect(result.current.lifecycleStatus).toBe('DDK');
+  });
+
+  it('AC-SEND-GUARD-5: 제목 가드가 (끝) 가드보다 우선 — 제목 빈 송고는 제목 ALERT 만, (끝) ALERT 없음', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 제목 비움 + 본문 (끝) 없음 — 제목 가드가 먼저 발동한다.
+    await act(async () => { await result.current.send(); });
+    // 제목 가드는 inline actionError 로 표면화된다 (window.alert 아님).
+    expect(result.current.actionError).toContain('제목이 없어');
+    // (끝) ALERT(window.alert)는 발생하지 않는다 — 제목 가드에서 이미 반환.
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+  });
+
+  it('AC-SEND-GUARD-6: 정본 hasEndMarker 무변경 회귀 — trailing 공백/개행 뒤 (끝) 도 통과', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 정본 hasEndMarker 는 trimEnd() 후 판정하므로 (끝) 뒤 공백/개행은 여전히 통과한다 (EC-1).
+    act(() => result.current.setBodyMarkup('제목\n본문(끝)\n  '));
+    await act(async () => { await result.current.send(); });
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(saveArticle).toHaveBeenCalledTimes(1);
+    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
+  });
+
+  it('EC-2: 본문 중간에만 (끝) 이 있고 끝이 아니면 차단 (끝 마커가 아님)', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    act(() => result.current.setBodyMarkup('제목\n(끝) 가운데 본문'));
+    await act(async () => { await result.current.send(); });
+    expect(alertSpy).toHaveBeenCalledWith(GUARD_ALERT);
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
   });
 });
