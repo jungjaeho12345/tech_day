@@ -306,6 +306,14 @@ function paintEditor(el, content, onRemoveEmbed) {
 function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange, onRemoveEmbed, readOnly = false }) {
   const ref = useRef(null);
   const composingRef = useRef(false);
+  // SPEC-NEWS-REVISE-002 IME 보강 — composingRef 는 onCompositionEnd 맨 처음에 동기적으로 false 가 되어
+  // onInput 게이팅을 그대로 유지하지만, "방금 합성을 끝낸" 한 틱 동안에는 repaint useEffect 가 절대
+  // replaceChildren 하지 않도록 별도 플래그를 둔다. 실제 Chrome 에서 한 음절의 compositionend 와 다음
+  // 음절의 compositionstart 사이(=composingRef false 윈도)에 passive useEffect 가 끼어들어 살아있는 IME
+  // 합성 노드를 파괴하는 race 를 흡수한다(jsdom 동기 테스트로는 재현 불가한 실브라우저 한정 윈도). 다음
+  // 음절의 compositionStart 또는 unmount 가 이 플래그/예약을 취소한다.
+  const justComposedRef = useRef(false);
+  const justComposedRafRef = useRef(null);
   // Stable ref to onRemoveEmbed so paintWithCaret/recolor/insertNewline never close over a stale handler.
   const onRemoveEmbedRef = useRef(onRemoveEmbed);
   onRemoveEmbedRef.current = onRemoveEmbed;
@@ -371,6 +379,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   const paintWithCaret = useCallback((contentOrText) => {
     const el = ref.current;
     if (!el) return;
+    // IME 보강(방어): 어떤 paint 경로든 합성 진행 중에는 replaceChildren 으로 살아있는 IME 노드를
+    // 파괴하지 않는다. 동기 테스트에서는 composingRef 가 항상 false 라 무영향(테스트 불변).
+    if (composingRef.current) return;
     const focused = el.ownerDocument.activeElement === el;
     const caret = focused ? getCaretCharOffset(el) : null;
     paintNow(el, contentOrText);
@@ -446,7 +457,11 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // SPEC-NEWS-REVISE-001 D-7: 합성(composition) 중에는 절대 repaint하지 않는다 — replaceChildren이
   // IME 내부 상태를 파괴해 "1글자 지연" 증상을 유발한다.
   useEffect(() => {
-    if (composingRef.current) return;
+    // SPEC-NEWS-REVISE-002 IME 보강 — composingRef(합성 중)뿐 아니라 justComposedRef(직전 compositionend
+    // 한 틱)도 가드한다. compositionend → 다음 compositionstart 사이의 짧은 윈도에서 이 passive effect 가
+    // 끼어들어 새로 시작된 합성 노드를 replaceChildren 으로 파괴하는 실브라우저 race 를 흡수한다. 동기
+    // jsdom 테스트에서는 텍스트가 핸들러 내부 paintNow 로 이미 그려지므로 이 한 틱 지연은 관측되지 않는다.
+    if (composingRef.current || justComposedRef.current) return;
     const el = ref.current;
     if (!el) return;
     // Repaint when DOM is out of sync with the model text OR when content (embed blocks) changes.
@@ -466,6 +481,15 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     }
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // IME 보강 — unmount 시 예약된 just-composed 클리어 rAF 를 취소해 언마운트된 컴포넌트의 ref 에
+  // 늦게 기록하는 stale 콜백을 막는다 (진단 risk (a) 완화).
+  useEffect(() => () => {
+    if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(justComposedRafRef.current);
+      justComposedRafRef.current = null;
+    }
   }, []);
 
   return (
@@ -506,7 +530,16 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           }
         }}
         onPaste={handlePaste}
-        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+          // 다음 음절이 시작됐다 — 직전 compositionend 가 예약한 "just-composed" 클리어를 취소하고
+          // 플래그를 내려, 이 합성 동안 repaint useEffect 가 정상 가드(composingRef)로만 동작하게 한다.
+          justComposedRef.current = false;
+          if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(justComposedRafRef.current);
+            justComposedRafRef.current = null;
+          }
+        }}
         onCompositionEnd={(e) => {
           // Hangul composition finished: flush the text to state. SPEC-NEWS-REVISE-001 D-7:
           // 절대 여기서 recolor()를 호출하지 않는다. 연속 한글 타이핑 시 한 음절의 compositionEnd
@@ -514,6 +547,23 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           // 새로 시작된 IME 합성을 파괴해 "1글자 지연" 증상을 만든다. 색칠은 onBlur, Enter(insertNewline),
           // 기타 모델-주도 변경 시점에만 수행한다.
           composingRef.current = false;
+          // IME 보강 — composingRef 는 즉시 false 로 내려 onInput 게이팅을 종전대로 유지하되,
+          // "방금 합성을 끝냈다" 플래그를 한 틱(다음 프레임) 동안 켜 둔다. 그 사이에 다음 음절의
+          // compositionStart 가 오면 위에서 이 예약을 취소한다(연속 타이핑 = race 흡수). 타이핑이 실제로
+          // 멈추면 rAF 가 한 번 fire 되어 플래그를 내린다. cancelAnimationFrame 으로 중복 예약을 방지.
+          if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(justComposedRafRef.current);
+          }
+          justComposedRef.current = true;
+          if (typeof requestAnimationFrame === 'function') {
+            justComposedRafRef.current = requestAnimationFrame(() => {
+              justComposedRef.current = false;
+              justComposedRafRef.current = null;
+            });
+          } else {
+            // rAF 미지원 환경(구형 jsdom 등) — 마이크로태스크로 폴백.
+            Promise.resolve().then(() => { justComposedRef.current = false; });
+          }
           onChangeText(getBodyTextFromDom(e.currentTarget));
           // If the composition was committed by Enter, also break the line here so the user does not
           // need to press Enter a second time (Korean IME 1-press Enter fix). insertNewlineFromDom의
