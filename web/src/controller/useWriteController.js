@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useModel } from '../app/context.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
+import { hasEndMarker } from '../model/editorContent.js';
 
 // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — page-scoped sessionId generator (D2-5 = A strict).
 // One UUID per editor mount so two tabs of the same user collide on the lock (different sessionIds).
@@ -244,6 +245,13 @@ export function useWriteController(user, options = {}) {
         setActionError('제목이 없어 송고/보류할 수 없습니다.');
         return;
       }
+    }
+    // news.md 기사 에디터: 송고는 본문이 "(끝)" 마커로 끝나야 한다 (Alt+Y로 추가). 마커가 없으면
+    // 저장/액션 진입 전에 ALERT 로 막는다. 송고에만 적용 — 보류/KILL 은 마커 요구 없이 진행한다.
+    // (제목 가드 직후·transport 진입 전에 위치해 saveArticle/applyAction 이 모두 차단된다.)
+    if (action === 'send' && !hasEndMarker(adapter.getBodyText())) {
+      window.alert('본문에 (끝) 표시가 없어 송고할 수 없습니다.');
+      return;
     }
     try {
       let id = articleId;
