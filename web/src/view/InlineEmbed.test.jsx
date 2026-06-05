@@ -7,11 +7,14 @@ import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 // SPEC-UI-EDITOR-001 — REQ-EDIT-EMBED-002/003/004/006, EC-5 defensive rendering.
 
 describe('InlineEmbed (REQ-EDIT-EMBED render types)', () => {
-  it('renders an image embed using thumbnailUrl', () => {
+  it('renders an image embed using thumbnailUrl and NO visual caption (SPEC-NEWS-REVISE-001)', () => {
     render(<InlineEmbed embed={{ type: 'image', title: 'cap', url: 'https://u/1', thumbnailUrl: 'https://t/1' }} />);
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', 'https://t/1');
-    expect(screen.getByText('cap')).toBeInTheDocument();
+    // SPEC-NEWS-REVISE-001 — 이미지 캡션(.yh-embed__caption)은 제거되었다. title 은 시각적 텍스트로
+    // 노출되지 않으며 img alt 로만 남는다 (영상/기사 임베드의 식별용 제목과 달리 캡션은 렌더되지 않음).
+    expect(screen.queryByText('cap')).not.toBeInTheDocument();
+    expect(img).toHaveAttribute('alt', 'cap');
   });
 
   it('EC-5: image embed without thumbnailUrl falls back to url', () => {

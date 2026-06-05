@@ -7,7 +7,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { buildColorSegments } from './editorColoring.js';
-import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, getBodyTextFromDom } from './editorCaret.js';
+import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, getBodyTextFromDom, findEmbedIndexBeforeCaret } from './editorCaret.js';
+import { embedOrdinalAtInsertOffset } from '../model/editorContent.js';
 import { insertNewlineAt } from './editorNewline.js';
 import { deleteCurrentLine } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
@@ -147,23 +148,24 @@ function buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed) {
   if (embed.type === 'image') {
     span.setAttribute('data-testid', 'embed-image');
     span.classList.add('yh-embed', 'yh-embed--image');
+    // news.md 기사 에디터: 클립보드에서 붙여넣기한 이미지/유투브 크기는 에디터크기 기준 10%*10%.
+    if (embed.source === 'clipboard') span.classList.add('yh-embed--clipboard');
     const img = doc.createElement('img');
     img.className = 'yh-embed__img';
     img.setAttribute('src', embed.thumbnailUrl || embed.url || '');
     img.setAttribute('alt', embed.title || '삽입 이미지');
     span.appendChild(img);
-    if (embed.title) {
-      const cap = doc.createElement('span');
-      cap.className = 'yh-embed__caption';
-      cap.textContent = embed.title;
-      span.appendChild(cap);
-    }
+    // SPEC-NEWS-REVISE-001 — 이미지 임베드는 캡션(.yh-embed__caption, 사진 설명 텍스트)을 렌더링하지 않는다.
+    // title 은 img alt 로만 남아 접근성을 유지한다. 이 buildEmbedInlineSpan 이 라이브 에디터 본문의 단일
+    // 렌더 경로이며, 미사용 병행 컴포넌트 InlineEmbed.jsx 도 동일하게 캡션을 제거해 일관성을 맞춘다.
     appendDeleteButton(span);
     return span;
   }
   if (embed.type === 'video') {
     span.setAttribute('data-testid', 'embed-video');
     span.classList.add('yh-embed', 'yh-embed--video');
+    // news.md 기사 에디터: 클립보드에서 붙여넣기한 이미지/유투브 크기는 에디터크기 기준 10%*10%.
+    if (embed.source === 'clipboard') span.classList.add('yh-embed--clipboard');
     if (embed.thumbnailUrl) {
       const img = doc.createElement('img');
       img.className = 'yh-embed__img';
@@ -303,8 +305,13 @@ function paintEditor(el, content, onRemoveEmbed) {
 // compositionend, blur, and programmatic body-text changes — the caret is preserved by character offset.
 // Enter/Shift+Enter are intercepted on keydown to splice a model '\n' at the caret (the model is authoritative
 // for newlines), so the browser never inserts block markup that would desync the repaint and jump the caret.
-function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange, onRemoveEmbed, readOnly = false }) {
+function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange, onRemoveEmbed, pendingEmbedCaretRef, readOnly = false }) {
   const ref = useRef(null);
+  // SPEC-NEWS-REVISE-001 — embed model count seen at the last repaint, so the repaint effect can detect
+  // an embed INSERTION (count increase) and place the caret right after the new embed span instead of at
+  // the shared char-offset (which can land the caret BEFORE the 0-char embed). pendingEmbedCaretRef (from
+  // the parent) carries the inserted embed's caret offset; handlePaste sets it for the paste path.
+  const prevEmbedCountRef = useRef((content?.blocks ?? []).filter((b) => b.type === 'embed').length);
   const composingRef = useRef(false);
   // SPEC-NEWS-REVISE-002 IME 보강 — composingRef 는 onCompositionEnd 맨 처음에 동기적으로 false 가 되어
   // onInput 게이팅을 그대로 유지하지만, "방금 합성을 끝낸" 한 틱 동안에는 repaint useEffect 가 절대
@@ -322,6 +329,13 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // user's intent here and flush a single newline insertion on compositionend so a single Enter both
   // commits the syllable AND breaks the line, instead of requiring a second Enter.
   const pendingEnterAfterIme = useRef(false);
+  // SPEC-NEWS-REVISE 한글 IME 1-press Enter 보강 — 합성 중 Enter 를 compositionend 분기로 위임하지만,
+  // Windows 한글 IME 에는 Enter keydown 이 isComposing/keyCode 229 를 보고하면서도 뒤따르는
+  // compositionend 가 끝내 발생하지 않는 상태가 존재한다(이미 commit 된 음절 직후 등). 그 경우 첫 Enter 는
+  // preventDefault 로 삼켜지고 pendingEnterAfterIme 만 true 로 남아 줄바꿈이 영영 삽입되지 않는다(사용자가
+  // Enter 를 2~3 번 눌러야 하는 간헐 증상). 한 프레임 뒤 폴백을 예약해, compositionend 가 끝내 소비하지
+  // 않으면(pendingEnterAfterIme 여전히 true) 직접 줄바꿈을 삽입한다. 예약 id 는 cancel 용으로 보관한다.
+  const pendingEnterRafRef = useRef(null);
   // Stable ref to current content so imperative paintEditor calls (insertNewline, Ctrl+D, recolor)
   // can preserve inline embeds when only the text changes. Updated on every render.
   const contentRef = useRef(content);
@@ -349,6 +363,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
       e.preventDefault();
       readFileAsDataUrl(imageFile)
         .then((dataUrl) => {
+          // SPEC-NEWS-REVISE-001 — paste appends at body end (offset undefined): mark a pending insert so
+          // the repaint anchors the caret right after the new (trailing) embed span.
+          if (pendingEmbedCaretRef) pendingEmbedCaretRef.current = { offset: undefined };
           onPasteEmbed({
             type: 'image', source: 'clipboard', title: '붙여넣은 이미지',
             url: dataUrl, thumbnailUrl: dataUrl,
@@ -360,6 +377,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const text = cd.getData ? cd.getData('text') : '';
     if (isYouTubeUrl(text)) {
       e.preventDefault();
+      if (pendingEmbedCaretRef) pendingEmbedCaretRef.current = { offset: undefined };
       onPasteEmbed({ type: 'video', source: 'clipboard', title: '붙여넣은 영상', url: text.trim() });
       return;
     }
@@ -440,11 +458,33 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     e.preventDefault();
     if (composingRef.current || e.isComposing || e.keyCode === 229) {
       pendingEnterAfterIme.current = true;
+      // 폴백 예약(IME 보강) — compositionend 가 줄바꿈을 소비하지 않는 IME 상태를 대비해 한 프레임 뒤
+      // pendingEnterAfterIme 가 여전히 true 면 직접 insertNewlineFromDom 으로 줄바꿈을 끼워 넣는다. 정상
+      // 케이스에서는 compositionend 가 이 콜백보다 먼저 fire 되어 플래그를 false 로 내리므로 폴백은 아무
+      // 것도 하지 않는다(중복 '\n' 방지). el 은 클로저로 캡처. 이미 예약된 폴백이 있으면 취소 후 재예약.
+      const el = e.currentTarget;
+      if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingEnterRafRef.current);
+        pendingEnterRafRef.current = null;
+      }
+      const runFallback = () => {
+        pendingEnterRafRef.current = null;
+        if (pendingEnterAfterIme.current) {
+          pendingEnterAfterIme.current = false;
+          insertNewlineFromDom(el);
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        pendingEnterRafRef.current = requestAnimationFrame(runFallback);
+      } else {
+        // rAF 미지원 환경(구형 jsdom 등) — justComposed 정리와 동일한 마이크로태스크 폴백 패턴.
+        Promise.resolve().then(runFallback);
+      }
       return true;
     }
     insertNewline(e.currentTarget);
     return true;
-  }, [insertNewline]);
+  }, [insertNewline, insertNewlineFromDom]);
 
   // Sync the body text from props into the (uncontrolled) contentEditable. This fires for:
   //   - initial mount (paint empty/loaded text),
@@ -469,9 +509,29 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const embedDomCount = el.querySelectorAll('[data-embed-index]').length;
     const embedModelCount = (content?.blocks ?? []).filter((b) => b.type === 'embed').length;
     if (getBodyTextFromDom(el) !== bodyText || embedDomCount !== embedModelCount) {
-      paintWithCaret(content);
+      // SPEC-NEWS-REVISE-001 — detect an embed INSERTION (count increased) with a pending insert marker
+      // (set by the button path in the parent or the paste path in handlePaste). After painting, anchor
+      // the caret right after the inserted embed span so the next keystroke lands behind the 0-char embed,
+      // not in front of it. Non-embed repaints (Alt+Y, edit-load, reset, Ctrl+D) keep the char-offset path.
+      const inserted = embedModelCount > prevEmbedCountRef.current
+        && pendingEmbedCaretRef?.current != null;
+      if (inserted) {
+        const { offset } = pendingEmbedCaretRef.current;
+        pendingEmbedCaretRef.current = null;
+        const ordinal = embedOrdinalAtInsertOffset(content, offset);
+        paintNow(el, content);
+        // Only steer the caret when the editor is focused; otherwise leave selection untouched (the
+        // button path blurs the editor, but focusing+placing the caret restores the expected typing point).
+        if (ordinal != null) {
+          el.focus?.();
+          setCaretAfterEmbed(el, ordinal);
+        }
+      } else {
+        paintWithCaret(content);
+      }
     }
-  }, [content, bodyText, paintWithCaret]);
+    prevEmbedCountRef.current = embedModelCount;
+  }, [content, bodyText, paintWithCaret, paintNow, pendingEmbedCaretRef]);
 
   // Initial mount: paint whatever the model currently holds so loaded/colored text shows immediately.
   useEffect(() => {
@@ -489,6 +549,11 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(justComposedRafRef.current);
       justComposedRafRef.current = null;
+    }
+    // IME 보강 — 언마운트 시 줄바꿈 폴백 예약도 취소해 언마운트된 컴포넌트에 늦게 삽입하는 stale 콜백을 막는다.
+    if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(pendingEnterRafRef.current);
+      pendingEnterRafRef.current = null;
     }
   }, []);
 
@@ -539,6 +604,13 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             cancelAnimationFrame(justComposedRafRef.current);
             justComposedRafRef.current = null;
           }
+          // IME 보강 — 다음 음절이 시작됐으므로 직전 Enter 폴백 예약을 취소한다. 그래야 정상적으로
+          // 이어질 compositionend 가 줄바꿈을 처리할 기회를 갖고, 연속 타이핑 race 에서 폴백이 잘못
+          // 끼어들지 않는다. (pendingEnterAfterIme 플래그 자체는 그대로 둬 compositionend 가 소비한다.)
+          if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(pendingEnterRafRef.current);
+            pendingEnterRafRef.current = null;
+          }
         }}
         onCompositionEnd={(e) => {
           // Hangul composition finished: flush the text to state. SPEC-NEWS-REVISE-001 D-7:
@@ -570,6 +642,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           // paintEditor는 합성이 막 끝난(=새 합성이 아직 시작되지 않은) 안전한 순간에만 수행된다.
           if (pendingEnterAfterIme.current) {
             pendingEnterAfterIme.current = false;
+            // 폴백 예약이 살아 있으면 취소한다 — 여기서 줄바꿈을 소비했으므로 폴백이 또 삽입하면 중복 '\n'.
+            // (플래그를 이미 false 로 내렸으므로 폴백 콜백 가드도 막아주지만, 예약 자체를 정리해 둔다.)
+            if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+              cancelAnimationFrame(pendingEnterRafRef.current);
+              pendingEnterRafRef.current = null;
+            }
             insertNewlineFromDom(e.currentTarget);
           }
         }}
@@ -590,6 +668,16 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
                 }
               }
               node = node.parentNode;
+            }
+            // SPEC-NEWS-REVISE-003 — caret-adjacent Backspace: when the collapsed caret sits
+            // immediately AFTER an inline embed (no intervening text character), delete exactly that
+            // one embed (preventDefault + existing removal path). Delete key is out of scope; the
+            // inside-embed Backspace above and the × button are untouched.
+            const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
+            if (adjacentIdx != null) {
+              e.preventDefault();
+              onRemoveEmbedRef.current(adjacentIdx);
+              return;
             }
           }
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
@@ -649,8 +737,13 @@ export function WritePage({ user }) {
   // 포커스가 BodyEditor를 떠난 뒤지만, 마지막으로 알려진 캐럿 offset을 ref로 보존해 인라인 삽입한다.
   const lastCaretRef = useRef(null);
   const handleCaretChange = useCallback((off) => { lastCaretRef.current = off; }, []);
+  // SPEC-NEWS-REVISE-001 — shared "pending embed insert" channel between the button path (here) and the
+  // paste path (BodyEditor). Set to { offset } right before ctrl.embed so BodyEditor's repaint can place
+  // the caret right after the freshly inserted embed span. `offset === undefined` => append semantics.
+  const pendingEmbedCaretRef = useRef(null);
   const insertEmbedAtCaret = useCallback((descriptor) => {
     const caret = lastCaretRef.current;
+    pendingEmbedCaretRef.current = { offset: caret == null ? undefined : caret };
     ctrl.embed(descriptor, caret == null ? undefined : caret);
   }, [ctrl]);
 
@@ -675,6 +768,7 @@ export function WritePage({ user }) {
           onPasteEmbed={ctrl.embed}
           onCaretChange={handleCaretChange}
           onRemoveEmbed={ctrl.removeEmbed}
+          pendingEmbedCaretRef={pendingEmbedCaretRef}
           readOnly={!!ctrl.lockError}
         />
       </section>

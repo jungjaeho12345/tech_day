@@ -45,18 +45,22 @@ export function InlineEmbed({ embed, onDelete }) {
   }
   if (embed.type === 'image') {
     const src = embed.thumbnailUrl || embed.url || '';
+    // news.md 기사 에디터: 클립보드 붙여넣기 이미지/유투브는 에디터크기 기준 10%*10% (yh-embed--clipboard).
+    const clipClass = embed.source === 'clipboard' ? ' yh-embed--clipboard' : '';
     return (
-      <span data-testid="embed-image" className="yh-embed yh-embed--image" contentEditable={false}>
+      <span data-testid="embed-image" className={`yh-embed yh-embed--image${clipClass}`} contentEditable={false}>
+        {/* SPEC-NEWS-REVISE-001 — 이미지 임베드는 캡션(.yh-embed__caption)을 렌더링하지 않는다. title 은
+            img alt 로만 남아 접근성을 유지한다 (영상/기사의 식별용 .yh-embed__title 과 달리 캡션은 제거). */}
         <img className="yh-embed__img" src={src} alt={embed.title || '삽입 이미지'} />
-        {embed.title ? <span className="yh-embed__caption">{embed.title}</span> : null}
         <DeleteAffordance onDelete={onDelete} />
       </span>
     );
   }
   if (embed.type === 'video') {
     const thumb = embed.thumbnailUrl || '';
+    const clipClass = embed.source === 'clipboard' ? ' yh-embed--clipboard' : '';
     return (
-      <span data-testid="embed-video" className="yh-embed yh-embed--video" contentEditable={false}>
+      <span data-testid="embed-video" className={`yh-embed yh-embed--video${clipClass}`} contentEditable={false}>
         {thumb ? <img className="yh-embed__img" src={thumb} alt={embed.title || '영상'} /> : null}
         <span className="yh-embed__video-mark">영상</span>
         <span className="yh-embed__title">{embed.title || embed.url || '영상'}</span>

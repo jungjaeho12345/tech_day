@@ -144,6 +144,46 @@ export function insertEmbedAtTextOffset(content, embed, caretOffset) {
   return { blocks: next };
 }
 
+/**
+ * SPEC-NEWS-REVISE-001 — given the content AFTER an embed insertion at `caretOffset`, return the 0-based
+ * ordinal (data-embed-index) of the embed that was inserted there. Mirrors insertEmbedAtTextOffset's split
+ * rule exactly: the inserted embed lands right after the text consumed up to `caretOffset`, so its ordinal
+ * equals the number of embed blocks that precede that split point in document order.
+ *
+ * Walks blocks in order, accumulating text length; the inserted embed is the first embed block reached at
+ * or after the point where accumulated text first meets/exceeds `caretOffset`. When `caretOffset` is null/
+ * undefined or >= total text length (appendEmbed semantics), the inserted embed is the LAST embed block, so
+ * its ordinal = (embed count - 1). Returns null when the content has no embeds.
+ *
+ * @param {{blocks: Array<object>}} content content already containing the inserted embed
+ * @param {number|null|undefined} caretOffset the body-text offset used for the insertion
+ * @returns {number|null} the inserted embed's 0-based ordinal, or null when there are no embeds
+ */
+export function embedOrdinalAtInsertOffset(content, caretOffset) {
+  const blocks = content?.blocks ?? [];
+  const embedCount = blocks.filter((b) => b.type === 'embed').length;
+  if (embedCount === 0) return null;
+  const totalText = contentToText(content);
+  // Append semantics: the inserted embed is the trailing one.
+  if (caretOffset == null || caretOffset >= totalText.length) return embedCount - 1;
+  const at = Math.max(0, caretOffset);
+
+  let consumed = 0;
+  let ordinal = 0;
+  for (const b of blocks) {
+    if (b.type === 'text') {
+      // Once accumulated text has reached the split point, the next embed block is the inserted one.
+      if (consumed >= at) break;
+      consumed += b.text.length;
+      continue;
+    }
+    // embed block
+    if (consumed >= at) break; // first embed at/after the split point = the inserted one
+    ordinal += 1;
+  }
+  return ordinal;
+}
+
 /** Concatenate the text blocks back into the editor body text (embeds contribute no text). */
 export function contentToText(content) {
   return (content?.blocks ?? [])

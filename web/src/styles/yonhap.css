@@ -862,12 +862,12 @@ input, select, textarea {
 /* Alt+Y end marker "(끝)" — 골드색 (news.md 기사 에디터). */
 .yh-end-mark { color: var(--yh-gold); font-weight: 700; }
 
-/* SPEC-NEWS-REVISE-001 — 본문 커서 위치 인라인 임베드. contentEditable 내부에 inline-block으로
-   배치되어 텍스트와 같은 행에 흐른다. 색은 디자인 토큰(파랑)만 사용 (D-4 결정 잠금 — #C8102E 금지). */
+/* SPEC-NEWS-REVISE-003 — 본문 커서 위치 인라인 임베드를 "기사 본문형 블록"으로 표시한다. 임베드가
+   본문 텍스트 흐름 안에서 자기 줄(block)을 차지해 연합뉴스 기사 본문 사진/참조 카드처럼 보인다.
+   래퍼 색은 디자인 토큰(파랑/회색)만 사용 (AC-EMB-INLINE-3 잠금 — #C8102E 금지). */
 .yh-embed-inline {
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 var(--yh-sp-xs);
+  display: block;
+  margin: var(--yh-sp-md) 0;
   border-left-color: var(--yh-blue);
 }
 
@@ -879,43 +879,79 @@ input, select, textarea {
   margin-top: var(--yh-sp-sm);
 }
 
-/* Base embed: a small card visually distinct from body text (gray separators, sans labels).
-   news.md 기사 에디터: an inline embed is small relative to the editor — about 10% of the
-   editor width (with a min-width so it stays usable). Stacks label/caption vertically inside
-   the narrow box. */
+/* SPEC-NEWS-REVISE-003 — 기사 본문형 임베드 카드. 작은 inline 칩이 아니라 연합뉴스 기사 본문
+   사진/참조처럼 자연스러운 figure 로 보인다. 흰 배경(자연스러운 본문 사진 느낌) + 회색 외곽선,
+   카드 좌측의 빨강 액센트는 SPEC-NEWS-REVISE-002 D-4 결정 잠금이라 유지한다.
+   position:relative 는 우상단 × 삭제 어포던스를 절대배치하기 위함. */
 .yh-embed {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--yh-sp-xs);
-  width: 10%;            /* ~10% of the .yh-editor-region width */
-  min-width: 96px;       /* keep it usable on narrow editors */
-  max-width: 100%;
-  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  max-width: 360px;      /* 사진/영상 figure 의 편안한 폭 (연합뉴스 본문 사진 ~360px) */
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
   border: 1px solid var(--yh-gray-line);
   border-left: 3px solid var(--yh-red);
   border-radius: 3px;
-  background: var(--yh-gray-bg);
+  background: var(--yh-white);
   font-family: var(--yh-sans);
   font-size: 0.85rem;
 }
 
+/* 기사(article) 참조 카드는 사진 figure 보다 넓은 가로형 참조 카드 — 배지 + 제목이 한 줄. */
+.yh-embed--article {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  max-width: 480px;
+}
+
+/* news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브 크기는
+   에디터크기가 100%이고 가로*세로=10%*10%이다. max-width로 에디터 너비 대비 10% 제한. */
+.yh-embed--clipboard {
+  max-width: 10%;
+  max-height: 10%;
+}
+
 .yh-embed__img {
-  width: 100%;           /* fill the narrow embed box (which is ~10% of the editor) */
+  width: 100%;           /* fill the figure width */
   max-width: 100%;
-  height: auto;          /* keep aspect ratio for the small embed */
+  height: auto;          /* keep aspect ratio */
   object-fit: cover;
   border-radius: 2px;
   border: 1px solid var(--yh-gray-line);
 }
 
-.yh-embed__caption,
+/* SPEC-NEWS-REVISE-001 — 이미지 캡션(.yh-embed__caption)은 더 이상 렌더링되지 않아 규칙을 제거했다. */
+
+/* 영상/기사 등 한 줄에 들어가는 라벨성 제목은 길면 잘라 한 줄 유지 (기존 동작 유지). */
 .yh-embed__title {
   font-family: var(--yh-sans);
   color: var(--yh-gray-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* SPEC-NEWS-REVISE-003 — × 삭제 어포던스: 카드 우상단에 은은하게 배치, 클릭 가능 유지. */
+.yh-embed__delete {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--yh-gray-mid);
+  font-size: 1rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.yh-embed__delete:hover,
+.yh-embed__delete:focus {
+  color: var(--yh-red);
+  background: var(--yh-red-light);
 }
 
 /* Type marker badges (영상 / 기사) in brand red. */

@@ -103,6 +103,93 @@ export function getBodyTextFromDom(root) {
 }
 
 /**
+ * SPEC-NEWS-REVISE-003 — caret-adjacent embed deletion (Backspace).
+ * Given the editor `root`, inspect the current collapsed selection and decide whether the position
+ * immediately BEFORE the caret is an inline embed span ([data-embed-index]) with no intervening text
+ * character. Returns that embed's 0-based ordinal index (its `data-embed-index`), or null when the
+ * preceding content is a text character / the caret is at the very start / selection is not collapsed.
+ *
+ * Algorithm (document order, walking backwards from the caret):
+ *  - selection must be collapsed and start inside `root`.
+ *  - if caret sits inside a text node at offset > 0 → a character precedes it → null (normal backspace).
+ *  - otherwise we are at a node boundary (text-node offset 0, or element-child boundary): step to the
+ *    nearest preceding sibling/ancestor-sibling and skip empty/whitespace-only text nodes. The first
+ *    "real" preceding node decides: an embed span → return its index; anything else → null.
+ *
+ * Embed spans are contenteditable=false and contribute 0 chars to bodyText, so deleting one never
+ * shifts the caret char-offset — the existing paint/caret-restore flow lands the caret unchanged.
+ * @param {HTMLElement} root
+ * @returns {number|null}
+ */
+export function findEmbedIndexBeforeCaret(root) {
+  if (!root) return null;
+  const sel = root.ownerDocument?.getSelection?.();
+  if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+
+  let node = range.startContainer;
+  let offset = range.startOffset;
+
+  // If the caret is inside a text node past its start, a real character precedes it → normal backspace.
+  if (node.nodeType === 3) {
+    if (offset > 0) return null;
+    // At offset 0 of a text node: the candidate is whatever precedes this text node.
+  } else {
+    // Element container: the candidate is the child immediately before `offset`.
+    if (offset > 0) {
+      node = node.childNodes[offset - 1];
+      // We will inspect `node` itself as the immediately-preceding content below.
+      return embedIndexFromPrecedingNode(root, node, /* inspectSelf */ true);
+    }
+    // offset 0 of an element: descend to its preceding boundary via ancestors.
+  }
+
+  // Walk to the nearest preceding content node (skipping empty/whitespace text), starting from the
+  // previous sibling of `node`, climbing to ancestors' previous siblings as needed (but not past root).
+  return embedIndexFromPrecedingNode(root, node, /* inspectSelf */ false);
+}
+
+// Returns the embed index if the nearest meaningful node preceding `node` (in document order) is an
+// embed span; else null. When `inspectSelf` is true, `node` itself is the first candidate.
+function isEmbedSpan(n) {
+  return n && n.nodeType === 1 && n.hasAttribute && n.hasAttribute('data-embed-index');
+}
+function isSkippableText(n) {
+  // Empty text node only. A whitespace-only text node still represents real characters in a pre-wrap
+  // body (e.g. a space the user typed), so it must NOT be skipped — treat it as a real character.
+  return n && n.nodeType === 3 && n.textContent.length === 0;
+}
+function embedIndexFromPrecedingNode(root, startNode, inspectSelf) {
+  let candidate = inspectSelf ? startNode : prevInDocument(root, startNode);
+  while (candidate) {
+    if (isSkippableText(candidate)) {
+      candidate = prevInDocument(root, candidate);
+      continue;
+    }
+    if (isEmbedSpan(candidate)) {
+      const idx = Number(candidate.getAttribute('data-embed-index'));
+      return Number.isFinite(idx) ? idx : null;
+    }
+    // A real text character or a non-embed element precedes the caret → normal backspace.
+    return null;
+  }
+  return null;
+}
+// Previous node in document order within `root`: previous sibling, or climb to an ancestor's previous
+// sibling. Never returns `root` itself or steps outside it.
+function prevInDocument(root, node) {
+  if (!node || node === root) return null;
+  if (node.previousSibling) return node.previousSibling;
+  let p = node.parentNode;
+  while (p && p !== root) {
+    if (p.previousSibling) return p.previousSibling;
+    p = p.parentNode;
+  }
+  return null;
+}
+
+/**
  * Place the collapsed caret at character offset `offset` within `root`. Clamps to the text length.
  * No-op when offset is null or root is empty.
  * @param {HTMLElement} root
@@ -150,6 +237,30 @@ export function setCaretCharOffset(root, offset) {
     // No text nodes (empty editor) — collapse at the root start.
     range.setStart(root, 0);
   }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/**
+ * SPEC-NEWS-REVISE-001 — place the collapsed caret immediately AFTER the inline embed span whose
+ * ordinal is `embedIndex` (span[data-embed-index="N"]). Inserting an embed adds 0 body-text chars, so
+ * restoring by character offset alone can leave the caret BEFORE the embed (both positions share the
+ * same offset). This helper resolves that ambiguity by anchoring the caret to the span boundary itself:
+ * range.setStartAfter(span) puts the caret right after the embed, where the next typed character lands.
+ * No-op when root is null or the matching span is absent (e.g. paint not yet applied / index out of range).
+ * @param {HTMLElement} root
+ * @param {number|null} embedIndex 0-based ordinal matching the span's data-embed-index
+ */
+export function setCaretAfterEmbed(root, embedIndex) {
+  if (root == null || embedIndex == null) return;
+  const doc = root.ownerDocument;
+  const sel = doc.getSelection?.();
+  if (!sel) return;
+  const span = root.querySelector(`[data-embed-index="${embedIndex}"]`);
+  if (!span || !root.contains(span)) return;
+  const range = doc.createRange();
+  range.setStartAfter(span);
   range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);

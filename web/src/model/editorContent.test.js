@@ -5,6 +5,8 @@ import {
   appendEmbed,
   removeEmbedAt,
   contentToText,
+  insertEmbedAtTextOffset,
+  embedOrdinalAtInsertOffset,
   serializeContent,
   deserializeContent,
   contentToMarkup,
@@ -167,5 +169,82 @@ describe('removeEmbedAt (SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE)', () => {
     expect(removeEmbedAt(content, 5).blocks).toHaveLength(before);
     expect(removeEmbedAt(content, -1).blocks).toHaveLength(before);
     expect(removeEmbedAt(content, NaN).blocks).toHaveLength(before);
+  });
+});
+
+// SPEC-NEWS-REVISE-001 — embedOrdinalAtInsertOffset returns the data-embed-index of the embed inserted at
+// a given caret offset. Verified by inserting via insertEmbedAtTextOffset and confirming the ordinal points
+// to the freshly inserted embed (so the view can place the caret right after THAT embed span).
+describe('embedOrdinalAtInsertOffset (caret-after-insert target index)', () => {
+  // The embed objects carry a unique marker so we can confirm the ordinal points at the inserted one.
+  const NEW = { type: 'image', source: 'clipboard', title: 'NEW', url: 'https://new' };
+
+  // Returns the ordinal of the embed marked title:'NEW' in document order (its real data-embed-index).
+  function ordinalOfNew(content) {
+    let n = 0;
+    for (const b of content.blocks) {
+      if (b.type === 'embed') {
+        if (b.embed.title === 'NEW') return n;
+        n += 1;
+      }
+    }
+    return null;
+  }
+
+  it('null content with no embeds returns null', () => {
+    expect(embedOrdinalAtInsertOffset(contentFromText('hello'), 2)).toBe(null);
+  });
+
+  it('insert into the middle of a single text block -> ordinal 0', () => {
+    const base = contentFromText('hello world');
+    const content = insertEmbedAtTextOffset(base, NEW, 5);
+    const ord = embedOrdinalAtInsertOffset(content, 5);
+    expect(ord).toBe(0);
+    expect(ord).toBe(ordinalOfNew(content));
+  });
+
+  it('insert at offset 0 (before all text) -> ordinal 0', () => {
+    const base = contentFromText('abc');
+    const content = insertEmbedAtTextOffset(base, NEW, 0);
+    const ord = embedOrdinalAtInsertOffset(content, 0);
+    expect(ord).toBe(0);
+    expect(ord).toBe(ordinalOfNew(content));
+  });
+
+  it('append semantics (caret null) -> trailing embed ordinal', () => {
+    let base = contentFromText('abc');
+    base = appendEmbed(base, IMG); // pre-existing embed #0
+    const content = insertEmbedAtTextOffset(base, NEW, null); // appends NEW as the last embed
+    const ord = embedOrdinalAtInsertOffset(content, null);
+    expect(ord).toBe(1);
+    expect(ord).toBe(ordinalOfNew(content));
+  });
+
+  it('append semantics (caret >= text length) -> trailing embed ordinal', () => {
+    const base = contentFromText('abcdef');
+    const content = insertEmbedAtTextOffset(base, NEW, 999);
+    const ord = embedOrdinalAtInsertOffset(content, 999);
+    expect(ord).toBe(0);
+    expect(ord).toBe(ordinalOfNew(content));
+  });
+
+  it('inserting after a pre-existing embed counts it -> ordinal 1', () => {
+    // Build content: [text "ab"][embed IMG][text "cd"]. Insert NEW at offset 3 (inside "cd").
+    let base = contentFromText('abcd');
+    base = insertEmbedAtTextOffset(base, IMG, 2); // IMG between "ab" and "cd"
+    const content = insertEmbedAtTextOffset(base, NEW, 3); // after IMG, inside "cd"
+    const ord = embedOrdinalAtInsertOffset(content, 3);
+    expect(ord).toBe(1); // IMG is #0, NEW is #1
+    expect(ord).toBe(ordinalOfNew(content));
+  });
+
+  it('inserting before a pre-existing embed -> ordinal 0', () => {
+    // [text "abcd"][embed IMG at 4]. Insert NEW at offset 1 (before IMG).
+    let base = contentFromText('abcd');
+    base = appendEmbed(base, IMG); // IMG trails the text (pos 4)
+    const content = insertEmbedAtTextOffset(base, NEW, 1);
+    const ord = embedOrdinalAtInsertOffset(content, 1);
+    expect(ord).toBe(0); // NEW comes first, IMG shifts to #1
+    expect(ord).toBe(ordinalOfNew(content));
   });
 });
