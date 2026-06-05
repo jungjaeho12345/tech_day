@@ -6,7 +6,7 @@
 // 1 인 1 페이지 정책 매핑: the page-scoped UUID IS the sessionId at the service layer
 // (server/index.js replays a per-editor-mount page session id as `sessionId`). A second tab/page
 // for the same user therefore presents a DIFFERENT sessionId — modelled here as P1/P2.
-import { test } from 'node:test';
+import { test, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { createSchema } from '../src/db/schema.js';
@@ -160,6 +160,73 @@ test('AC-LOCK-6 (보완): 락 보유자 본인의 assertLockHolder는 통과한�
   const { svc } = freshService();
   const articleId = seedArticle(svc);
   svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P1', now: new Date('2026-06-04T01:00:00Z') });
-  const holder = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'P1' });
+  // now 를 고정 전달 — 실시간 시계 기준 30분 stale 판정으로 다음 날부터 FAIL 하는 time-bomb 방지.
+  const holder = svc.assertLockHolder(articleId, { userId: 'U1', sessionId: 'P1', now: new Date('2026-06-04T01:05:00Z') });
   assert.equal(holder.ok, true);
+});
+
+// SPEC-NEWS-REVISE-004 REQ-LOCK-VOCAB-ALIGN — 락 보유자 어휘 정합.
+// 003 의 주석 어댑테이션(L6-8) 을 형식 단언으로 승격한다: 락 보유자 식별의 정본 어휘는
+// lockerUserId / lockerSessionId / lockedAt 이며 lockerSessionId 가 "페이지 단위 식별자"를 운반한다.
+describe('SPEC-NEWS-REVISE-004 REQ-LOCK-VOCAB-ALIGN — 락 보유자 정본 어휘(lockerSessionId) 형식 단언', () => {
+  // AC-LOCKV-2: 동일 user 가 다른 sessionId 로 진입하면 거부되고 보유자 식별자가 덮어써지지 않는다 (003 AC-LOCK-4 회귀).
+  it('AC-LOCKV-2: U1/P1 보유 중 동일 user U1 이 다른 sessionId P2 로 acquire → 거부되고 lockerSessionId 가 P1 로 유지된다', () => {
+    const { db, svc } = freshService();
+    const articleId = seedArticle(svc);
+    const T0 = new Date('2026-06-04T01:00:00Z');
+    // U1 이 sessionId P1 (첫 번째 페이지) 로 락 보유.
+    const held = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P1', now: T0 });
+    assert.equal(held.ok, true);
+
+    // 동일 user U1, 다른 sessionId P2 (두 번째 탭/페이지 단위 식별자) 로 진입 시도.
+    const otherPage = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P2', now: new Date('2026-06-04T01:01:00Z') });
+    assert.equal(otherPage.ok, false);
+
+    // lockerSessionId = 페이지 단위 식별자 (정본 어휘; 003 AC-LOCK-4 의 pageId 표기는 이 컬럼의 별칭).
+    // P2 로 덮어쓰지 않고 P1/U1 이 그대로 유지됨을 정본 컬럼명으로 단언한다.
+    const row = db.prepare('SELECT lockerUserId, lockerSessionId FROM Contents WHERE articleId = ?').get(articleId);
+    assert.equal(row.lockerSessionId, 'P1');
+    assert.equal(row.lockerUserId, 'U1');
+  });
+
+  // AC-LOCKV-3: 동일 user + 동일 sessionId 재획득은 idempotent 하며 lockedAt 이 재진입 시각으로 refresh 된다 (002 D2-5=A 회귀).
+  it('AC-LOCKV-3: U1/P1 이 동일 sessionId P1 로 T2(>T0) 재획득 → ok:true 이고 lockedAt 이 T2 로 refresh 된다', () => {
+    const { db, svc } = freshService();
+    const articleId = seedArticle(svc);
+    const T0 = new Date('2026-06-04T01:00:00Z');
+    svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P1', now: T0 });
+
+    // 동일 user + 동일 sessionId 로 T2 재진입 (idempotent re-acquire).
+    const T2 = new Date('2026-06-04T01:05:00Z');
+    const reacquire = svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P1', now: T2 });
+    assert.equal(reacquire.ok, true);
+
+    // lockedAt 이 재진입 시각 T2 로 갱신되고, 보유자 식별자는 변경되지 않는다.
+    const row = db.prepare('SELECT lockerUserId, lockerSessionId, lockedAt FROM Contents WHERE articleId = ?').get(articleId);
+    assert.equal(row.lockedAt, T2.toISOString());
+    assert.equal(row.lockerUserId, 'U1');
+    assert.equal(row.lockerSessionId, 'P1');
+  });
+
+  // AC-LOCKV-4: 정본 어휘 형식 단언 — 락 보유자 식별을 lockerUserId / lockerSessionId / lockedAt 컬럼명으로만
+  // 수행하고 lockerPageId 어휘를 사용하지 않음을 단언(주석 어댑테이션 → 형식 단언 승격).
+  it('AC-LOCKV-4: 락 보유자 식별은 정본 컬럼 lockerUserId/lockerSessionId/lockedAt 으로만 이뤄지고 lockerPageId 어휘를 쓰지 않는다', () => {
+    const { db, svc } = freshService();
+    const articleId = seedArticle(svc);
+    svc.acquireEditLock(articleId, { userId: 'U1', sessionId: 'P1', now: new Date('2026-06-04T01:00:00Z') });
+
+    // lockerSessionId 는 "페이지 단위 식별자"의 정본 어휘다 (003 AC-LOCK-4 의 pageId 표기는 이 컬럼의 별칭).
+    const lockRow = db.prepare(
+      'SELECT lockerUserId, lockerSessionId, lockedAt FROM Contents WHERE articleId = ?',
+    ).get(articleId);
+    const keys = Object.keys(lockRow);
+    for (const name of ['lockerUserId', 'lockerSessionId', 'lockedAt']) {
+      assert.ok(keys.includes(name), `${name} 정본 컬럼으로 보유자를 식별해야 한다`);
+    }
+    assert.equal(keys.includes('lockerPageId'), false, 'lockerPageId 어휘는 사용하지 않는다(부재가 정본)');
+
+    // 보유자 식별 값 자체도 정본 컬럼에서 읽힌다.
+    assert.equal(lockRow.lockerUserId, 'U1');
+    assert.equal(lockRow.lockerSessionId, 'P1');
+  });
 });

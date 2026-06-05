@@ -1,5 +1,5 @@
 // Tests for SPEC-DB-FOUNDATION-001 schema layer (AC-1, AC-2, AC-3, AC-6, AC-7).
-import { test } from 'node:test';
+import { test, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -244,4 +244,24 @@ test('AC-6: soft delete rejects non-KILL status', () => {
   const id = 'AKR202605270000000098';
   db.prepare('INSERT INTO Contents (articleId, status) VALUES (?, ?)').run(id, 'RDS');
   assert.throws(() => softDeleteArticle(db, id, 'DPS'), /KILL/);
+});
+
+// SPEC-NEWS-REVISE-004 REQ-LOCK-VOCAB-ALIGN — schema-vocab 가드.
+// 락 보유자 식별 컬럼의 정본 어휘는 lockerUserId / lockerSessionId / lockedAt 이며,
+// lockerPageId 컬럼은 존재하지 않는다(부재는 의도적 — 어휘 혼동 방지, PD1 컬럼 추가 거부 가드).
+describe('SPEC-NEWS-REVISE-004 REQ-LOCK-VOCAB-ALIGN — 락 보유자 정본 어휘 schema-vocab 가드', () => {
+  // AC-LOCKV-1: Contents 테이블에 정본 락 컬럼이 존재하고 lockerPageId 는 부재함을 단언.
+  it('AC-LOCKV-1: Contents 컬럼은 lockYN/lockerUserId/lockerSessionId/lockedAt 을 포함하고 lockerPageId 는 포함하지 않는다', () => {
+    const db = freshDb();
+    createSchema(db);
+    const cols = columnInfo(db, 'Contents').map((c) => c.name);
+
+    // 정본 어휘 4컬럼 존재 (lockerSessionId 가 1 인 1 페이지 정책의 페이지 단위 식별자를 운반한다).
+    for (const name of ['lockYN', 'lockerUserId', 'lockerSessionId', 'lockedAt']) {
+      assert.ok(cols.includes(name), `${name} 정본 컬럼이 존재해야 한다`);
+    }
+
+    // lockerPageId 부재 — option (ii) add-only 컬럼 도입은 명시적 거부(PD1). 부재가 의도적임을 잠근다.
+    assert.equal(cols.includes('lockerPageId'), false, 'lockerPageId 컬럼은 존재하지 않아야 한다(어휘 정합, 컬럼 추가 거부)');
+  });
 });

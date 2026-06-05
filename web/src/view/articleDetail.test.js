@@ -337,7 +337,9 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     }
   });
 
-  it('AC-EMPH-4: 분리 구조 회귀 — 제목/본문 섹션 각 1개 형제 + 1px 회색 구분선 + 12 공통정보 dt label', () => {
+  // SPEC-NEWS-REVISE-004 AC-GRAY-1: 003 AC-EMPH-4 의 gray-line 가드를 정확 토큰 #DDE3EC 로 정밀화.
+  // 느슨한 #DD[0-9A-Fa-f]{4} 패턴이 #DD0000 같은 의도하지 않은 값까지 통과시키던 false-positive 구멍을 막는다.
+  it('AC-GRAY-1 (003 AC-EMPH-4 정밀화): 분리 구조 회귀 — 제목/본문 섹션 각 1개 형제 + gray-line 정확 토큰 #DDE3EC 구분선 + 12 공통정보 dt label', () => {
     const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
     // aria-label="제목" / "본문" 섹션이 정확히 1개씩.
     const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
@@ -347,9 +349,9 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     // 두 섹션은 동일 부모의 형제 노드.
     expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
 
-    // 1px 회색 구분선 (--yh-gray-line 토큰 또는 #DDD 계열). 스타일 텍스트에서 토큰/색상을 확인한다.
+    // 1px 회색 구분선. gray-line 디자인 토큰이 정확한 production 값 #DDE3EC 임을 단언한다(대소문자 무시).
     const styleText = doc.querySelector('style').textContent;
-    expect(styleText).toMatch(/--yh-gray-line:\s*#DD[0-9A-Fa-f]{4}/);
+    expect(styleText).toMatch(/--yh-gray-line:\s*#DDE3EC/i);
     expect(styleText).toMatch(/1px solid var\(--yh-gray-line\)/);
 
     // 공통정보 섹션의 dt label 12개가 각각 정확히 한 번씩 enumerate.
@@ -363,6 +365,46 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
       expect(labels.filter((l) => l === req).length).toBe(1);
     }
     // 엠바고 / 2차 엠바고는 "시간" 접미사 포함 형태로 각 1회.
+    expect(labels.filter((l) => l === '엠바고' || l.startsWith('엠바고')).length).toBe(1);
+    expect(labels.filter((l) => l === '2차 엠바고' || l.startsWith('2차 엠바고')).length).toBe(1);
+    expect(dts.length).toBe(12);
+  });
+
+  // SPEC-NEWS-REVISE-004 AC-GRAY-2: false-positive 제거 증명 — production 파일을 건드리지 않고
+  // 정밀화 정규식과 003 의 느슨한 정규식을 샘플 문자열에 대해 직접 비교한다.
+  it('AC-GRAY-2: 정밀화 정규식은 의도하지 않은 #DD0000 을 거부하고 #DDE3EC 만 수용한다(느슨한 패턴 대비 false-positive 제거 증명)', () => {
+    const precise = /--yh-gray-line:\s*#DDE3EC/i;
+    const loose = /--yh-gray-line:\s*#DD[0-9A-Fa-f]{4}/;
+
+    // 정밀화 가드: 레드 계열 오변경 #DD0000 은 거부된다.
+    expect(precise.test('--yh-gray-line: #DD0000')).toBe(false);
+    // 대조: 003 의 느슨한 가드였다면 같은 샘플을 통과시켜 회귀를 놓쳤을 것이다(구멍 증명).
+    expect(loose.test('--yh-gray-line: #DD0000')).toBe(true);
+    // true-positive 보존: 정확 토큰 #DDE3EC 는 그대로 수용된다.
+    expect(precise.test('--yh-gray-line: #DDE3EC')).toBe(true);
+  });
+
+  // SPEC-NEWS-REVISE-004 AC-GRAY-3: gray-line 정밀화가 003 AC-EMPH-4 의 나머지 구조 단언을 회귀시키지 않음을
+  // production 출력(buildArticleDetailHtml)에 대해 재확인한다 — 제목/본문 형제 섹션 + 12 공통정보 dt label.
+  it('AC-GRAY-3: 정밀화 후에도 제목/본문 섹션 각 1개 형제 + 12 공통정보 dt label 구조가 회귀 없이 유지된다', () => {
+    const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
+    // aria-label="제목" / "본문" 섹션이 정확히 1개씩이며 동일 부모의 형제다.
+    const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
+    const bodySections = doc.querySelectorAll('section[aria-label="본문"]');
+    expect(titleSections.length).toBe(1);
+    expect(bodySections.length).toBe(1);
+    expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
+
+    // 공통정보 dt label 12개가 각각 정확히 한 번씩 enumerate.
+    const dts = doc.querySelectorAll('section[aria-label="공통정보"] dt');
+    const labels = Array.from(dts).map((dt) => dt.textContent);
+    const required = [
+      '작성자', '공동작성', '내용', '지역', '속성', '키워드',
+      '내부코멘트', '외부코멘트', '첨부파일', '자료파일',
+    ];
+    for (const req of required) {
+      expect(labels.filter((l) => l === req).length).toBe(1);
+    }
     expect(labels.filter((l) => l === '엠바고' || l.startsWith('엠바고')).length).toBe(1);
     expect(labels.filter((l) => l === '2차 엠바고' || l.startsWith('2차 엠바고')).length).toBe(1);
     expect(dts.length).toBe(12);
