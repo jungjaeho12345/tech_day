@@ -88,6 +88,19 @@ describe('useWriteController edit-load (Feature 3)', () => {
     expect(dto.secondaryEmbargoAt).toBe('2026-06-07T09:00');
   });
 
+  // v0.6.0 — isDraft 계약: 기사아이디가 생성되지 않은 신규 초안에서 true, 편집 로드 후 false.
+  // WritePage가 이 값으로 KILL 버튼 노출을 게이트한다 (news.md: 미생성 기사 화면엔 KILL 없음).
+  it('isDraft is true for an id-less draft and false once an edit-load adopts a real articleId', async () => {
+    const blank = renderCtrl(createFakeModel({}));
+    expect(blank.result.current.isDraft).toBe(true);
+
+    const row = { articleId: 'A-300', markupVersion: markupFor('기존 본문(끝)'), author: '원작성자' };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-300' });
+    await waitFor(() => expect(result.current.common.author).toBe('원작성자'));
+    expect(result.current.isDraft).toBe(false);
+  });
+
   it('no editArticleId => blank-new behavior is unchanged (no query, A-DRAFT)', async () => {
     const queryArticles = vi.fn().mockResolvedValue([]);
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-0001' });

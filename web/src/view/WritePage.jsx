@@ -1,8 +1,9 @@
 // Article-write page (REQ-FE-WRITE-001..015). Left editor region + right metadata region with
 // four tabs and 송고/보류/KILL above the tabs. The editor is behind the adapter (DP-F1); search and
 // send/hold/kill go through the controllers (DP-F3/DP-F5). A successful action resets the page.
-// The action buttons are role+status gated (news.md 기사 작성 페이지 내 버튼): 송고/보류 for role R|D and
-// KILL for role R, both only while the editing article's status is RDS.
+// The action buttons are role+status gated (news.md 기사 작성 페이지 내 버튼): 송고/보류 for role R|D|Z and
+// KILL for role R|Z, both only while the editing article's status is RDS. v0.6.0: KILL additionally
+// requires a generated articleId (edit context) — an id-less draft (A-DRAFT) never shows KILL.
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
@@ -812,9 +813,11 @@ export function WritePage({ user }) {
         {/* 송고 / 보류 / KILL action buttons at the top (news.md 기사 작성 페이지 내 버튼).
             Visibility is gated by role + the editing article's status:
             - 송고/보류: role R, D, or Z AND status RDS
-            - KILL:    role R or Z      AND status RDS
+            - KILL:    role R or Z      AND status RDS AND 기사아이디 생성됨 (!ctrl.isDraft, v0.6.0)
             SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS (D-1 잠금): Z권한도 R/D와 동일한 RDS gate를
-            적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다. */}
+            적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다.
+            v0.6.0: 기사아이디가 생성되지 않은 신규 초안(A-DRAFT)에서는 KILL을 표시하지 않는다 —
+            존재하지 않는 기사는 KILL 대상이 아니며, 초안 KILL은 기사를 만들었다 바로 죽이는 동작이 된다. */}
         {/* REQ-FE-WRITE-012/013 v0.3.0: 송고/보류/KILL은 확인창(window.confirm)을 선행하고,
             확인했을 때만 진행한다. 취소 시 저장/액션 모두 미발생 (AC-5.4). */}
         <div className="yh-meta-actions">
@@ -826,7 +829,7 @@ export function WritePage({ user }) {
                 onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
             </>
           ) : null}
-          {(user.role === 'R' || user.role === 'Z') && isRds ? (
+          {(user.role === 'R' || user.role === 'Z') && isRds && !ctrl.isDraft ? (
             <button type="button" className="yh-btn yh-btn--kill"
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}

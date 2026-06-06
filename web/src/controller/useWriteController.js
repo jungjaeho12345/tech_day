@@ -9,7 +9,40 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useModel } from '../app/context.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
-import { hasEndMarker } from '../model/editorContent.js';
+import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
+
+// SPEC-NEWS-REVISE: 작성 중이던 새 초안을 list.do(조회)로 갔다 돌아와도(WritePage unmount/remount) 유지한다.
+// httpModel 의 sessionId 영속 패턴과 동일하게 sessionStorage 에 저장한다 — same-tab 페이지 전환과 F5 새로
+// 고침에는 살아남고, 탭/브라우저를 닫으면(세션 종료, news.md lockYN) 함께 사라진다. localStorage 가 아니라
+// sessionStorage 인 이유가 이 도메인 규칙과 일치한다.
+const DRAFT_STORAGE_KEY = 'newsroom.writeDraft';
+
+/** Safe sessionStorage read — guarded so the controller never throws in non-browser/test contexts. */
+function readStoredDraft() {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function writeStoredDraft(value) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // storage unavailable (private mode/quota) — degrade to in-memory only; no throw.
+  }
+}
+function clearStoredDraft() {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // ignore — clearing is best effort.
+  }
+}
 
 // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — page-scoped sessionId generator (D2-5 = A strict).
 // One UUID per editor mount so two tabs of the same user collide on the lock (different sessionIds).
@@ -66,6 +99,37 @@ function readonlyMetaFromRow(row) {
   return meta;
 }
 
+// True when the deserialized markup envelope carries at least one block (any text or embed). An EMPTY
+// editor still serializes to a non-empty JSON string ({"format":...,"blocks":[]}), so a raw-string
+// emptiness test is wrong; we deserialize and inspect blocks instead. Text blocks may be whitespace-only
+// (e.g. a lone '\n'), which we treat as empty for persistence purposes.
+function markupHasBlocks(markup) {
+  try {
+    const { blocks } = deserializeContent(markup);
+    if (!Array.isArray(blocks)) return false;
+    return blocks.some((b) => (b.type === 'embed') || (b.type === 'text' && (b.text ?? '').trim() !== ''));
+  } catch {
+    return false;
+  }
+}
+
+// A draft is worth persisting only when it carries real user input: non-empty editor body/embeds OR any
+// common-info field beyond the auto-defaulted 작성자. This keeps sessionStorage empty for a pristine page
+// (so a brand-new mount never resurrects a blank), and avoids cross-context bleed.
+function draftHasContent(markup, common, authorDefault) {
+  if (markupHasBlocks(markup)) return true;
+  for (const key of Object.keys(EMPTY_COMMON)) {
+    const value = common[key];
+    if (key === 'author') {
+      // 작성자 is auto-filled with the user's name; only a CHANGED author counts as content.
+      if (value !== '' && value !== authorDefault) return true;
+    } else if (value !== '') {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * @param {AuthUser} user
  * @param {{ editArticleId?: string }} [options] when editArticleId is set, the controller loads that
@@ -74,21 +138,35 @@ function readonlyMetaFromRow(row) {
 export function useWriteController(user, options = {}) {
   const { editArticleId } = options;
   const model = useModel();
+  const authorDefault = user.name ?? '';
+  // SPEC-NEWS-REVISE: rehydrate a previously-typed NEW draft (작성 → 조회 전환 → 복귀) from sessionStorage.
+  // Only in the blank-new context (no editArticleId) — an edit context loads fresh from the server and
+  // MUST win (편집 로드 우선), so a saved draft never seeds it. A pristine/blank draft is treated as none.
+  const initialDraft = (() => {
+    if (editArticleId) return null;
+    const stored = readStoredDraft();
+    if (!stored) return null;
+    const markup = typeof stored.markup === 'string' ? stored.markup : '';
+    const common = { ...EMPTY_COMMON, author: authorDefault, ...(stored.common ?? {}) };
+    if (!draftHasContent(markup, common, authorDefault)) return null;
+    return { markup, common, articleId: stored.articleId ?? 'A-DRAFT', status: stored.status ?? 'RDS' };
+  })();
   // Editor adapter (DP-F1): the page programs against the adapter, not a concrete library.
   // SPEC-UI-EDITOR-001 uses the concrete structured adapter (text + ordered inline embeds).
-  const [adapter] = useState(() => createStructuredEditorAdapter());
+  const [adapter] = useState(() => createStructuredEditorAdapter(initialDraft?.markup ?? ''));
   // React mirror of the adapter content so the editor view re-renders on edits/embeds.
   const [content, setContent] = useState(() => adapter.getContent());
   // news.md 기사 에디터 공통정보: 작성자는 로그인한 사용자 정보의 이름을 입력한다. The 작성자 field DEFAULTS
   // to the logged-in user's name for a fresh draft; the user may still edit it (updateCommon), and an
-  // edit-loaded row overrides it via commonFromRow (the DB row's author wins when present).
-  const [common, setCommon] = useState(() => ({ ...EMPTY_COMMON, author: user.name ?? '' }));
-  const [articleId, setArticleId] = useState('A-DRAFT');
+  // edit-loaded row overrides it via commonFromRow (the DB row's author wins when present). A restored
+  // draft (above) re-seeds the saved common-info instead of the bare default.
+  const [common, setCommon] = useState(() => initialDraft?.common ?? { ...EMPTY_COMMON, author: authorDefault });
+  const [articleId, setArticleId] = useState(() => initialDraft?.articleId ?? 'A-DRAFT');
   // Status of the article currently in the editor (news.md 기사 작성 페이지 내 버튼): the 송고/보류/KILL
   // buttons are shown only while this is 'RDS'. A fresh draft starts at INITIAL_STATUS = 'RDS'; an
   // edit-loaded row adopts its own row.status. This is the EDITING status and is intentionally separate
   // from `lifecycleStatus`, which is the backend-returned confirmation shown AFTER an action.
-  const [status, setStatus] = useState('RDS');
+  const [status, setStatus] = useState(() => initialDraft?.status ?? 'RDS');
   const [lifecycleStatus, setLifecycleStatus] = useState(null);
   const [actionError, setActionError] = useState(null);
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — frontend lock integration. lockError holds the conflict
@@ -127,6 +205,21 @@ export function useWriteController(user, options = {}) {
     })();
     return () => { cancelled = true; };
   }, [editArticleId, model, adapter]);
+
+  // SPEC-NEWS-REVISE — persist the in-progress NEW draft so leaving for 조회(list.do) and returning
+  // (WritePage remount) keeps the editor body, title, and 공통정보. Runs only in the blank-new context
+  // (no editArticleId): an edit context owns its server-loaded row + lock and must not be shadowed by a
+  // saved draft. A pristine/blank draft is removed rather than stored so a fresh page never resurrects an
+  // empty draft. `content` is the React mirror of the adapter, so the latest markup is read via getMarkup().
+  useEffect(() => {
+    if (editArticleId) return;
+    const markup = adapter.getMarkup();
+    if (draftHasContent(markup, common, authorDefault)) {
+      writeStoredDraft({ markup, common, articleId, status });
+    } else {
+      clearStoredDraft();
+    }
+  }, [editArticleId, adapter, content, common, articleId, status, authorDefault]);
 
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire the lock on mount (when editing an existing article)
   // and release on unmount. The page-scoped sessionId (pageSessionIdRef.current) is stable per mount
@@ -262,6 +355,10 @@ export function useWriteController(user, options = {}) {
     // SPEC-NEWS-REVISE-007 — back to a blank-new context, so the read-only ContentsVO area disappears
     // (AC-MAP-3): a fresh draft has no articleId/sender/sentAt yet.
     setReadonlyMeta(null);
+    // SPEC-NEWS-REVISE — 송고/보류/KILL 성공 후 초기화는 보존 대상이 아니다 (news.md): 보존된 draft 도
+    // 함께 비운다. 이렇게 하지 않으면 액션 성공 → 빈 페이지로 복귀 후 다시 옛 초안이 되살아난다. 동기 clear
+    // 로 persist effect 의 다음 write 보다 먼저 키를 제거한다 (effect 도 빈 draft 면 어차피 clear 한다).
+    clearStoredDraft();
   }, [adapter, user.name]);
 
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
@@ -340,6 +437,10 @@ export function useWriteController(user, options = {}) {
     assembleDto,
     common, updateCommon,
     status,
+    // v0.6.0 — 기사아이디가 아직 생성되지 않은 신규 초안인지 (A-DRAFT 센티널). WritePage가 이 값으로
+    // KILL 버튼 노출을 게이트한다 (news.md: 기사아이디 미생성 기사의 작성 화면에는 KILL 버튼이 없다 —
+    // 존재하지 않는 기사는 KILL 대상이 될 수 없고, 종전엔 초안 KILL이 기사를 만들었다 바로 죽였다).
+    isDraft: articleId === 'A-DRAFT',
     // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields; null in a blank-new context
     // (WritePage renders the read-only area only when this is non-null — AC-MAP-2/3).
     readonlyMeta,

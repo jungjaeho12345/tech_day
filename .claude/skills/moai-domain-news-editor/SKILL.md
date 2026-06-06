@@ -12,7 +12,7 @@ description: >
 license: Apache-2.0
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
-  version: "0.1.6"
+  version: "0.1.7"
   category: "domain"
   status: "active"
   updated: "2026-06-06"
@@ -59,6 +59,7 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-06 (v0.1.7): 작성 초안 보존 동기화 — writer.do → list.do 이동 후 복귀 시 작성 내용(제목/본문/임베드/공통정보) 유지. sessionStorage 키 `newsroom.writeDraft` 영속(useWriteController, 블랭크-신규 컨텍스트 한정), 편집 진입(?id=)은 서버 ContentsVO 로드 우선(영속/복원 OFF), 송고/보류/KILL 성공 초기화 시 보존 draft 도 함께 제거. news.md 기사 작성페이지 절에 규칙 반영.
 - 2026-06-06 (v0.1.6): 세션 정책 신설 동기화 — (1) 무동작 1시간(IDLE_TIMEOUT_MS=3600000) 세션 만료, 요청마다 sliding 갱신 (src/services/sessionService.js touchSession). (2) 로그아웃 전까지 활동 시 무기한 유지. (3) F5 새로고침 유지 — sessionId 를 sessionStorage 영속 + GET /api/session 복원 (탭/브라우저 닫힘 시 소멸 = lockYN 규칙 정합). news.md "## 세션 정책" 섹션(L94-97 부근) 신설 반영.
 - 2026-06-06 (v0.1.5): 상세보기 새창 레이아웃 개편 동기화 — 공통정보 12필드 세로→**가로 나열**(flex wrap), 제목/본문 분리 섹션 폐지 → 단일 `기사` 섹션에서 제목+본문 통합 표시 (본문>제목 폰트 1.3rem<1.75rem 유지). 구두 지시 기반, news.md L89 반영 완료. 구현: web/src/view/articleDetail.js.
 - 2026-06-06 (v0.1.4): news.md 전수 대조 동기화. (1) 라인 인용 drift 보정 — 생애주기 L148-154→L153-159, Ctrl+D L122→L124, 상세보기 L84→L89, 본문 색 L119→L121, 골드 L120→L122, 임베딩 L116-118→L119-120, 본문 구조 L114-115→L116-118, 권한 정의 L137→L138, 제어 권한 L140-142→L141-143, 작성자 자동입력 L125→L127, API L99-103/L127-131→L101-105/L130-135. (2) §2.6 lockYN 출처를 본문에서도 SPEC-NEWS-REVISE-002/003 으로 정정 (v0.1.1 HISTORY 기록의 본문 미반영분). (3) 신규 반영 — §2.8 list.do 메뉴 4종 필터·컬럼 규약 (L71-86), 송고 `(끝)` 가드 본문 규칙 (§1.4, L66), 송고/보류/KILL 확인창·성공 시 상태 메시지 미표시 (§2.2, L101/L104), 기사아이디 SP 규칙 AKR+YYYYMMDD+난수9 (§2.2, L112-113), '본문' 라벨 미표시 (§2.5, L116), news.md L45 `wirter.do` 오타 주석 (§1.1). (4) skill-creator 평가(iteration-1)에서 발견된 낡은 표기 정정 — §2.2 Z 전이를 'R7 미해결'에서 **D-mirror 확정**(lifecycle.js TRANSITIONS + SPEC-NEWS-REVISE-001 D-6 + lifecycleRule.test.js)으로 갱신.
@@ -140,6 +141,8 @@ triggers:
 | 송고 | 보이고 사용가능 | 보이고 사용가능 | 보이고 사용가능 | 비표시 |
 | 보류 | 보이고 사용가능 | 보이고 사용가능 | 보이고 사용가능 | 비표시 |
 | KILL | 보이고 사용가능 | 비표시 | 보이고 사용가능 | 비표시 |
+
+- **KILL 추가 조건 (v0.6.0)**: 기사아이디가 생성되지 않은 신규 초안(A-DRAFT)에서는 권한과 무관하게 KILL 비표시 — KILL은 기사아이디가 부여된(편집 컨텍스트) RDS 기사에서만 노출된다 (Source: news.md "기사아이디가 생성되지 않은 기사…KILL 버튼을 표시하지 않는다", SPEC-FRONTEND-UI-001 v0.6.0).
 
 기사 제어/편집 권한 (Source: news.md L141-143):
 - R/D/Z 모두 기사 편집 가능.

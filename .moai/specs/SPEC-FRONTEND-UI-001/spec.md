@@ -1,6 +1,6 @@
 ---
 id: SPEC-FRONTEND-UI-001
-version: 0.5.0
+version: 0.6.0
 status: approved
 created: 2026-05-27
 updated: 2026-06-06
@@ -13,6 +13,7 @@ issue_number: null
 
 ## HISTORY
 
+- 2026-06-06 (v0.6.0): 사용자 요청 반영 — 기사아이디가 생성되지 않은 신규 초안(A-DRAFT) 작성 화면에는 KILL 버튼을 표시하지 않는다. REQ-FE-WRITE-013 개정: KILL 버튼 노출은 기사아이디가 부여된(편집 컨텍스트) RDS 기사 + 권한 매트릭스(R/Z)일 때로 한정 — 존재하지 않는 기사는 KILL 대상이 아니며, 종전에는 초안 KILL이 기사를 생성한 직후 KILL하는 동작이 됐다. 구현: useWriteController가 isDraft(A-DRAFT 센티널)를 노출하고 WritePage KILL 게이트에 !isDraft 추가. AC-5.3 개정, AC-5.5 신설. news.md 작성 페이지 버튼 절 + moai-domain-news-editor SKILL 동기 갱신. (MoAI)
 - 2026-06-06 (v0.5.0): 사용자 요청 반영 — 조회 4개 메뉴 데이터 표시·기사상태 컬럼·편집 로드·락 게이트 개정. (1) REQ-FE-VIEW-008/011 개정 — 공통 목록 컬럼을 7개 → 8개로 확장: 수정시간과 LockYN 사이에 기사상태(status, RDS/DPS/RRH/RRK/DDH/DDK 원시 값) 컬럼 추가. (2) REQ-FE-VIEW-007 개정 — 개인별 수정 author 필터는 기사에 저장된 작성자 표시 이름(user.name) 기준으로 매칭(종전 userId 매칭은 저장 값과 불일치로 항상 0건). (3) 기사 생성 시 서버가 세션 사용자의 department/departmentCode를 스탬프하고, 레거시 행은 작성자 이름→User.department 비파괴 백필 — 부서별 작성/송고 조회가 실데이터와 매칭되도록 복구. (4) 편집 진입 로드 복구 — 백엔드 articleModel.query가 Article을 LEFT JOIN하여 markupVersion을 포함하고, Contents에 공통정보 8컬럼(coAuthor/region/attribute/keyword/internalComment/externalComment/attachmentFile/referenceFile) 영속화 + secondaryEmbargoAt→secondEmbargoAt 매핑. (5) SPEC-NEWS-REVISE-002 AC-EDIT-LOCK-6 이행 — applyAction(송고/보류/KILL action 라우트 포함)에 락 자동 검증: 타 보유자의 live 락이 있으면 lock-required 거부, 락이 비면 통과(신규 송고 보존). AC-7.3/7.4/7.5 개정. (MoAI)
 - 2026-06-06 (v0.4.0): 사용자 요청 반영 — 기사 조회 4개 메뉴 개정. (1) REQ-FE-VIEW-011 신설 — 4개 메뉴 전부 기사 목록 컬럼을 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN 7개로 통일(상태 배지·인라인 액션 버튼 제거). (2) REQ-FE-VIEW-005 개정 — 부서별 작성에 부서 Select(데이터-소스 인터페이스 재사용, 초기값 로그인 사용자 부서 + 자동 조회) + 조회 버튼 추가, 필터 `{ department, statusNot: 'DPS,RRH' }`. 백엔드 articleModel.query에 statusNot(NOT IN) 필터 신설, 누락돼 있던 department 동등 필터 추가. (3) REQ-FE-VIEW-007 개정 — 개인별 수정은 본인 작성 + 상태 RDS/RRK만 (`{ author, status: 'RDS,RRK' }`). (4) REQ-FE-VIEW-009/010 개정 — DPS 고침/포털고침 게이팅을 인라인 버튼에서 우클릭 컨텍스트 메뉴 항목(고침(포털제외)/포털고침)으로 이동, D 권한 + DPS일 때만 활성화되어 기사작성(편집) 페이지로 이동. AC-7.1/7.1b/7.3/7.5/8.1/8.2 개정·신설. news.md 동기 갱신. (MoAI)
 - 2026-06-06 (v0.3.0): 사용자 요청 5건 반영. (1) REQ-FE-WRITE-012/013/014 개정 — 송고/보류/KILL 버튼은 '송고/보류/KILL하시겠습니까?' 확인창을 선행하고, 보류/KILL도 송고와 동일하게 기사 DTO 저장(saveArticle) 후 액션을 제출하며, 요청 성공 시 버튼 아래에 결과 상태 메시지를 표시하지 않는다(작성 페이지 초기화는 유지). (2) REQ-FE-VIEW-008 개정 — 데스크 미송고는 상태값 RDS, DDH 기사만 나열하고 컬럼은 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN 7개만 표현. 백엔드 article 조회에 status 다중값(IN) 필터 추가. (3) 에디터 '본문' 라벨 텍스트 제거(aria-label 유지). (4) 문말 trailing 개행 렌더 보정(trailing <br> 패딩 — Enter 2회 증상 해소). AC-5.1/5.2 개정, AC-5.3/5.4 신설, AC-7.4 개정. news.md 동기 갱신. (MoAI)
@@ -128,7 +129,7 @@ issue_number: null
 ### 기사 작성 페이지 — 송고/보류 (Send / Hold)
 
 - **REQ-FE-WRITE-012 (Event-Driven, v0.3.0 개정)**: **When** the user presses the 송고 (send) button and confirms the '송고하시겠습니까?' confirmation dialog, the system **shall** assemble the article data into an article DTO (combining editor content and the four tabs' inputs) and submit it to the backend so the backend can route it through the lifecycle state machine (SPEC-BACKEND-CORE-001 REQ-WF-001).
-- **REQ-FE-WRITE-013 (Event-Driven, v0.3.0 개정)**: **When** the user presses the 보류 (hold) or KILL button and confirms the corresponding '보류하시겠습니까?' / 'KILL하시겠습니까?' confirmation dialog, the system **shall** save the current article DTO (same persistence path as send) and then submit the hold/kill action for the saved article to the backend. **When** the user cancels the confirmation dialog (any of send/hold/kill), the system **shall not** save or submit anything.
+- **REQ-FE-WRITE-013 (Event-Driven, v0.6.0 개정)**: **When** the user presses the 보류 (hold) or KILL button and confirms the corresponding '보류하시겠습니까?' / 'KILL하시겠습니까?' confirmation dialog, the system **shall** save the current article DTO (same persistence path as send) and then submit the hold/kill action for the saved article to the backend. **When** the user cancels the confirmation dialog (any of send/hold/kill), the system **shall not** save or submit anything. **While** the write page holds an id-less draft (articleId not yet generated — the A-DRAFT sentinel), the system **shall not** display the KILL button regardless of role; KILL is offered only for an article loaded in edit context with a generated articleId, per the existing role matrix (R/Z + RDS).
 - **REQ-FE-WRITE-014 (Ubiquitous, v0.3.0 개정)** [DP-F5]: The system **shall** send only the action and the article DTO to the backend and **shall not** compute the next lifecycle state on the client (the backend state machine computes the transition per REQ-ART-LC-*). After a SUCCESSFUL send/hold/kill action the system **shall not** display a lifecycle-status message below the action buttons (the write page reset per news.md remains); a REJECTED action still surfaces its error notice.
 
 ### 기사 조회 페이지 — 실시간 + 상태바 (Article View — Real-time + Status Bar)
