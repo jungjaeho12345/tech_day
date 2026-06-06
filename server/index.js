@@ -15,7 +15,7 @@ import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 
-import { createSchema } from '../src/db/schema.js';
+import { createSchema, backfillContentsDepartmentFromAuthor } from '../src/db/schema.js';
 import { createControllers } from '../src/controllers/index.js';
 import { createSessionService } from '../src/services/sessionService.js';
 
@@ -45,8 +45,10 @@ export function createApp({ controllers, sessionService }) {
   // @MX:REASON: every protected route derives role from here, never from req.body.role; this closes the
   // server측 인가 미배선 Critical by making client-supplied role values irrelevant (REQ-AUTH-ROLE-004).
   // Returns the validated identity ({ role, ... }) or undefined when the session is absent/expired.
+  // Uses touchSession so every authenticated request refreshes the 1h sliding idle window — an active
+  // user is kept logged in indefinitely; only true inactivity (>1h) or logout ends the session.
   function sessionOf(req) {
-    return sessionService.validateSession(sessionIdOf(req));
+    return sessionService.touchSession(sessionIdOf(req));
   }
 
   // --- Health ---------------------------------------------------------------
@@ -65,6 +67,18 @@ export function createApp({ controllers, sessionService }) {
   // POST /api/logout -> invalidate the server-side session for x-session-id.
   app.post('/api/logout', (req, res) => {
     res.json(controllers.auth.logout(sessionIdOf(req)));
+  });
+
+  // GET /api/session -> { ok, user? }. Session-restore endpoint for client F5/refresh: the client
+  // replays its stored x-session-id and, if the server-side session is still live (within the 1h
+  // sliding window), gets back the sanitized identity so the UI rehydrates WITHOUT a re-login.
+  // sessionOf() touches the session, so a refresh also counts as activity (keeps the window fresh).
+  app.get('/api/session', (req, res) => {
+    const session = sessionOf(req);
+    if (session === undefined) {
+      return res.json({ ok: false });
+    }
+    return res.json({ ok: true, user: session });
   });
 
   // --- Users ----------------------------------------------------------------
@@ -131,7 +145,8 @@ export function createApp({ controllers, sessionService }) {
   app.post('/api/articles/:id/action', (req, res) => {
     const { action } = req.body ?? {};
     const sessionId = sessionIdOf(req);
-    const session = sessionService.validateSession(sessionId);
+    // Sliding window: an action is activity, so refresh the 1h idle deadline (touchSession).
+    const session = sessionService.touchSession(sessionId);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -141,7 +156,15 @@ export function createApp({ controllers, sessionService }) {
       return res.json(gate);
     }
     // Transition is driven by the SESSION role, never by any client-supplied body.role.
-    const result = controllers.article.applyAction(req.params.id, session.role, action);
+    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): pass the caller's lock identity — the page-scoped sessionId
+    // from the body (or x-page-session-id header) + the session-derived userId — so a transition on
+    // an article live-locked by ANOTHER holder is rejected ({ok:false, reason:'lock-required'}).
+    // Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
+    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    const result = controllers.article.applyAction(req.params.id, session.role, action, {
+      userId: session.userId,
+      sessionId: pageSessionId,
+    });
     if (result.ok) {
       bus.emit('change', { type: 'status', articleId: req.params.id, status: result.status });
     }
@@ -152,7 +175,8 @@ export function createApp({ controllers, sessionService }) {
   // M-2: create/update is gated behind an authenticated edit-capable (R/D/Z) session.
   function saveArticle(req, res) {
     const sessionId = sessionIdOf(req);
-    const session = sessionService.validateSession(sessionId);
+    // Sliding window: saving is activity, so refresh the 1h idle deadline (touchSession).
+    const session = sessionService.touchSession(sessionId);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -161,7 +185,18 @@ export function createApp({ controllers, sessionService }) {
       return res.json({ ok: false, reason: 'forbidden' });
     }
     try {
-      const { articleId } = controllers.article.create(req.body ?? {});
+      // 부서별 작성/송고 menus filter on Contents.department, but the client DTO never carried the
+      // writer's department — every row was saved with department=NULL so the menus matched nothing.
+      // Stamp the session user's department/departmentCode at create time (the session is the trusted
+      // identity source, REQ-AUTH-ROLE-004). Explicit DTO values are preserved when present.
+      const dto = { ...(req.body ?? {}) };
+      if (dto.department == null || dto.department === '') {
+        dto.department = session.department ?? null;
+      }
+      if (dto.departmentCode == null || dto.departmentCode === '') {
+        dto.departmentCode = session.departmentCode ?? null;
+      }
+      const { articleId } = controllers.article.create(dto);
       bus.emit('change', { type: 'create', articleId, status: 'RDS' });
       return res.json({ ok: true, articleId });
     } catch {
@@ -182,7 +217,7 @@ export function createApp({ controllers, sessionService }) {
   // is the correct behaviour (lock-required) for clients that lost the page sessionId.
   app.put('/api/articles/:id', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -215,7 +250,7 @@ export function createApp({ controllers, sessionService }) {
   // per editor mount) so the lock distinguishes same-user-different-page attempts (D2-5 = A strict).
   app.post('/api/articles/:id/lock', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -235,7 +270,7 @@ export function createApp({ controllers, sessionService }) {
   });
   app.delete('/api/articles/:id/lock', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -297,6 +332,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // Open the existing SQLite file and ensure schema idempotently (never drops/deletes).
   const db = new DatabaseSync(DB_PATH);
   createSchema(db);
+  // Non-destructive legacy backfill: resolve department/departmentCode for rows saved before the
+  // department stamp existed (idempotent — only rows still missing a department are touched).
+  backfillContentsDepartmentFromAuthor(db);
 
   // Single session service shared by the controllers and the HTTP role-resolution layer.
   const sessionService = createSessionService();

@@ -30,10 +30,10 @@ const EMPTY_COMMON = Object.freeze({
 // Build a common-info object from a loaded article row (news.md 기사 편집 기능: 편집 시 제목/본문 +
 // 공통정보 모두 로드). Copies EVERY EMPTY_COMMON key that is actually present on the row (so missing
 // fields stay blank, not undefined). The row uses backend field names; the 2nd embargo may arrive as
-// embargoAt/secondEmbargoAt. NOTE: the Contents table only stores a subset of these columns (author,
-// modifier, department, departmentCode, createdAt, embargoAt/secondEmbargoAt, status); coAuthor/region/
-// attribute/keyword/internalComment/externalComment/attachmentFile/referenceFile/content are NOT columns,
-// so they cannot be loaded from the DB and remain blank on edit-load (schema limitation, not a UI bug).
+// embargoAt/secondEmbargoAt. The Contents table persists ALL of these fields — the 8 common-info
+// columns (coAuthor/region/attribute/keyword/internalComment/externalComment/attachmentFile/
+// referenceFile) were added by the edit-load fix, so a loaded row restores the full 공통정보. Rows
+// saved BEFORE that migration carry NULL in those columns and still land here as blank (no crash).
 function commonFromRow(row) {
   const next = { ...EMPTY_COMMON };
   for (const key of Object.keys(EMPTY_COMMON)) {
@@ -217,10 +217,11 @@ export function useWriteController(user, options = {}) {
     setContent(adapter.getContent());
   }, [adapter]);
 
-  // news.md 기사 에디터: Alt+Y appends "(끝)" to the END of the body text (shown in 골드색 by the view).
-  // SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER simplifies the inserted token to exactly "(끝)" (prefix-free
-  // — previously "\n (끝)"). It persists in markupVersion (round-trips via setMarkup) because it is stored
-  // as literal body text.
+  // news.md 기사 에디터: Alt+Y places "(끝)" as the FINAL block AFTER all embeds (shown in 골드색 by the
+  // view). SPEC-NEWS-REVISE: 최종 시각 순서는 본문 텍스트 → embeds → "(끝)". The token is exactly "(끝)"
+  // (prefix-free). It persists in markupVersion (round-trips via setMarkup) because it is stored as a
+  // literal trailing text block, and getBodyText() still ends with "(끝)" (embeds contribute no text) so
+  // the 송고 (끝) 가드가 그대로 통과한다.
   const appendEnd = useCallback(() => {
     adapter.appendEnd();
     setContent(adapter.getContent());
@@ -235,9 +236,13 @@ export function useWriteController(user, options = {}) {
    * The parsed title (editor's first line, 후보 A) is mapped to `title` so the backend writes it into
    * Article.title AND Contents.title (previously saved articles had title=null). markupVersion is
    * unchanged — the AC-4 invariant `assembleDto().markupVersion === adapter.getMarkup()` still holds.
+   * The editor's `secondaryEmbargoAt` is duplicated onto the backend column name `secondEmbargoAt` —
+   * without this mapping the 2nd embargo was silently dropped on INSERT/UPDATE (name mismatch), and
+   * commonFromRow's reverse mapping (secondEmbargoAt → secondaryEmbargoAt) had nothing to restore.
    */
   const assembleDto = useCallback(() => ({
     ...common,
+    secondEmbargoAt: common.secondaryEmbargoAt,
     title: adapter.getStructure().title,
     markupVersion: adapter.getMarkup(),
   }), [common, adapter]);
@@ -286,6 +291,7 @@ export function useWriteController(user, options = {}) {
     }
     try {
       let id = articleId;
+      const isEditContext = articleId !== 'A-DRAFT';
       // REQ-FE-WRITE-013 v0.3.0 — 송고뿐 아니라 보류/KILL도 액션 전에 현재 DTO를 저장한다. 종전에는
       // send만 저장해서, 미저장 새 초안(A-DRAFT)에 보류/KILL을 누르면 applyAction이 존재하지 않는
       // 기사 ID로 호출되어 서버가 not-found로 거부했다 (보류/KILL 미동작의 원인).
@@ -296,7 +302,6 @@ export function useWriteController(user, options = {}) {
       // server/index.js before the partial update is applied (it is transport-only metadata).
       {
         const dto = assembleDto();
-        const isEditContext = articleId !== 'A-DRAFT';
         const payload = isEditContext ? { ...dto, sessionId: pageSessionIdRef.current } : dto;
         const saved = await model.saveArticle(articleId, payload);
         if (saved?.ok && saved.articleId) {
@@ -304,7 +309,12 @@ export function useWriteController(user, options = {}) {
           setArticleId(id);
         }
       }
-      const result = await model.applyAction(id, user.role, action);
+      // AC-EDIT-LOCK-6 — 편집 컨텍스트에선 페이지 락 sessionId를 4번째 인자로 함께 보내 서버 action
+      // 라우트의 락 게이트가 호출자를 락 보유자 본인으로 식별하게 한다. 신규 초안은 락이 없으므로
+      // 기존 3-인자 호출을 유지한다 (게이트는 락이 빈 기사를 그대로 통과시킨다).
+      const result = isEditContext
+        ? await model.applyAction(id, user.role, action, { sessionId: pageSessionIdRef.current })
+        : await model.applyAction(id, user.role, action);
       if (!result?.ok) {
         // EC-5: rejected transition -> notify, do NOT show a state change, do NOT reset the page.
         setActionError(`전송이 거부되었습니다 (${result?.reason ?? 'rejected'}).`);

@@ -69,8 +69,23 @@ describe('useWriteController edit-load (Feature 3)', () => {
     // saveArticle called with the LOADED id -> the model PUTs (updates) instead of POSTing a new row.
     expect(saveArticle).toHaveBeenCalled();
     expect(saveArticle.mock.calls[0][0]).toBe('A-200');
-    // applyAction uses the same id.
-    expect(applyAction).toHaveBeenCalledWith('A-200', 'D', 'send');
+    // applyAction uses the same id — edit context rides the page lock sessionId (AC-EDIT-LOCK-6).
+    expect(applyAction).toHaveBeenCalledWith('A-200', 'D', 'send',
+      expect.objectContaining({ sessionId: expect.any(String) }));
+  });
+
+  // 적대적 리뷰 보강: 2차 엠바고 저장 방향 매핑 회귀 가드 — 에디터 필드명(secondaryEmbargoAt)과
+  // 백엔드 컬럼명(secondEmbargoAt)이 달라 INSERT/UPDATE에서 조용히 유실되던 버그의 특성 테스트.
+  // assembleDto의 secondEmbargoAt 한 줄 매핑이 사라지면 본 테스트가 즉시 FAIL한다.
+  it('assembleDto duplicates secondaryEmbargoAt onto the backend column name secondEmbargoAt (save path)', () => {
+    const { result } = renderCtrl(createFakeModel({}));
+
+    act(() => result.current.updateCommon('secondaryEmbargoAt', '2026-06-07T09:00'));
+
+    const dto = result.current.assembleDto();
+    expect(dto.secondEmbargoAt).toBe('2026-06-07T09:00');
+    // 에디터 측 키도 그대로 유지된다 (commonFromRow 역방향 매핑과의 라운드트립 보존).
+    expect(dto.secondaryEmbargoAt).toBe('2026-06-07T09:00');
   });
 
   it('no editArticleId => blank-new behavior is unchanged (no query, A-DRAFT)', async () => {

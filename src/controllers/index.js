@@ -91,7 +91,9 @@ export function createControllers(db, deps = {}) {
       search: (queryText) => articleService.searchArticles(queryText),
       updateStatus: (articleId, status) => articleService.updateStatus(articleId, status),
       remove: (articleId, role) => articleService.remove(articleId, role),
-      applyAction: (articleId, role, action) => articleService.applyAction(articleId, role, action),
+      // options carries the caller's lock identity ({userId, sessionId}) so applyAction can reject
+      // a transition on an article live-locked by another holder (AC-EDIT-LOCK-6, 'lock-required').
+      applyAction: (articleId, role, action, options) => articleService.applyAction(articleId, role, action, options),
       // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (D2-7 = A) — partial update of an existing
       // article. The PUT /api/articles/:id route wires through here after asserting lock ownership.
       update: (articleId, fields) => articleService.update(articleId, fields),

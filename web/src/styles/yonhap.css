@@ -527,45 +527,135 @@ textarea {
 
 /* ----------------------------------------------------------
    9. Login card
+   Blue+white 연합뉴스 design: deep-blue gradient background,
+   white card with a strong blue brand bar at top, blue text accents.
+   CLAUDE.md: 파란색+흰색 혼합, 글자색(제목/헤드라인) 파란색.
    ---------------------------------------------------------- */
 .yh-login-wrap {
-  min-height: calc(100vh - var(--yh-header-height));
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--yh-gray-bg);
+  /* Blue-led background: deep navy → primary blue gradient */
+  background: linear-gradient(
+    160deg,
+    var(--yh-blue-dark) 0%,
+    var(--yh-blue) 60%,
+    #1a6acf 100%
+  );
+  padding: var(--yh-sp-xl);
 }
 
 .yh-card {
   background: var(--yh-white);
-  border: 1px solid var(--yh-gray-line);
-  border-top: 3px solid var(--yh-blue); /* BLUE top accent — headline identity */
-  border-radius: var(--yh-radius-md);
-  box-shadow: var(--yh-shadow-md);
-  padding: var(--yh-sp-xl);
-  width: 340px;
+  border: 1px solid rgba(10, 77, 166, 0.15);
+  /* Thick blue brand bar at top — 연합뉴스 signature chrome */
+  border-top: none;
+  border-radius: var(--yh-radius-lg);
+  box-shadow: var(--yh-shadow-lg), 0 0 0 1px rgba(255,255,255,0.1);
+  padding: 2rem 2rem 1.75rem;
+  width: 380px;
+  max-width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Blue brand bar across the card top — replaces border-top trick */
+.yh-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--yh-blue-dark) 0%, var(--yh-blue) 50%, var(--yh-red) 100%);
+}
+
+/* Subtle blue tint decoration at bottom-right corner */
+.yh-card::after {
+  content: "";
+  position: absolute;
+  bottom: -30px;
+  right: -30px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(10,77,166,0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .yh-card__header {
   text-align: center;
-  margin-bottom: var(--yh-sp-xl);
+  margin-bottom: 1.5rem;
   padding-bottom: var(--yh-sp-md);
   border-bottom: 1px solid var(--yh-gray-line);
 }
 
+/* Logo lockup — 연합뉴스 wordmark with red left rule (matches .yh-brand__logo pattern).
+   Typography: Nanum Myeongjo weight 800 — already loaded in index.html (no extra fetch).
+   wght 800 gives the newspaper front-page headline density that wght 700 lacks. */
 .yh-card__logo {
-  font-family: var(--yh-serif);
-  font-size: 1.75rem;
-  font-weight: 700;
+  display: inline-block;
+  font-family: "Nanum Myeongjo", var(--yh-serif);
+  font-size: 1.9rem;
+  font-weight: 800; /* heaviest loaded weight → 신문 1면 타이틀 질감 */
   color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  letter-spacing: -0.04em; /* tighter tracking at display size — 명조 관행 */
+  line-height: 1.15;
+  /* Red left accent rule — 연합뉴스 brand identity (matches TopBar brand logo) */
+  border-left: 4px solid var(--yh-red);
+  padding-left: var(--yh-sp-sm);
 }
 
+/* Subtitle — Noto Serif KR 400: lighter serif contrasts with the heavy logo above,
+   creating editorial hierarchy (headline > deck). Already loaded in index.html.
+   Wide letter-spacing mimics a newspaper secondary-deck caption style. */
 .yh-card__subtitle {
-  font-size: 0.8rem;
-  color: var(--yh-gray-mid);
+  font-family: "Noto Serif KR", var(--yh-serif);
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--yh-blue);
+  opacity: 0.7;
   margin-top: var(--yh-sp-xs);
+  letter-spacing: 0.1em; /* wide tracking for caption / deck feel */
+}
+
+/* Label override for login fields — blue labels per CLAUDE.md 연합뉴스 글자색 규칙.
+   Noto Sans KR 700 with widened tracking gives a print-label quality. */
+.yh-card .yh-field label {
+  font-family: var(--yh-sans); /* Noto Sans KR — already body default */
+  color: var(--yh-blue);
+  font-weight: 700;
+  letter-spacing: 0.08em; /* print-label spacing */
+}
+
+/* Slightly larger input padding inside the login card for better UX */
+.yh-card .yh-field input {
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.9rem;
+}
+
+/* Input placeholder — italic sans gives a print-blank / 공란 feel */
+.yh-card .yh-field input::placeholder {
+  font-style: italic;
+  color: var(--yh-gray-mid);
+  opacity: 0.75;
+}
+
+/* Login submit button — Nanum Myeongjo 700: matches the wordmark family so "로그인"
+   reads as a headline-weight call-to-action rather than a generic UI button.
+   wght 700 (not 800) keeps button text from feeling heavier than the logo above it. */
+.yh-card .yh-btn--primary {
+  font-family: "Nanum Myeongjo", var(--yh-serif);
+  font-weight: 700;
+  height: 2.5rem;
+  font-size: 1rem; /* slightly up from 0.95rem — Myeongjo reads smaller optically */
+  letter-spacing: 0.1em; /* headline spacing on the CTA */
+}
+
+/* Error alert inside the card */
+.yh-card .yh-alert {
+  margin-top: var(--yh-sp-md);
 }
 
 /* ----------------------------------------------------------
@@ -638,12 +728,12 @@ textarea {
   outline-offset: -2px;
 }
 
-/* Shared 7-column list layout for ALL four view menus (REQ-FE-VIEW-011 v0.4.0;
+/* Shared 8-column list layout for ALL four view menus (REQ-FE-VIEW-011 v0.5.0 — 기사상태 추가;
    originally the 데스크 미송고-only layout, REQ-FE-VIEW-008 v0.3.0):
-   기사아이디 | 제목(flex) | 작성자 | 수정자 | 작성시간 | 수정시간 | LockYN */
+   기사아이디 | 제목(flex) | 작성자 | 수정자 | 작성시간 | 수정시간 | 기사상태 | LockYN */
 .yh-desk-header {
   display: grid;
-  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4rem;
+  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4.5rem 4rem;
   gap: var(--yh-sp-sm);
   padding: var(--yh-sp-xs) var(--yh-sp-sm);
   border-bottom: 2px solid var(--yh-blue);
@@ -654,13 +744,14 @@ textarea {
 
 .yh-desk-row {
   display: grid;
-  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4rem;
-  /* 부서별 송고 DPS 행의 액션 버튼(8번째 자식)이 줄바꿈 없이 같은 줄의 암시적 컬럼에 놓이도록. */
+  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4.5rem 4rem;
+  /* 부서별 송고 DPS 행의 액션 버튼(9번째 자식)이 줄바꿈 없이 같은 줄의 암시적 컬럼에 놓이도록. */
   grid-auto-flow: column;
   grid-auto-columns: max-content;
 }
 
 .yh-desk-row__id,
+.yh-desk-row__status,
 .yh-desk-row__lock {
   color: var(--yh-gray-dark);
   font-size: 0.82rem;
@@ -1054,7 +1145,7 @@ textarea {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--yh-sp-xs);
-  max-width: 360px; /* 사진/영상 figure 의 편안한 폭 (연합뉴스 본문 사진 ~360px) */
+  max-width: 612px; /* 사진/영상 figure 폭 — 기존 360px 에 1.7배 적용 (360×1.7=612px). 기사 카드는 아래에서 480px 로 별도 유지. */
   padding: var(--yh-sp-sm) var(--yh-sp-md);
   border: 1px solid var(--yh-gray-line);
   border-left: 3px solid var(--yh-red);
@@ -1064,7 +1155,8 @@ textarea {
   font-size: 0.85rem;
 }
 
-/* 기사(article) 참조 카드는 사진 figure 보다 넓은 가로형 참조 카드 — 배지 + 제목이 한 줄. */
+/* 기사(article) 참조 카드는 사진 figure 보다 넓은 가로형 참조 카드 — 배지 + 제목이 한 줄.
+   이미지/영상에 적용된 1.7배(612px)는 기사 카드에 적용하지 않는다 — 480px 폭을 그대로 유지한다. */
 .yh-embed--article {
   flex-direction: row;
   align-items: center;
@@ -1073,10 +1165,11 @@ textarea {
 }
 
 /* news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브 크기는
-   에디터크기가 100%이고 가로*세로=10%*10%이다. max-width로 에디터 너비 대비 10% 제한. */
+   에디터크기가 100%이고 가로*세로=10%*10% 이었으나, 1.7배 적용으로 17%*17% 로 키운다
+   (10×1.7=17). max-width/max-height 로 에디터 크기 대비 17% 제한. */
 .yh-embed--clipboard {
-  max-width: 10%;
-  max-height: 10%;
+  max-width: 17%;
+  max-height: 17%;
 }
 
 .yh-embed__img {

@@ -40,7 +40,12 @@ function filterForMenu(menu, user, selectedDepartment) {
     }
     case '개인별 수정':
       // REQ-FE-VIEW-007 v0.4.0: own articles in reporter-editable states only — RDS + RRK.
-      return { author: user.userId, status: 'RDS,RRK' };
+      // 작성자 매칭은 저장 값과 동일한 표시 이름(user.name) 기준 — 기사는 author 컬럼에 로그인
+      // 사용자의 이름을 저장한다 (useWriteController: common.author = user.name). 종전의
+      // user.userId 필터는 저장 값(이름)과 일치할 수 없어 개인별 수정이 항상 0건이었다.
+      // || (not ??): 이름이 빈 문자열('')인 계정이 author='' 쿼리를 보내면 레거시 무명(author='')
+      // 기사들이 타인의 개인별 수정 목록에 노출되므로, 빈 이름도 userId 폴백으로 떨어뜨린다.
+      return { author: user.name || user.userId, status: 'RDS,RRK' };
     case '데스크 미송고':
       // RDS + DDH articles (REQ-FE-VIEW-008 v0.3.0: "데스크 미송고 페이지는 상태값이 RDS, DDH인
       // 기사만 나열한다"). Comma-separated multi-status expands to an IN clause in articleModel.query.

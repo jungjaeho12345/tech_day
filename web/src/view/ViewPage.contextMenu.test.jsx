@@ -184,9 +184,10 @@ describe('ViewPage 데스크 미송고 — 7컬럼 전용 행 (REQ-FE-VIEW-008 v
     };
     renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }), navigate });
     await screen.findByText('visible edit');
-    // 인라인 편집 버튼 제거 — 컬럼 7개만 (기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN).
+    // 인라인 편집 버튼 제거 — 컬럼 8개 (기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN).
     expect(screen.queryByRole('button', { name: '편집' })).not.toBeInTheDocument();
     expect(screen.getByTestId('article-id')).toHaveTextContent('A-VIS');
+    expect(screen.getByTestId('article-status')).toHaveTextContent('RDS');
     expect(screen.getByTestId('article-lockyn')).toHaveTextContent('N');
   });
 });

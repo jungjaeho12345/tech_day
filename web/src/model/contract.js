@@ -24,7 +24,7 @@
 // @property {(filters:object)=>Promise<Array<object>>} queryArticles        // AND-combined metadata filters
 // @property {(queryText:string)=>Promise<Array<object>>} searchArticles     // internal text-article search (글기사)
 // @property {(query:string,type:'image'|'video')=>Promise<{items:Array<object>,error:boolean}>} searchMedia // proxy: type-routed (video=YouTube, image=Google Images)
-// @property {(articleId:string,role:string,action:'send'|'hold'|'kill')=>Promise<{ok:boolean,status?:string,reason?:string}>} applyAction
+// @property {(articleId:string,role:string,action:'send'|'hold'|'kill',options?:{sessionId?:string})=>Promise<{ok:boolean,status?:string,reason?:string}>} applyAction
 // @property {(articleId:string,dto:object)=>Promise<{ok:boolean,articleId?:string}>} saveArticle // assemble+persist DTO
 // @property {(filter:object,onChange:(payload:object)=>void)=>{unsubscribe:()=>void, connected:boolean}} subscribe // realtime (DP-F2)
 

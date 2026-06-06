@@ -1,6 +1,6 @@
-// Article-view page (REQ-FE-VIEW-001..011). Realtime status bar + four menus sharing one 7-column list
-// (기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN, REQ-FE-VIEW-011 v0.4.0) + a right-click context
-// menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
+// Article-view page (REQ-FE-VIEW-001..011). Realtime status bar + four menus sharing one 8-column list
+// (기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN, REQ-FE-VIEW-011 v0.5.0 — 기사상태
+// 컬럼 추가) + a right-click context menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
 import { useState, useEffect } from 'react';
 import { useViewController, MENUS } from '../controller/useViewController.js';
 import { useSession } from '../app/context.js';
@@ -119,9 +119,9 @@ function RealtimeStatus({ connected }) {
 }
 
 // One article rendered as a dense newspaper-index row (news.md 디자인: "기사 목록은 신문 인덱스처럼
-// 한 줄에 조밀하게 표시"). REQ-FE-VIEW-011 v0.4.0: ALL four menus share the same seven-column base —
-// 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN. 부서별 송고는 DPS 기사에 고침/포털고침 버튼을
-// 추가한다 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS AC-FWD-3).
+// 한 줄에 조밀하게 표시"). REQ-FE-VIEW-011 v0.5.0: ALL four menus share the same eight-column base —
+// 기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN. 부서별 송고는 DPS 기사에 고침/포털고침
+// 버튼을 추가한다 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS AC-FWD-3).
 // Props: article, role, menu, navigate, onContextMenu — 모두 ViewPage에서 전달됨.
 function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
   // Click anywhere on the row (but not the action buttons) opens the detail window.
@@ -158,6 +158,7 @@ function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
       <span className="yh-article-row__modifier" data-testid="article-modifier">{article.modifier}</span>
       <span className="yh-article-row__time" data-testid="article-time">{formatCreatedAt(article.createdAt)}</span>
       <span className="yh-article-row__time" data-testid="article-edited-time">{formatCreatedAt(article.editedAt)}</span>
+      <span className="yh-desk-row__status" data-testid="article-status">{article.status ?? ''}</span>
       <span className="yh-desk-row__lock" data-testid="article-lockyn">{article.lockYN ?? 'N'}</span>
       {showDpsButtons ? (
         <span className="yh-article-row__actions">
@@ -243,7 +244,7 @@ export function ViewPage({ user, nav }) {
           </div>
         ) : null}
 
-        {/* Shared 7-column header for ALL four menus (REQ-FE-VIEW-011 v0.4.0). */}
+        {/* Shared 8-column header for ALL four menus (REQ-FE-VIEW-011 v0.5.0 — 기사상태 추가). */}
         {pageItems.length > 0 ? (
           <div className="yh-desk-header" data-testid="desk-header">
             <span>기사아이디</span>
@@ -252,6 +253,7 @@ export function ViewPage({ user, nav }) {
             <span>수정자</span>
             <span>작성시간</span>
             <span>수정시간</span>
+            <span>기사상태</span>
             <span>LockYN</span>
           </div>
         ) : null}

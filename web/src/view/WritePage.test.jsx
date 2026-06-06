@@ -1099,11 +1099,15 @@ describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
     expect(saveArticle).toHaveBeenCalled();
     const dto = saveArticle.mock.calls[0][1];
     const parsed = JSON.parse(dto.markupVersion);
-    // 기대: [text:"안녕", embed:video, text:"하세요(끝)"] — 블록 분할/순서 단언은 보존, 끝 텍스트만 (끝) 정합.
-    expect(parsed.blocks.length).toBe(3);
+    // 기대: [text:"안녕", embed:video, text:"하세요", text:"(끝)"] — 블록 분할/순서 단언은 보존.
+    // SPEC-NEWS-REVISE: "(끝)" 마커는 구분된 최종 텍스트 블록으로 항상 마지막에 위치한다
+    // (최종 시각 순서: 본문 텍스트 → embeds → "(끝)"). getBodyText()는 여전히 "(끝)"으로
+    // 끝나므로 송고 (끝) 가드(SPEC-NEWS-REVISE-005)는 그대로 통과한다.
+    expect(parsed.blocks.length).toBe(4);
     expect(parsed.blocks[0]).toMatchObject({ type: 'text', text: '안녕' });
     expect(parsed.blocks[1]).toMatchObject({ type: 'embed', embed: { type: 'video' } });
-    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요(끝)' });
+    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요' });
+    expect(parsed.blocks[3]).toMatchObject({ type: 'text', text: '(끝)' });
   });
 
   it('AC-EMB-INLINE-2: contentEditable 내부에 인라인 embed 스팬이 올바른 위치에 렌더된다', async () => {
@@ -1608,6 +1612,8 @@ describe('WritePage edit-load from ?id= (Feature 3 — 데스크 미송고 편�
     await screen.findByDisplayValue('원본');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle.mock.calls[0][0]).toBe('A-777');
-    expect(applyAction).toHaveBeenCalledWith('A-777', 'D', 'send');
+    // 편집 컨텍스트의 applyAction은 페이지 락 sessionId를 4번째 인자로 싣는다 (AC-EDIT-LOCK-6).
+    expect(applyAction).toHaveBeenCalledWith('A-777', 'D', 'send',
+      expect.objectContaining({ sessionId: expect.any(String) }));
   });
 });

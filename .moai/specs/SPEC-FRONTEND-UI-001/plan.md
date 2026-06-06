@@ -2,6 +2,17 @@
 
 > 본 계획은 WHAT/WHY를 구현으로 옮기기 위한 마일스톤·기술 접근·위험을 정의한다. 구체 컴포넌트명/파일 구조는 Run 단계 소관이다.
 
+> [v0.5.0 개정 — 2026-06-06 사용자 요청] (1) 조회 4개 메뉴 공통 목록에 기사상태(status) 컬럼 추가 —
+> 7컬럼 → 8컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN), 상태값은
+> RDS/DPS/RRH/RRK/DDH/DDK 원시 값 표시, (2) 개인별 수정 author 필터를 저장 값과 동일한 표시 이름
+> (user.name) 기준으로 정정 — 종전 userId 매칭은 항상 0건, (3) 기사 생성 시 서버가 세션 사용자의
+> department/departmentCode를 스탬프 + 레거시 행 비파괴 백필(작성자 이름→User.department) —
+> 부서별 작성/송고 조회 매칭 복구, (4) 편집 진입 로드 복구 — articleModel.query에 Article LEFT JOIN
+> (markupVersion 포함) + Contents에 공통정보 8컬럼 영속화(coAuthor/region/attribute/keyword/
+> internalComment/externalComment/attachmentFile/referenceFile) + secondEmbargoAt 매핑, (5) 송고/보류/
+> KILL action 라우트에도 락 게이트 적용(AC-EDIT-LOCK-6) — 타 보유자 live 락 중 lock-required 거부,
+> 편집 컨텍스트 applyAction에 페이지 락 sessionId 동반.
+>
 > [v0.4.0 개정 — 2026-06-06 사용자 요청] (1) 조회 4개 메뉴 전부 기사 목록을 데스크 미송고와 동일한
 > 7컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN)으로 통일 — 상태 배지·인라인 액션
 > 버튼 제거, (2) 부서별 작성 = 부서 Select(분리된 데이터-소스 인터페이스 재사용, 초기값 로그인

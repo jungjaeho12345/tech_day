@@ -87,6 +87,58 @@ describe('createStructuredEditorAdapter (REQ-EDIT-ADP)', () => {
     expect(adapter.getContent().blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
   });
 
+  // SPEC-NEWS-REVISE — Alt+Y "(끝)" must be placed AFTER all embeds (final block).
+  it('END-AFTER-EMBED: appendEnd places "(끝)" as the LAST block, after a trailing embed', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문');
+    adapter.embed(IMG);
+    adapter.appendEnd();
+    const blocks = adapter.getContent().blocks;
+    // block order: [text "본문", embed, text "(끝)"]
+    expect(blocks).toEqual([
+      { type: 'text', text: '본문' },
+      { type: 'embed', embed: { ...IMG } },
+      { type: 'text', text: '(끝)' },
+    ]);
+    // the marker is the FINAL block (after the embed)
+    expect(blocks[blocks.length - 1]).toEqual({ type: 'text', text: '(끝)' });
+    // body text invariant: getBodyText() still ends with "(끝)" so the 송고 guard keeps working
+    expect(adapter.getBodyText().endsWith('(끝)')).toBe(true);
+  });
+
+  // SPEC-NEWS-REVISE — typing after Alt+Y keeps the marker last (setBodyText with a trailing marker +
+  // existing embed re-lays out so "(끝)" stays the final block, never flipping in front of the embed).
+  it('END-AFTER-EMBED: setBodyText with a trailing marker keeps "(끝)" after the embed', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문');
+    adapter.embed(IMG);
+    adapter.appendEnd(); // [text 본문, embed, text (끝)]
+    // Simulate the next keystroke: the DOM body text (embed contributes no text) is "본문X(끝)".
+    adapter.setBodyText('본문X(끝)');
+    const blocks = adapter.getContent().blocks;
+    expect(blocks).toEqual([
+      { type: 'text', text: '본문X' },
+      { type: 'embed', embed: { ...IMG } },
+      { type: 'text', text: '(끝)' },
+    ]);
+    expect(blocks[blocks.length - 1]).toEqual({ type: 'text', text: '(끝)' });
+    expect(adapter.getBodyText()).toBe('본문X(끝)');
+  });
+
+  // SPEC-NEWS-REVISE — the after-embeds marker order round-trips through markupVersion.
+  it('END-AFTER-EMBED: marker-after-embeds order survives a markup round-trip', () => {
+    const adapter = createStructuredEditorAdapter();
+    adapter.setBodyText('본문');
+    adapter.embed(IMG);
+    adapter.appendEnd();
+    const before = adapter.getContent().blocks;
+    const m = adapter.getMarkup();
+    const adapter2 = createStructuredEditorAdapter();
+    adapter2.setMarkup(m);
+    expect(adapter2.getContent().blocks).toEqual(before);
+    expect(adapter2.getBodyText().endsWith('(끝)')).toBe(true);
+  });
+
   it('EC-5: embedding a result without thumbnailUrl does not crash and survives round-trip', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.embed({ type: 'video', source: 'youtube', title: 'YT', url: 'https://youtu.be/x' });

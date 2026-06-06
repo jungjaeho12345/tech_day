@@ -63,24 +63,46 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
     },
 
     // --- View-facing methods (concrete editor driver) ---
-    /** Replace the body text portion, preserving existing embeds appended after it. */
+    /**
+     * Replace the body text portion, preserving existing embeds.
+     *
+     * SPEC-NEWS-REVISE: the "(끝)" end marker is modeled as a DISTINGUISHED FINAL text block placed
+     * AFTER all embeds (final visual order: 본문 텍스트 → embeds → "(끝)"). To keep that order stable
+     * across typing, when the incoming `text` ends with exactly the "(끝)" marker we peel the marker
+     * off and lay out `[...base text, ...embeds, "(끝)" block]`. Without this, the next keystroke would
+     * rebuild content as `[...text(끝), ...embeds]` and flip the marker back in FRONT of the embeds.
+     * When the text has no trailing marker, the original `[...text, ...embeds]` layout is used.
+     */
     setBodyText(text) {
       const embeds = content.blocks.filter((b) => b.type === 'embed');
-      content = { blocks: [...contentFromText(text).blocks, ...embeds] };
+      const value = typeof text === 'string' ? text : '';
+      if (value.endsWith(END_MARKER_BLOCK)) {
+        const base = value.slice(0, value.length - END_MARKER_BLOCK.length);
+        content = {
+          blocks: [...contentFromText(base).blocks, ...embeds, { type: 'text', text: END_MARKER_BLOCK }],
+        };
+        return;
+      }
+      content = { blocks: [...contentFromText(value).blocks, ...embeds] };
     },
     /**
-     * Insert the gold "(끝)" marker at the END of the body text (news.md 기사 에디터 Alt+Y).
-     * SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER simplifies the inserted token to exactly "(끝)"
-     * (prefix-free — no CRLF, no leading space). Stored as literal body text so it round-trips through
-     * markupVersion (save -> reload keeps it). IDEMPOTENT: if the body already ends with the "(끝)"
-     * marker (new or legacy "\n (끝)" form), this is a no-op. Embeds are preserved.
+     * Insert the gold "(끝)" marker as the FINAL block, AFTER all embeds (news.md 기사 에디터 Alt+Y).
+     * SPEC-NEWS-REVISE: the marker now renders after the entire content (본문 텍스트 → embeds → "(끝)"),
+     * not before trailing embeds. It is the distinguished final text block, so block order becomes
+     * `[...base text, ...embeds, "(끝)" block]`. The token is exactly "(끝)" (prefix-free) and stored as
+     * literal body text so it round-trips through markupVersion (save -> reload keeps the after-embeds
+     * order). IDEMPOTENT: if the body already ends with the "(끝)" marker (new or legacy "\n (끝)" form),
+     * this is a no-op (no duplicate). Embeds are preserved. getBodyText() still ENDS with "(끝)" because
+     * contentToText concatenates the marker block last (embeds contribute no text), so the 송고 guard and
+     * hasEndMarker keep working.
      */
     appendEnd() {
       const bodyText = contentToText(content);
       if (hasEndMarker(bodyText)) return; // already present -> do not append a duplicate
       const embeds = content.blocks.filter((b) => b.type === 'embed');
-      const nextText = bodyText + END_MARKER_BLOCK;
-      content = { blocks: [...contentFromText(nextText).blocks, ...embeds] };
+      content = {
+        blocks: [...contentFromText(bodyText).blocks, ...embeds, { type: 'text', text: END_MARKER_BLOCK }],
+      };
     },
     /**
      * Insert a media/article embed as a distinct inline block (REQ-EDIT-EMBED-001/007).

@@ -254,8 +254,10 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
       // Insert(A-DRAFT) 경로는 발생하지 않는다.
       const insertCalls = saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT');
       expect(insertCalls).toHaveLength(0);
-      // applyAction 도 동일 id 로.
-      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'send');
+      // applyAction 도 동일 id 로 — 편집 컨텍스트는 페이지 락 sessionId가 4번째 인자로 실린다
+      // (AC-EDIT-LOCK-6: 서버 action 라우트 락 게이트의 보유자 식별).
+      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'send',
+        expect.objectContaining({ sessionId: expect.any(String) }));
     });
 
     it('AC-WLC-3: 편집 + KILL → applyAction(loaded id, role, "kill") 1회, Insert(A-DRAFT) 0회', async () => {
@@ -272,7 +274,8 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
       await act(async () => { await result.current.kill(); });
       // KILL 은 Update lifecycle 전이만 발생 — applyAction 이 로드된 id + 'kill' 로 1회.
       expect(applyAction).toHaveBeenCalledTimes(1);
-      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'kill');
+      expect(applyAction).toHaveBeenCalledWith('AKR-001', 'D', 'kill',
+        expect.objectContaining({ sessionId: expect.any(String) }));
       // KILL 컨텍스트에서 Insert(A-DRAFT) saveArticle 은 발생하지 않는다 (신규 작성 오용 방지).
       const insertCalls = saveArticle.mock.calls.filter((c) => c[0] === 'A-DRAFT');
       expect(insertCalls).toHaveLength(0);
