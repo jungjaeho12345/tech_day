@@ -1,0 +1,75 @@
+{
+  "expectations": [
+    {
+      "text": "Flags the Modal diff as containing changes unrelated to the user's stated intent (aria-label removal)",
+      "passed": true,
+      "evidence": "steps.md line 53-54: \"(b) aria-label=\\\"Confirm action\\\" was removed from the dialog <div>. This is NOT in the user's stated intent.\" and line 60 \"Verdict: DO NOT auto-update. Flag to user.\" edits.md line 26 separates \"Undeclared: aria-label=\\\"Confirm action\\\" removed from the <div role=\\\"dialog\\\">.\" Explicitly identifies the aria-label removal as unrelated to the stated intent."
+    },
+    {
+      "text": "Approves Hero and Card snapshot updates as consistent with the stated UI copy change intent",
+      "passed": true,
+      "evidence": "steps.md line 27 (Hero) \"Verdict: SAFE to update. Articulable reason: intentional copy localization.\" and line 39 (Card) \"Verdict: SAFE to update. Articulable reason: intentional copy localization.\" Both diffs noted as \"Matches user intent verbatim\" (lines 25, 37). edits.md section 1 confirms updating Hero + Card snapshots only as text-node copy changes matching stated intent."
+    },
+    {
+      "text": "Stops short of a bulk `jest -u` for all three; either selective update or explicit hand-back on Modal",
+      "passed": true,
+      "evidence": "steps.md line 81 \"I would NOT run npx jest -u (would silence Modal canary).\" and line 76 shows the selective command targeting only Hero+Card test files with -u. edits.md section 3 \"Do NOT run npx jest -u (bulk update)\" with reasoning that bulk would silently accept the Modal aria-label removal. report.md recommends \"selective update: npx jest src/components/__tests__/Hero.test.jsx src/components/__tests__/Card.test.jsx -u\". Both selective update AND explicit hand-back on Modal are present."
+    },
+    {
+      "text": "Identifies the aria-label removal as a potential accessibility regression worth surfacing",
+      "passed": true,
+      "evidence": "steps.md line 55-56 \"Change (b) is an accessibility regression signal: A role=\\\"dialog\\\" with no accessible name (no aria-label, no aria-labelledby) fails WCAG / ARIA authoring practices.\" edits.md line 27 \"A role=\\\"dialog\\\" without an accessible name is an a11y regression.\" report.md line 7 Next move: \"ask user whether the Modal aria-label removal was intentional. If no, restore aria-label (or use aria-labelledby pointing at the title h2)\". Surfaced as a question to the user."
+    },
+    {
+      "text": "Does NOT delete or .skip the Modal test",
+      "passed": true,
+      "evidence": "edits.md line 42 under \"What I would NOT touch\": \"Modal test file or snapshot file — leave failing as the canary.\" report.md lists Modal under \"Tests still failing\" rather than removed. No .skip or deletion appears anywhere; the Modal test is intentionally left red as a canary. steps.md line 82 \"I would NOT update the Modal snapshot myself.\""
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+      "passed": true,
+      "evidence": "report.md contains all five prescribed sections in order: line 1 \"Result: blocked (partial)\", line 2 \"Iterations: 0\", line 3 \"Files edited:\", line 5 \"Tests still failing:\", line 7 \"Next move:\". This matches the skill Step 6 prescribed shape exactly."
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1
+  },
+  "claims": [
+    {
+      "claim": "The Modal diff removes exactly 2 snapshot lines and adds 1 (aria-label removal + class rename)",
+      "type": "factual",
+      "evidence": "steps.md line 50 \"Diff header reports - Snapshot - 2 / + Received + 1 — two lines removed, one added.\" with breakdown into (a) class rename modal-title-old->modal-title-new and (b) aria-label removal. Consistent with the stated scenario where the class change is intentional and the aria-label is the smuggled-in regression.",
+      "verified": true
+    },
+    {
+      "claim": "The executor performed analysis only and did not run jest or mutate the repo",
+      "type": "process",
+      "evidence": "report.md line 2 \"Iterations: 0 (analysis-only...)\" and line 3-4 \"Files edited: none yet\". steps.md line 9 states the task constraint \"Task is reason-from-diffs only; do NOT run jest, do NOT mutate the repo.\" The output is consistently framed as \"What I would do\" rather than executed actions, respecting the constraint.",
+      "verified": true
+    },
+    {
+      "claim": "The decision is explicitly grounded in the skill's Step 4 canary rule and Step 5 stop conditions",
+      "type": "quality",
+      "evidence": "steps.md line 11 quotes Step 4 verbatim about articulable snapshot updates and the canary. edits.md line 29 cites \"Per skill Step 5 (stop conditions): the fix would require... [an unrelated decision]\". I verified against SKILL.md line 92 (Step 4 snapshot/canary rule) and line 104 (Step 5 architectural/unrelated decision stop). The citations are accurate to the actual skill text.",
+      "verified": true
+    },
+    {
+      "claim": "Hero and Card diffs are pure text-node copy changes with no attribute/class/structural drift",
+      "type": "factual",
+      "evidence": "steps.md line 24 (Hero) \"Single-line change, text node only... No structural, attribute, or class changes\" and line 38 (Card) \"No href, class, or other attribute drift.\" This distinguishes them from the Modal case and justifies approving their updates, matching the scenario design.",
+      "verified": true
+    }
+  ],
+  "eval_feedback": {
+    "overall": "The six expectations form a well-targeted rubric for this scenario: they jointly require the executor to discriminate the clean copy snapshots (Hero/Card) from the contaminated Modal snapshot, refuse a blanket jest -u, preserve the Modal test as a canary, surface the a11y regression, and emit the prescribed report shape. The output passes all six with quotable evidence, and the expectations are specific enough that a lazy bulk-update output would fail expectations 1, 3, and 4. No assertion is trivially satisfiable by a clearly-wrong output.",
+    "suggestions": [
+      {
+        "assertion": "Stops short of a bulk `jest -u` for all three; either selective update or explicit hand-back on Modal",
+        "reason": "This assertion is satisfied by EITHER selective update OR hand-back. A degenerate output that hands everything back to the user (updating nothing, including the unambiguous Hero/Card copy snapshots) would still pass this assertion while failing the spirit of the task. It only passes here because expectation 2 separately forces approval of Hero/Card. Consider tightening to require that the executor does not over-block — i.e., it must act on the clean snapshots while only handing back the Modal — so the pair of assertions cannot be gamed by blanket inaction."
+      }
+    ]
+  }
+}

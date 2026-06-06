@@ -49,8 +49,20 @@ test('AC-INT-1: U1 송고(RDS) → U2 락 획득 → U2 KILL(RRK) → U2 락 해
   assert.equal(intruderGate.ok, false);
   assert.equal(intruderGate.reason, 'lock-required');
 
-  // 게이트 통과 후 KILL 전이 (articleUpdate 등가).
-  const killResult = svc.applyAction(articleId, 'R', 'kill');
+  // AC-EDIT-LOCK-6 (applyAction 자체의 락 자동 검증): 비보유자 U1의 applyAction은 lock-required로
+  // 거부되고 status는 변경되지 않는다. now 고정 전달 — stale 판정 time-bomb 방지.
+  const intruderAction = svc.applyAction(articleId, 'R', 'kill', {
+    userId: 'U1', sessionId: 'P-U1', now: new Date('2026-06-04T01:05:00Z'),
+  });
+  assert.equal(intruderAction.ok, false);
+  assert.equal(intruderAction.reason, 'lock-required');
+  assert.equal(db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status, 'RDS');
+
+  // 게이트 통과 후 KILL 전이 (articleUpdate 등가) — 보유자 U2의 락 컨텍스트 + 고정 now 전달
+  // (applyAction의 락 게이트가 보유자를 식별해야 통과한다; 컨텍스트 누락 시 lock-required).
+  const killResult = svc.applyAction(articleId, 'R', 'kill', {
+    userId: 'U2', sessionId: 'P-U2', now: new Date('2026-06-04T01:05:00Z'),
+  });
   assert.equal(killResult.ok, true);
   assert.equal(killResult.status, 'RRK', 'R/RDS/kill → RRK');
   assert.equal(db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status, 'RRK');

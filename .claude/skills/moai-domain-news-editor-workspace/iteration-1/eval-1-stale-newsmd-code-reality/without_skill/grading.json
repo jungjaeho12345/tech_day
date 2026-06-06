@@ -1,0 +1,12 @@
+{
+  "expectations": [
+    {"text": "클립보드 임베드 크기를 17%×17%로 답함 (구형 10% 아님)", "passed": true, "evidence": "answer.md: '최대 17% × 17%' — yonhap.css:1079 직접 인용, '10%는 옛 값' CSS 주석으로 식별"},
+    {"text": "(끝) 마커가 모든 embeds 뒤 최종 블록임을 명시", "passed": true, "evidence": "answer.md: '본문 텍스트 → 임베드(들) → (끝)' — appendEnd() 코드 직접 인용"}
+  ],
+  "summary": {"passed": 2, "failed": 0, "total": 2, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 131.8, "total_duration_seconds": 131.8},
+  "eval_feedback": {
+    "suggestions": [{"assertion": "둘 다", "reason": "코드에 1.7배 변경 이력 주석이 남아 있어 baseline도 정답 도달 가능 — 변별력은 정답률이 아닌 토큰/시간에서 발생"}],
+    "overall": "news.md 낙후값(10%)을 그대로 답하면 실패하는 설계였으나, baseline이 CSS 주석을 찾아내 정답."
+  }
+}

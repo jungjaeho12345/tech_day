@@ -1,0 +1,22 @@
+{
+  "skill_name": "node-test-autofix-loop",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Vitest 프로젝트인데 어제 articleDetail 리팩토링한 뒤로 web/src/view/articleDetail.test.js 가 빨갛게 떠요. 본문 임베드 관련 케이스 같은데 우선 변경된 부분 위주로 돌려보고 깨진 거 고쳐서 다시 통과시켜 주세요. 전체 테스트도 마지막엔 한 번 돌려 확인해주시고요.",
+      "expected_output": "Skill runs vitest on the changed test file first, identifies the embed-related failure, makes a minimal source-side fix (not a test deletion), re-runs, then runs full suite. Final report names which file was edited and why.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "npm test 가 뭔가 한참 돌다가 'Cannot find module ../helpers/format' 라고 떨어집니다. 방금 디렉토리 정리하면서 파일 좀 옮긴 영향 같아요. 그냥 알아서 고쳐주세요.",
+      "expected_output": "Skill diagnoses as import-path drift (Step 3 'Import / module path' row), uses git status/diff to locate the moved file, updates the import, re-runs, confirms green. Does not delete the import or skip the test.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "jest 스냅샷이 3개 깨졌어요. 의도한 UI 변경이라 그냥 다 업데이트하면 되는데, 혹시 의도하지 않은 변경이 섞여 있을 수 있으니 한번 봐주시고 안전하면 업데이트 후 통과시켜주세요.",
+      "expected_output": "Skill inspects each snapshot diff, articulates why each change is consistent with the user's stated intent, updates them with -u, re-runs to green. If any one diff looks unrelated to the intent, the skill should stop and flag it instead of bulk-updating."
+    }
+  ]
+}

@@ -188,11 +188,32 @@ export function createArticleService(db) {
       return { ok: true };
     },
 
-    /** Route a lifecycle action through the state machine and persist (REQ-WF-001, REQ-ART-LC-*). */
-    applyAction(articleId, role, action) {
+    /**
+     * Route a lifecycle action through the state machine and persist (REQ-WF-001, REQ-ART-LC-*).
+     *
+     * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / AC-EDIT-LOCK-6 — a LIVE edit lock held by someone other
+     * than the caller blocks the transition ({ok:false, reason:'lock-required'}, state untouched).
+     * A free or stale lock never blocks, so 신규 작성 송고 (just-created article, no lock) proceeds
+     * unchanged. Caller identity arrives via options {userId, sessionId}; an option-less call on a
+     * foreign-locked article is rejected (the caller cannot be the holder). now/timeoutMs are
+     * injectable for tests (fixed-clock rule — avoids the 30-min stale time bomb).
+     */
+    applyAction(articleId, role, action, options) {
       const current = model.findById(articleId);
       if (current === undefined) {
         return { ok: false, reason: 'not-found' };
+      }
+      if (current.lockYN === 'Y') {
+        const now = options?.now ?? new Date();
+        const timeoutMs = options?.timeoutMs ?? EDIT_LOCK_TIMEOUT_MS;
+        const stale = current.lockedAt != null
+          && new Date(current.lockedAt).getTime() < now.getTime() - timeoutMs;
+        const isHolder = options?.userId != null
+          && current.lockerUserId === options.userId
+          && current.lockerSessionId === options.sessionId;
+        if (!stale && !isHolder) {
+          return { ok: false, reason: 'lock-required' };
+        }
       }
       const result = transition(current.status, role, action);
       if (!result.ok) {
@@ -229,6 +250,9 @@ export function createArticleService(db) {
       const contentsAllowed = new Set([
         'title', 'content', 'author', 'modifier', 'sender', 'department', 'departmentCode',
         'editedAt', 'sentAt', 'distributedAt', 'embargoAt', 'secondEmbargoAt',
+        // 공통정보 8 fields persisted for edit-load restore (news.md 기사 편집 기능).
+        'coAuthor', 'region', 'attribute', 'keyword',
+        'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
       ]);
       const contentsSets = [];
       const contentsValues = [];

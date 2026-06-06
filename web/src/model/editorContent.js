@@ -13,9 +13,12 @@ import { parseArticleStructure } from './articleStructure.js';
 export const MARKUP_FORMAT = 'yh-editor';
 export const MARKUP_VERSION = 1;
 
-// The "(끝)" end marker (news.md 기사 에디터: Alt+Y appends it to the body, shown in 골드색).
-// Stored as literal body text so it round-trips through markupVersion; the view colors a trailing
-// occurrence gold purely presentationally. The gold-colored TOKEN is just "(끝)".
+// The "(끝)" end marker (news.md 기사 에디터: Alt+Y, shown in 골드색). Placed as the FINAL block AFTER all
+// embeds (SPEC-NEWS-REVISE: 최종 시각 순서는 본문 텍스트 → embeds → "(끝)"), modeled as a distinguished
+// trailing text block. Stored as literal body text so it round-trips through markupVersion; since
+// contentToText concatenates the text blocks (embeds contribute no text), the derived body text still
+// ENDS with "(끝)" — the view colors that trailing occurrence gold purely presentationally. The
+// gold-colored TOKEN is just "(끝)".
 export const END_MARKER = '(끝)';
 
 // SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER: Alt+Y inserts EXACTLY the "(끝)" token (prefix-free —

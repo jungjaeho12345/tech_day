@@ -57,6 +57,42 @@ async function postAction(articleId, { sessionId, body }) {
   return res.json();
 }
 
+// --- Session restore (F5 새로고침에도 유지) — GET /api/session ------------------
+async function getSession({ sessionId } = {}) {
+  const headers = {};
+  if (sessionId !== undefined) headers['x-session-id'] = sessionId;
+  const res = await fetch(`${base}/api/session`, { headers });
+  return res.json();
+}
+
+// SESSION-RESTORE: a live session id replayed after a refresh returns the sanitized identity.
+test('SESSION-RESTORE: GET /api/session returns the identity for a live x-session-id', async () => {
+  seedUser('r-restore', 'R');
+  const sessionId = loginSessionId('r-restore');
+  const body = await getSession({ sessionId });
+  assert.equal(body.ok, true, 'a live session must restore');
+  assert.equal(body.user.userId, 'r-restore');
+  assert.equal(body.user.role, 'R');
+  assert.ok(!('password' in body.user), 'the restored identity must never include the password hash');
+});
+
+// SESSION-RESTORE: no/unknown session id (e.g. after logout or a server restart) does not restore.
+test('SESSION-RESTORE: GET /api/session with no/unknown id returns { ok:false }', async () => {
+  const anon = await getSession();
+  assert.equal(anon.ok, false, 'a refresh with no session must not restore a user');
+  const unknown = await getSession({ sessionId: 'no-such-session' });
+  assert.equal(unknown.ok, false, 'a stale/unknown id must not restore a user');
+});
+
+// SESSION-RESTORE: after logout the session id no longer restores (로그아웃 전까지만 유지).
+test('SESSION-RESTORE: a logged-out session id no longer restores', async () => {
+  seedUser('r-restore-logout', 'R');
+  const sessionId = loginSessionId('r-restore-logout');
+  assert.equal((await getSession({ sessionId })).ok, true, 'restores while live');
+  controllers.auth.logout(sessionId);
+  assert.equal((await getSession({ sessionId })).ok, false, 'does not restore after logout');
+});
+
 // C-1: an action request with no session must be rejected (no trust of body.role).
 test('C-1: action without a session is rejected (no body.role trust)', async () => {
   seedUser('r-nosession', 'R');
@@ -336,6 +372,33 @@ test('AC-EDIT-LOCK-3: DELETE /api/articles/:id/lock releases; a second user can 
   assert.equal(reAcquired.ok, true);
 });
 
+// sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 를 보낼 수 없어 클라이언트가
+// POST 본문에 release:true 를 실어 보낸다. 서버는 이를 acquire 가 아니라 release 로 처리해야 한다 —
+// 종전에는 플래그가 무시되어 언로드 해제가 잠금 재획득이 되는 버그였다 (멀티탭 탭 닫기/브라우저
+// 숨김 경로가 이 계약에 의존한다).
+test('sendBeacon 호환: POST /lock + release:true 는 해제로 처리되어 다른 사용자가 획득할 수 있다', async () => {
+  seedUser('r-lock-beacon-a', 'R');
+  seedUser('r-lock-beacon-b', 'R');
+  const { articleId } = controllers.article.create({ title: 'lock-beacon' });
+  const sessionA = loginSessionId('r-lock-beacon-a');
+  const sessionB = loginSessionId('r-lock-beacon-b');
+  const acquired = await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  assert.equal(acquired.ok, true);
+
+  // 언로드 경로 시뮬레이션 — sendBeacon 페이로드 그대로 POST.
+  const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-id': sessionA },
+    body: JSON.stringify({ sessionId: 'page-A', articleId, release: true }),
+  });
+  const released = await res.json();
+  assert.equal(released.ok, true, 'release:true must be treated as a release, not an acquire');
+
+  // 해제됐으므로 두 번째 사용자가 즉시 획득할 수 있어야 한다.
+  const reAcquired = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  assert.equal(reAcquired.ok, true, 'after beacon release the lock must be free');
+});
+
 // AC-EDIT-LOCK-1 boundary: an unauthenticated POST /api/articles/:id/lock is rejected.
 test('AC-EDIT-LOCK-1 boundary: unauthenticated lock acquire is rejected', async () => {
   const { articleId } = controllers.article.create({ title: 'lock-anon' });
@@ -384,4 +447,77 @@ test('AC-EDIT-LOCK-6: PUT /api/articles/:id without lock is rejected with lock-r
   assert.equal(result.reason, 'lock-required');
   const [row] = controllers.article.query({ articleId });
   assert.equal(row.title, 'no-lock', 'no mutation when the lock guard rejects');
+});
+
+// 부서 스탬프 — 부서별 작성/송고 조회가 매칭되도록 POST /api/articles가 세션 사용자의
+// 부서/부서코드를 새 기사에 새긴다 (DTO에 명시된 값은 보존).
+test('department stamp: POST /api/articles는 세션 사용자의 부서/부서코드를 새 기사에 새긴다', async () => {
+  controllers.user.create({
+    userId: 'r-dept', name: '부서기자', password: 'pw', role: 'R',
+    department: '개발부', departmentCode: 'DEV',
+  });
+  const sessionId = loginSessionId('r-dept');
+
+  const res = await fetch(`${base}/api/articles`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-id': sessionId },
+    body: JSON.stringify({ title: '부서 스탬프', author: '부서기자' }), // DTO에 department 없음
+  });
+  const result = await res.json();
+  assert.equal(result.ok, true);
+  const row = db.prepare('SELECT department, departmentCode FROM Contents WHERE articleId = ?')
+    .get(result.articleId);
+  assert.equal(row.department, '개발부', '세션의 department가 스탬프된다');
+  assert.equal(row.departmentCode, 'DEV');
+
+  // 종단 검증 (적대적 리뷰 보강): 스탬프된 부서가 부서별 작성 필터로 실제 조회된다 —
+  // 쓰기 경로와 읽기 필터의 값/컬럼 불일치 회귀 가드 (사용자 증상: 부서별 조회 0건).
+  const deptRows = controllers.article.query({ department: '개발부', statusNot: 'DPS,RRH' });
+  assert.ok(deptRows.some((r) => r.articleId === result.articleId),
+    '부서별 작성 필터({ department, statusNot })가 서버 스탬프된 새 기사를 돌려준다');
+
+  // DTO가 department를 명시하면 그 값이 우선한다 (스탬프는 빈 값만 보충).
+  const res2 = await fetch(`${base}/api/articles`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-id': sessionId },
+    body: JSON.stringify({ title: '명시 부서', department: '특수부' }),
+  });
+  const result2 = await res2.json();
+  assert.equal(result2.ok, true);
+  assert.equal(
+    db.prepare('SELECT department FROM Contents WHERE articleId = ?').get(result2.articleId).department,
+    '특수부',
+  );
+});
+
+// AC-EDIT-LOCK-6 (action 라우트) — 송고/보류/KILL도 타 보유자의 live 락 앞에서는 거부된다.
+// 종전에는 PUT만 게이트가 있어 action 라우트로 락을 우회해 상태를 바꿀 수 있었다.
+test('AC-EDIT-LOCK-6: 타 보유자가 락 중인 기사의 POST action은 lock-required로 거부된다', async () => {
+  seedUser('d-act-lock', 'D');
+  const sessionId = loginSessionId('d-act-lock');
+  const { articleId } = controllers.article.create({ title: 'lock-action' });
+  // 다른 사용자가 락 보유 중 (acquire/검증 모두 실시간 시계 — 같은 틱이므로 stale 아님).
+  const held = controllers.article.acquireEditLock(articleId, { userId: 'U-other', sessionId: 'P-other' });
+  assert.equal(held.ok, true);
+
+  const result = await postAction(articleId, { sessionId, body: { action: 'send' } });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'lock-required');
+  assert.equal(
+    db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status,
+    'RDS', '거부 시 상태는 변경되지 않는다',
+  );
+});
+
+test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 body.sessionId로 식별되어 통과한다', async () => {
+  seedUser('d-act-holder', 'D');
+  const sessionId = loginSessionId('d-act-holder');
+  const { articleId } = controllers.article.create({ title: 'holder-action' });
+  // 보유자 = 세션 사용자 본인 + 페이지 단위 sessionId 'P-hold' (클라이언트가 body로 회신).
+  const held = controllers.article.acquireEditLock(articleId, { userId: 'd-act-holder', sessionId: 'P-hold' });
+  assert.equal(held.ok, true);
+
+  const result = await postAction(articleId, { sessionId, body: { action: 'send', sessionId: 'P-hold' } });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'DPS', 'RDS|D|send → DPS (보유자 본인은 차단되지 않는다)');
 });

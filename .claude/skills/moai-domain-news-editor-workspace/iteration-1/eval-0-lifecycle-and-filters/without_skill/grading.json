@@ -1,0 +1,14 @@
+{
+  "expectations": [
+    {"text": "R 권한 송고 결과를 RDS 유지로 명시", "passed": true, "evidence": "answer.md: '송고하면 상태값은 그대로 RDS로 유지' + lifecycle.js 'RDS|R|send': 'RDS' 코드 인용"},
+    {"text": "D 권한 송고 결과를 DPS로 명시", "passed": true, "evidence": "answer.md: '송고하면 상태값은 DPS(데스크 송고 완료)가 된다' + lifecycle.js 'RDS|D|send': 'DPS'"},
+    {"text": "부서별 송고 메뉴 = DPS만 조회 명시", "passed": true, "evidence": "answer.md: 'DPS인 기사만 조회' + useViewController.js status:'DPS' 코드 인용"},
+    {"text": "개인별 수정 = 본인 작성 RDS·RRK만 조회 명시", "passed": true, "evidence": "answer.md: 'RDS 또는 RRK인 기사만 조회' + useViewController.js { author, status: 'RDS,RRK' }"}
+  ],
+  "summary": {"passed": 4, "failed": 0, "total": 4, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 103.8, "total_duration_seconds": 103.8},
+  "eval_feedback": {
+    "suggestions": [],
+    "overall": "baseline이 lifecycle.js에서 'RDS|Z|send':'DPS'를 발견 — 스킬 §2.2는 Z 효과를 '미해결(R7)'로 표기하나 코드는 이미 D 동등으로 결정(SPEC-NEWS-REVISE-001 D-6). 스킬 갱신 후보."
+  }
+}

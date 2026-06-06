@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import {
   createSchema,
+  backfillContentsDepartmentFromAuthor,
   ARTICLE_COLUMNS,
   CONTENTS_COLUMNS,
   USER_COLUMNS,
@@ -51,13 +52,17 @@ test('AC-1: Contents has expected columns including distributedAt and status', (
   createSchema(db);
   const cols = columnInfo(db, 'Contents').map((c) => c.name);
   // SPEC-NEWS-REVISE-002 REQ-DB-LOCKYN (T-M1-001) + REQ-EDIT-LOCK (T-M2-001, D2-2 = A):
-  //   lockYN 1 컬럼 + lockerUserId/lockerSessionId/lockedAt 3 컬럼 추가 → 총 19 컬럼.
+  //   lockYN 1 컬럼 + lockerUserId/lockerSessionId/lockedAt 3 컬럼 추가 → 19 컬럼.
   // 단일 SQL race-safe 락 획득 (UPDATE ... WHERE lockYN='N' OR lockedAt < ?)을 가능케 함.
+  // 편집 진입 공통정보 복원 (news.md 기사 편집 기능): 공통정보 8 컬럼(coAuthor..referenceFile)
+  // 추가 → 총 27 컬럼. 신규 CREATE와 레거시 ALTER 마이그레이션이 같은 순서를 공유하도록 맨 뒤에 둔다.
   assert.deepEqual(cols, [
     'articleId', 'title', 'content', 'author', 'modifier', 'sender',
     'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
     'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status', 'lockYN',
     'lockerUserId', 'lockerSessionId', 'lockedAt',
+    'coAuthor', 'region', 'attribute', 'keyword',
+    'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
   ]);
   assert.ok(cols.includes('distributedAt'), 'distributedAt column must exist');
   assert.ok(cols.includes('status'), 'status column must exist on Contents');
@@ -263,5 +268,95 @@ describe('SPEC-NEWS-REVISE-004 REQ-LOCK-VOCAB-ALIGN — 락 보유자 정본 어
 
     // lockerPageId 부재 — option (ii) add-only 컬럼 도입은 명시적 거부(PD1). 부재가 의도적임을 잠근다.
     assert.equal(cols.includes('lockerPageId'), false, 'lockerPageId 컬럼은 존재하지 않아야 한다(어휘 정합, 컬럼 추가 거부)');
+  });
+});
+
+// 부서 백필 — 레거시 Contents 행(department=NULL)을 작성자 이름→User.department 조인으로 채운다.
+// 비파괴(UPDATE만, 삭제 없음, CLAUDE.md HARD) + 멱등(재실행 시 0건) 가드.
+describe('backfillContentsDepartmentFromAuthor — 레거시 부서 백필 (비파괴·멱등)', () => {
+  function seedUserRow(db, userId, name, department, departmentCode) {
+    db.prepare('INSERT INTO User (userId, name, password, role, department, departmentCode) VALUES (?,?,?,?,?,?)')
+      .run(userId, name, 'pw', 'R', department, departmentCode);
+  }
+
+  it('department가 비어 있는 행은 작성자 이름으로 User.department/departmentCode가 채워진다', () => {
+    const db = freshDb();
+    createSchema(db);
+    seedUserRow(db, '2015019', '정재호', '개발부', 'DEV');
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000001', '정재호', 'RDS');
+
+    const changed = backfillContentsDepartmentFromAuthor(db);
+    assert.equal(changed, 1);
+    const row = db.prepare('SELECT department, departmentCode FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000001');
+    assert.equal(row.department, '개발부');
+    assert.equal(row.departmentCode, 'DEV');
+  });
+
+  it('작성자가 비었거나 매칭 사용자가 없는 행은 건드리지 않고, 행 수는 절대 줄지 않는다', () => {
+    const db = freshDb();
+    createSchema(db);
+    seedUserRow(db, '2015019', '정재호', '개발부', 'DEV');
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000002', '', 'RDS'); // 작성자 공백 — 추정 불가
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000003', '미상기자', 'RDS'); // 매칭 사용자 없음
+    const before = db.prepare('SELECT COUNT(*) AS n FROM Contents').get().n;
+
+    const changed = backfillContentsDepartmentFromAuthor(db);
+    assert.equal(changed, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM Contents').get().n, before, '행 수 불변 (비파괴)');
+    assert.equal(db.prepare('SELECT department FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000002').department, null);
+    assert.equal(db.prepare('SELECT department FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000003').department, null);
+  });
+
+  it('이미 department가 있는 행은 덮어쓰지 않고, 재실행은 0건 변경(멱등)이다', () => {
+    const db = freshDb();
+    createSchema(db);
+    seedUserRow(db, '2015019', '정재호', '개발부', 'DEV');
+    db.prepare('INSERT INTO Contents (articleId, author, department, status) VALUES (?,?,?,?)')
+      .run('AKR202606060000000004', '정재호', '기획부', 'RDS'); // 기존 값 보존 대상
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000005', '정재호', 'RDS'); // 백필 대상
+
+    assert.equal(backfillContentsDepartmentFromAuthor(db), 1, '1차 실행은 비어 있는 행만 채운다');
+    assert.equal(db.prepare('SELECT department FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000004').department, '기획부', '기존 department는 보존');
+    assert.equal(backfillContentsDepartmentFromAuthor(db), 0, '재실행은 0건 (멱등)');
+  });
+
+  // 적대적 리뷰 발견 보강: 매칭 사용자의 department가 NULL이면 NULL을 재기록해 WHERE가 영원히
+  // 매칭되는 멱등성 위반이 있었다 — 부서 없는 사용자는 백필 대상에서 제외되어야 한다.
+  it('매칭 사용자의 department가 비어 있으면 건너뛰어 멱등이 유지된다 (NULL 재기록 금지)', () => {
+    const db = freshDb();
+    createSchema(db);
+    seedUserRow(db, '2015020', '김기자', null, 'SOC'); // 부서 미배정 사용자
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000006', '김기자', 'RDS');
+
+    assert.equal(backfillContentsDepartmentFromAuthor(db), 0, '부서 없는 사용자는 백필 대상이 아니다');
+    assert.equal(backfillContentsDepartmentFromAuthor(db), 0, '재실행도 0건 — 멱등 유지');
+    const row = db.prepare('SELECT department, departmentCode FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000006');
+    assert.equal(row.department, null);
+    assert.equal(row.departmentCode, null, 'departmentCode도 단독 기록하지 않는다');
+  });
+
+  // 적대적 리뷰 발견 보강: User.name은 UNIQUE가 아니므로 동명이인이면 스칼라 서브쿼리가 임의의
+  // 부서를 찍는다 — 정확히 1명 매칭일 때만 백필한다 (COUNT(*) = 1 가드).
+  it('동명이인(활성 사용자 2명 이상 매칭)은 임의 부서를 찍지 않고 건너뛴다', () => {
+    const db = freshDb();
+    createSchema(db);
+    seedUserRow(db, '2015021', '정재호', '정치부', 'POL');
+    seedUserRow(db, '2015022', '정재호', '경제부', 'ECO');
+    db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+      .run('AKR202606060000000007', '정재호', 'RDS');
+
+    assert.equal(backfillContentsDepartmentFromAuthor(db), 0, '모호한 매칭은 백필하지 않는다');
+    assert.equal(db.prepare('SELECT department FROM Contents WHERE articleId = ?')
+      .get('AKR202606060000000007').department, null);
   });
 });

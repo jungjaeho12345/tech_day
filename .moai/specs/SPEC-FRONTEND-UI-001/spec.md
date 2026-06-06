@@ -1,9 +1,9 @@
 ---
 id: SPEC-FRONTEND-UI-001
-version: 0.2.0
+version: 0.6.0
 status: approved
 created: 2026-05-27
-updated: 2026-05-27
+updated: 2026-06-06
 author: manager-spec
 priority: high
 issue_number: null
@@ -13,6 +13,10 @@ issue_number: null
 
 ## HISTORY
 
+- 2026-06-06 (v0.6.0): 사용자 요청 반영 — 기사아이디가 생성되지 않은 신규 초안(A-DRAFT) 작성 화면에는 KILL 버튼을 표시하지 않는다. REQ-FE-WRITE-013 개정: KILL 버튼 노출은 기사아이디가 부여된(편집 컨텍스트) RDS 기사 + 권한 매트릭스(R/Z)일 때로 한정 — 존재하지 않는 기사는 KILL 대상이 아니며, 종전에는 초안 KILL이 기사를 생성한 직후 KILL하는 동작이 됐다. 구현: useWriteController가 isDraft(A-DRAFT 센티널)를 노출하고 WritePage KILL 게이트에 !isDraft 추가. AC-5.3 개정, AC-5.5 신설. news.md 작성 페이지 버튼 절 + moai-domain-news-editor SKILL 동기 갱신. (MoAI)
+- 2026-06-06 (v0.5.0): 사용자 요청 반영 — 조회 4개 메뉴 데이터 표시·기사상태 컬럼·편집 로드·락 게이트 개정. (1) REQ-FE-VIEW-008/011 개정 — 공통 목록 컬럼을 7개 → 8개로 확장: 수정시간과 LockYN 사이에 기사상태(status, RDS/DPS/RRH/RRK/DDH/DDK 원시 값) 컬럼 추가. (2) REQ-FE-VIEW-007 개정 — 개인별 수정 author 필터는 기사에 저장된 작성자 표시 이름(user.name) 기준으로 매칭(종전 userId 매칭은 저장 값과 불일치로 항상 0건). (3) 기사 생성 시 서버가 세션 사용자의 department/departmentCode를 스탬프하고, 레거시 행은 작성자 이름→User.department 비파괴 백필 — 부서별 작성/송고 조회가 실데이터와 매칭되도록 복구. (4) 편집 진입 로드 복구 — 백엔드 articleModel.query가 Article을 LEFT JOIN하여 markupVersion을 포함하고, Contents에 공통정보 8컬럼(coAuthor/region/attribute/keyword/internalComment/externalComment/attachmentFile/referenceFile) 영속화 + secondaryEmbargoAt→secondEmbargoAt 매핑. (5) SPEC-NEWS-REVISE-002 AC-EDIT-LOCK-6 이행 — applyAction(송고/보류/KILL action 라우트 포함)에 락 자동 검증: 타 보유자의 live 락이 있으면 lock-required 거부, 락이 비면 통과(신규 송고 보존). AC-7.3/7.4/7.5 개정. (MoAI)
+- 2026-06-06 (v0.4.0): 사용자 요청 반영 — 기사 조회 4개 메뉴 개정. (1) REQ-FE-VIEW-011 신설 — 4개 메뉴 전부 기사 목록 컬럼을 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN 7개로 통일(상태 배지·인라인 액션 버튼 제거). (2) REQ-FE-VIEW-005 개정 — 부서별 작성에 부서 Select(데이터-소스 인터페이스 재사용, 초기값 로그인 사용자 부서 + 자동 조회) + 조회 버튼 추가, 필터 `{ department, statusNot: 'DPS,RRH' }`. 백엔드 articleModel.query에 statusNot(NOT IN) 필터 신설, 누락돼 있던 department 동등 필터 추가. (3) REQ-FE-VIEW-007 개정 — 개인별 수정은 본인 작성 + 상태 RDS/RRK만 (`{ author, status: 'RDS,RRK' }`). (4) REQ-FE-VIEW-009/010 개정 — DPS 고침/포털고침 게이팅을 인라인 버튼에서 우클릭 컨텍스트 메뉴 항목(고침(포털제외)/포털고침)으로 이동, D 권한 + DPS일 때만 활성화되어 기사작성(편집) 페이지로 이동. AC-7.1/7.1b/7.3/7.5/8.1/8.2 개정·신설. news.md 동기 갱신. (MoAI)
+- 2026-06-06 (v0.3.0): 사용자 요청 5건 반영. (1) REQ-FE-WRITE-012/013/014 개정 — 송고/보류/KILL 버튼은 '송고/보류/KILL하시겠습니까?' 확인창을 선행하고, 보류/KILL도 송고와 동일하게 기사 DTO 저장(saveArticle) 후 액션을 제출하며, 요청 성공 시 버튼 아래에 결과 상태 메시지를 표시하지 않는다(작성 페이지 초기화는 유지). (2) REQ-FE-VIEW-008 개정 — 데스크 미송고는 상태값 RDS, DDH 기사만 나열하고 컬럼은 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN 7개만 표현. 백엔드 article 조회에 status 다중값(IN) 필터 추가. (3) 에디터 '본문' 라벨 텍스트 제거(aria-label 유지). (4) 문말 trailing 개행 렌더 보정(trailing <br> 패딩 — Enter 2회 증상 해소). AC-5.1/5.2 개정, AC-5.3/5.4 신설, AC-7.4 개정. news.md 동기 갱신. (MoAI)
 - 2026-05-27 (v0.2.0): 결정 포인트 5건 확정. DP-F1=에디터는 교체 가능한 어댑터 추상화(마크업 in/out 계약만 정의, 구체 라이브러리 Run 단계, markupVersion 덮어쓰기·이력 UI 없음). DP-F2=실시간은 UI 계약만(데이터 변경 → 목록·상태바 자동 갱신, 구독 인터페이스 경유), WebSocket-vs-폴링은 Run 단계 인프라. DP-F3=외부 검색(유튜브→구글)은 백엔드 검색 프록시 경유(키 서버 보관, CORS 회피, 폴백 로직 서버 집중). 이는 SPEC-BACKEND-CORE-001 현 범위에 없는 백엔드 검색 프록시 책임을 새로 도입 — 본 SPEC에 프런트엔드가 소비하는 외부 의존/인터페이스로 문서화하고, 프록시 엔드포인트는 Run 단계(또는 후속 backend API 추가)에서 정의. 프런트엔드 Model 계층이 호출을 추상화. DP-F4=부서 목록은 분리된 데이터-소스 인터페이스(예: User.department distinct), 구체 소스 Run 단계. DP-F5=송고/보류 다음 상태는 백엔드가 계산, UI는 액션+DTO 전송 후 백엔드 반환 상태 표시(클라이언트 미계산)를 기본값으로 확정. "미해결 결정 포인트" → "확정 결정"으로 전환. status: draft → approved. 영향 요구사항(에디터 어댑터, 실시간 구독 인터페이스, 검색 백엔드 프록시, 부서 데이터-소스 인터페이스, 백엔드 반환 상태 표시) 갱신. (manager-spec)
 - 2026-05-27 (v0.1.0): 최초 작성. 3-SPEC 계층 분해(DB → backend → frontend) 중 3번 SPEC. 프런트엔드 UI 계층(React/Vite, MVC, 3개 페이지: 로그인/작성/조회, 공통 사용자 정보 표시, 4탭 메타데이터, 외부 검색 폴백, 실시간 조회 + 4개 메뉴, 권한별 UI 노출)만 정의. SPEC-DB-FOUNDATION-001(승인됨) 및 SPEC-BACKEND-CORE-001(승인됨)의 확정 계약(권한 R/D/Z, 생애주기 RDS/DPS/RRH/DDH/RRK/DDK, 기사 필드, 조회 필터 incl. distributedAt)에 정렬. 미해결 사항은 결정 포인트로 표기. (manager-spec)
 
@@ -124,9 +128,9 @@ issue_number: null
 
 ### 기사 작성 페이지 — 송고/보류 (Send / Hold)
 
-- **REQ-FE-WRITE-012 (Event-Driven)**: **When** the user presses the 송고 (send) button, the system **shall** assemble the article data into an article DTO (combining editor content and the four tabs' inputs) and submit it to the backend so the backend can route it through the lifecycle state machine (SPEC-BACKEND-CORE-001 REQ-WF-001).
-- **REQ-FE-WRITE-013 (Event-Driven)**: **When** the user presses the 보류 (hold) button, the system **shall** submit a hold action for the current article to the backend.
-- **REQ-FE-WRITE-014 (Ubiquitous)** [DP-F5]: The system **shall** send only the action and the article DTO to the backend, **shall not** compute the next lifecycle state on the client, and **shall** display the resulting lifecycle state returned by the backend after a send or hold action (the backend state machine computes the transition per REQ-ART-LC-*).
+- **REQ-FE-WRITE-012 (Event-Driven, v0.3.0 개정)**: **When** the user presses the 송고 (send) button and confirms the '송고하시겠습니까?' confirmation dialog, the system **shall** assemble the article data into an article DTO (combining editor content and the four tabs' inputs) and submit it to the backend so the backend can route it through the lifecycle state machine (SPEC-BACKEND-CORE-001 REQ-WF-001).
+- **REQ-FE-WRITE-013 (Event-Driven, v0.6.0 개정)**: **When** the user presses the 보류 (hold) or KILL button and confirms the corresponding '보류하시겠습니까?' / 'KILL하시겠습니까?' confirmation dialog, the system **shall** save the current article DTO (same persistence path as send) and then submit the hold/kill action for the saved article to the backend. **When** the user cancels the confirmation dialog (any of send/hold/kill), the system **shall not** save or submit anything. **While** the write page holds an id-less draft (articleId not yet generated — the A-DRAFT sentinel), the system **shall not** display the KILL button regardless of role; KILL is offered only for an article loaded in edit context with a generated articleId, per the existing role matrix (R/Z + RDS).
+- **REQ-FE-WRITE-014 (Ubiquitous, v0.3.0 개정)** [DP-F5]: The system **shall** send only the action and the article DTO to the backend and **shall not** compute the next lifecycle state on the client (the backend state machine computes the transition per REQ-ART-LC-*). After a SUCCESSFUL send/hold/kill action the system **shall not** display a lifecycle-status message below the action buttons (the write page reset per news.md remains); a REJECTED action still surfaces its error notice.
 
 ### 기사 조회 페이지 — 실시간 + 상태바 (Article View — Real-time + Status Bar)
 
@@ -137,15 +141,16 @@ issue_number: null
 ### 기사 조회 페이지 — 4개 메뉴 (Article View — Four Menus)
 
 - **REQ-FE-VIEW-004 (Ubiquitous)**: The article-view page **shall** present exactly four menus — 부서별 작성 (department-write), 부서별 송고 (department-send), 개인별 수정 (personal-edit), and 데스크 미송고 (desk-unsent).
-- **REQ-FE-VIEW-005 (Event-Driven)**: **When** the 부서별 작성 menu is active, the system **shall** display only articles authored within the relevant department.
-- **REQ-FE-VIEW-006 (Event-Driven)** [DP-F4]: **When** the 부서별 송고 menu is active, the system **shall** present a department dropdown populated from a separated department data-source interface (e.g., distinct `User.department`; the concrete source is confirmed at the Run stage) and a 조회 (query) button, and **shall** display articles for the selected department only after the query button is pressed.
-- **REQ-FE-VIEW-007 (Event-Driven)**: **When** the 개인별 수정 menu is active, the system **shall** display only articles authored by the current individual user.
-- **REQ-FE-VIEW-008 (Event-Driven)**: **When** the 데스크 미송고 menu is active, the system **shall** display only articles in the `RDS` lifecycle state (news.md: "데스크 미송고 페이지는 RDS기사만 보여준다").
+- **REQ-FE-VIEW-005 (Event-Driven, v0.4.0 개정)**: **When** the 부서별 작성 menu is active, the system **shall** present a department Select populated from the separated department data-source interface (same source as REQ-FE-VIEW-006) with the logged-in user's department selected initially, **shall** auto-query that department on menu entry, **shall** re-query when another department is selected and the 조회 (query) button is pressed, and **shall** display only articles authored within the selected department whose lifecycle state is **not** `DPS` and **not** `RRH` (query filter `{ department, statusNot: 'DPS,RRH' }`; backend `articleModel.query` expands `statusNot` to a `NOT IN` clause).
+- **REQ-FE-VIEW-006 (Event-Driven)** [DP-F4]: **When** the 부서별 송고 menu is active, the system **shall** present a department dropdown populated from a separated department data-source interface (e.g., distinct `User.department`; the concrete source is confirmed at the Run stage) and a 조회 (query) button, and **shall** display articles for the selected department only after the query button is pressed (DPS-only per news.md: query filter `{ department, status: 'DPS' }`).
+- **REQ-FE-VIEW-007 (Event-Driven, v0.5.0 개정)**: **When** the 개인별 수정 menu is active, the system **shall** display only articles authored by the current individual user whose lifecycle state is `RDS` or `RRK` (query filter `{ author, status: 'RDS,RRK' }`; v0.5.0 — the `author` value matches the author display name stored on the article, i.e. the logged-in user's `user.name`, because articles persist the writer's name in the author column).
+- **REQ-FE-VIEW-008 (Event-Driven, v0.5.0 개정)**: **When** the 데스크 미송고 menu is active, the system **shall** display only articles whose lifecycle state is `RDS` or `DDH` (news.md v0.3.0: "데스크 미송고 페이지는 상태값이 RDS, DDH인 기사만 나열한다"), and each listed row **shall** present exactly eight columns — 기사아이디(articleId), 제목(title), 작성자(author), 수정자(modifier), 작성시간(createdAt), 수정시간(editedAt), 기사상태(status), LockYN(lockYN).
+- **REQ-FE-VIEW-011 (Ubiquitous, v0.5.0 개정)**: Article list rows in **all four** view menus (데스크 미송고, 부서별 작성, 부서별 송고, 개인별 수정) **shall** present exactly the same eight columns as REQ-FE-VIEW-008 — 기사아이디, 제목, 작성자, 수정자, 작성시간, 수정시간, 기사상태(status; raw lifecycle value RDS/DPS/RRH/RRK/DDH/DDK), LockYN — with no inline action buttons, **except** the 부서별 송고 DPS-row 고침/포털고침 forwarding buttons defined by SPEC-NEWS-REVISE-007 (REQ-FWD-ENTRYPOINTS, AC-FWD-3), which render after the eight columns on DPS rows only.
 
 ### 기사 조회 페이지 — 권한 게이팅 (Article View — Role Gating)
 
-- **REQ-FE-VIEW-009 (State-Driven)**: **While** a displayed article is in lifecycle state `DPS`, the system **shall** expose the 고침/포털고침 (edit / portal-edit) menu only to users whose `role` is `D`.
-- **REQ-FE-VIEW-010 (Unwanted Behavior)**: **If** a `DPS` article is displayed to a user whose `role` is `R` or `Z`, **then** the system **shall** hide or disable the 고침/포털고침 menu for that article (the UI **shall not** offer an action the backend would reject per REQ-ART-AUTH-002).
+- **REQ-FE-VIEW-009 (State-Driven, v0.4.0 개정)**: **While** a displayed article is in lifecycle state `DPS`, the system **shall** enable the 고침(포털제외)/포털고침 (edit-excluding-portal / portal-edit) right-click context-menu items only for users whose `role` is `D`, and selecting either item **shall** navigate to the article-write page in edit context for that article. (v0.4.0: inline row buttons removed by REQ-FE-VIEW-011 — gating lives in the context menu.)
+- **REQ-FE-VIEW-010 (Unwanted Behavior, v0.4.0 개정)**: **If** a `DPS` article is displayed to a user whose `role` is `R` or `Z`, **then** the system **shall** disable the 고침(포털제외)/포털고침 context-menu items for that article (the UI **shall not** offer an action the backend would reject per REQ-ART-AUTH-002). For non-`DPS` articles these items remain disabled regardless of role.
 
 ---
 

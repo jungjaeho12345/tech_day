@@ -1,0 +1,26 @@
+{
+  "skill_name": "moai-domain-news-editor",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "lifecycle-and-filters",
+      "prompt": "뉴스 제작 시스템(tech_day 리포)에서: (1) R 권한 사용자가 RDS 기사를 송고하면 상태값이 무엇이 되는가? (2) D 권한 사용자가 RDS 기사를 송고하면? (3) list.do의 부서별 송고 메뉴와 개인별 수정 메뉴에는 각각 어떤 상태값의 기사가 조회되는가? 근거와 함께 답하라.",
+      "expected_output": "R 송고→RDS 유지, D 송고→DPS, 부서별 송고=DPS만, 개인별 수정=본인 작성 RDS·RRK만",
+      "files": []
+    },
+    {
+      "id": 1,
+      "eval_name": "stale-newsmd-code-reality",
+      "prompt": "이 리포의 기사 에디터에서 (1) 클립보드로 붙여넣은 이미지/유튜브는 에디터 대비 몇 % 크기로 렌더링되는가? (2) Alt+Y를 누르면 (끝) 마커가 본문/임베드 대비 어디에 배치되는가? 현재 코드 동작 기준으로 답하라.",
+      "expected_output": "17%×17% (news.md의 10%는 구형), (끝)은 embeds 뒤 최종 블록 (본문→embeds→(끝))",
+      "files": []
+    },
+    {
+      "id": 2,
+      "eval_name": "z-permission-send-guard",
+      "prompt": "writer.do 기사 작성 페이지에서 (1) Z 권한 사용자에게 보이는 버튼은 무엇인가? (2) 본문에 (끝) 없이 송고 버튼을 누르면 어떻게 되는가? (3) 이 두 동작을 검증하기 위한 체크리스트 5항목을 작성하라.",
+      "expected_output": "Z+RDS: 송고/보류/KILL 모두 표시·사용가능(3버튼 한정), (끝) 없으면 ALERT 후 송고 차단(보류/KILL은 면제), 체크리스트 5항목",
+      "files": []
+    }
+  ]
+}

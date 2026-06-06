@@ -1,0 +1,40 @@
+{
+  "expectations": [
+    {
+      "text": "Identifies composeBody returning {body: ''} as the root cause of AC-EMB-INLINE-1 failure",
+      "passed": true,
+      "evidence": "steps.md Cause A explicitly names the stub returning ''"
+    },
+    {
+      "text": "Fixes source (composeBody or buildArticle) to compose body from bodyText, rather than editing the test",
+      "passed": true,
+      "evidence": "edits.md Edit 2 rewrites composeBody to return {body: state.bodyText}; explicit 'no test edits'"
+    },
+    {
+      "text": "Addresses the second failure (caret advancement) by bumping caret by embed token length in insertEmbedAtCaret",
+      "passed": true,
+      "evidence": "edits.md Edit 1 adds caret: caret + token.length"
+    },
+    {
+      "text": "Plans to run full suite as the final iteration before declaring green",
+      "passed": true,
+      "evidence": "steps.md step 5 explicitly runs focused then full suite"
+    },
+    {
+      "text": "Does NOT modify package.json or vitest config to silence failures",
+      "passed": true,
+      "evidence": "edits.md 'What I did NOT do' lists this"
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+      "passed": true,
+      "evidence": "report.md exactly matches the template"
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  }
+}

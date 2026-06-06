@@ -15,7 +15,11 @@ const IDENTITY_FIELDS = Object.freeze([
   'userId', 'name', 'role', 'department', 'departmentCode',
 ]);
 
-const DEFAULT_TTL_MS = 30 * 60 * 1000; // 30 minutes; concrete value is a Run-stage choice (spec.md Exclusions).
+// Sliding idle timeout (SPEC-AUTH-SESSION-POLICY): a logged-in session expires only after this much
+// time with NO activity. Every authenticated request refreshes lastActivityAt (touchSession), so an
+// active user is kept alive indefinitely; a user is logged out solely by idling past this window or by
+// pressing logout (invalidateSession). 1 hour, named explicitly (no magic number).
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour of inactivity → session expires.
 
 function pickIdentity(user) {
   const identity = {};
@@ -27,14 +31,17 @@ function pickIdentity(user) {
 
 /**
  * Create a server-side session service.
- * @param {{ ttlMs?: number, now?: () => number }} [options] injectable ttl + clock (testability).
+ * @param {{ ttlMs?: number, idleTimeoutMs?: number, now?: () => number }} [options]
+ *   injectable idle window + clock (testability). `ttlMs` is kept as a backward-compatible alias
+ *   for the idle window (REQ-AUTH-GUARD-003 test uses `ttlMs`).
  */
 export function createSessionService(options = {}) {
-  const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  // The idle window: a session survives this long between activities (sliding expiration).
+  const idleTtlMs = options.idleTimeoutMs ?? options.ttlMs ?? IDLE_TIMEOUT_MS;
   const now = options.now ?? (() => Date.now());
   const store = new Map();
 
-  /** Drop the session if it has passed its expiry; returns the live session or undefined. */
+  /** Drop the session if it idled past its expiry; returns the live record or undefined. Pure read. */
   function readLive(sessionId) {
     if (typeof sessionId !== 'string') {
       return undefined;
@@ -59,23 +66,42 @@ export function createSessionService(options = {}) {
     /** REQ-AUTH-SESS-001/002/003: bind an opaque id to the user's identity (no credentials). */
     createSession(user) {
       const sessionId = randomBytes(24).toString('hex'); // opaque; encodes nothing about the user.
+      const startedAt = now();
       store.set(sessionId, {
         identity: pickIdentity(user),
-        expiresAt: now() + ttlMs,
+        lastActivityAt: startedAt,
+        // Sliding expiry: idleTtlMs after the last activity. touchSession pushes this forward.
+        expiresAt: startedAt + idleTtlMs,
       });
       return { sessionId };
     },
 
-    /** Return the retained identity for a live session, else undefined. */
+    /** Return the retained identity for a live session, else undefined. Pure read (no slide). */
     getSession(sessionId) {
       const record = readLive(sessionId);
       return record === undefined ? undefined : { ...record.identity };
     },
 
-    /** Alias used by guards: a live session's identity, else undefined (REQ-AUTH-GUARD-001..003). */
+    /** Alias used by guards: a live session's identity, else undefined (REQ-AUTH-GUARD-001..003). Pure read. */
     validateSession(sessionId) {
       const record = readLive(sessionId);
       return record === undefined ? undefined : { ...record.identity };
+    },
+
+    // @MX:NOTE: [AUTO] Sliding-expiration touch — the SOLE writer of lastActivityAt/expiresAt after create.
+    // The HTTP layer calls this once per authenticated request so any activity within the idle window
+    // (1h) refreshes the window, keeping an active user logged in indefinitely (세션 정책: 무동작 1h 만료,
+    // 로그아웃 전까지 유지). Returns the live identity (like validateSession) or undefined when absent/expired.
+    /** Validate AND refresh the idle window for a live session (sliding expiration). */
+    touchSession(sessionId) {
+      const record = readLive(sessionId);
+      if (record === undefined) {
+        return undefined;
+      }
+      const at = now();
+      record.lastActivityAt = at;
+      record.expiresAt = at + idleTtlMs; // push the idle deadline forward from the moment of activity.
+      return { ...record.identity };
     },
 
     /** REQ-AUTH-SESS-004: logout — drop the session so any reuse is rejected. */

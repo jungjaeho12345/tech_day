@@ -93,20 +93,25 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('yh-detail__row--empty');
   });
 
-  it('renders 제목 and 본문 in separate sections (news.md 분리해서 보여준다)', () => {
+  it('renders 제목 and 본문 together in ONE unified 기사 section (제목 → 본문 연속)', () => {
     const html = buildArticleDetailHtml(fullArticle);
-    // Each section is its own <section> with an aria-label
+    // 레이아웃 개편: 분리된 제목/본문 섹션을 폐지하고 하나의 통합 "기사" 영역에서 함께 보여준다.
     expect(html).toContain('aria-label="공통정보"');
-    expect(html).toContain('aria-label="제목"');
-    expect(html).toContain('aria-label="본문"');
-    // Order: 공통정보 → 제목 → 본문
+    expect(html).toContain('aria-label="기사"');
+    expect(html).not.toContain('aria-label="제목"');
+    expect(html).not.toContain('aria-label="본문"');
+    // 통합 영역 안에서 제목(.yh-detail__title) → 본문(.yh-detail__content) 순으로 함께 보인다.
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const article = doc.querySelector('section[aria-label="기사"]');
+    expect(article).not.toBeNull();
+    const titleEl = article.querySelector('.yh-detail__title');
+    const contentEl = article.querySelector('.yh-detail__content');
+    expect(titleEl).not.toBeNull();
+    expect(contentEl).not.toBeNull();
+    expect(titleEl.compareDocumentPosition(contentEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Order: 공통정보 → 기사
     const body = html.slice(html.indexOf('<body>'));
-    const infoIdx = body.indexOf('aria-label="공통정보"');
-    const titleIdx = body.indexOf('aria-label="제목"');
-    const contentIdx = body.indexOf('aria-label="본문"');
-    expect(infoIdx).toBeGreaterThan(-1);
-    expect(infoIdx).toBeLessThan(titleIdx);
-    expect(titleIdx).toBeLessThan(contentIdx);
+    expect(body.indexOf('aria-label="공통정보"')).toBeLessThan(body.indexOf('aria-label="기사"'));
   });
 
   it('escapes HTML special chars in dynamic text (no injection)', () => {
@@ -145,13 +150,14 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     }
   });
 
-  // SPEC-NEWS-REVISE-002 — AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 회귀.
-  it('AC-FONT-4: SPEC-NEWS-REVISE-001 분리 구조 + aria-label 회귀', () => {
+  // SPEC-NEWS-REVISE-002 — AC-FONT-4: 통합 구조 회귀 (공통정보 + 기사 2섹션).
+  it('AC-FONT-4: 통합 구조 + aria-label 회귀 (공통정보 → 기사)', () => {
     const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
     const sections = Array.from(doc.querySelectorAll('body > section'));
-    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['공통정보', '제목', '본문']);
-    expect(doc.querySelector('.yh-detail__content')).not.toBeNull();
-    expect(doc.querySelector('.yh-detail__title')).not.toBeNull();
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['공통정보', '기사']);
+    const article = doc.querySelector('section[aria-label="기사"]');
+    expect(article.querySelector('.yh-detail__title')).not.toBeNull();
+    expect(article.querySelector('.yh-detail__content')).not.toBeNull();
   });
 });
 
@@ -180,29 +186,28 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
     return new DOMParser().parseFromString(html, 'text/html');
   }
 
-  it('AC-DTL-1: 제목 섹션과 본문 섹션이 각각 1개씩 분리되어 존재한다', () => {
+  it('AC-DTL-1: 제목과 본문이 하나의 통합 기사 섹션 안에 제목 → 본문 순으로 함께 존재한다', () => {
     const doc = parse(buildArticleDetailHtml(fullArticle));
-    const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
-    const bodySections = doc.querySelectorAll('section[aria-label="본문"]');
-    expect(titleSections.length).toBe(1);
-    expect(bodySections.length).toBe(1);
-    // 형제 노드 검증: 동일 부모 + 사이에 다른 콘텐츠 섹션 없음 (공통정보 외).
-    expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
-    // 제목 다음 형제(공백 텍스트 노드 무시)가 본문 섹션이어야 한다.
-    let next = titleSections[0].nextElementSibling;
-    expect(next).toBe(bodySections[0]);
+    // 레이아웃 개편: 분리 섹션 폐지. 통합 "기사" 섹션 1개 안에 제목/본문이 함께 들어간다.
+    const articleSections = doc.querySelectorAll('section[aria-label="기사"]');
+    expect(articleSections.length).toBe(1);
+    expect(doc.querySelectorAll('section[aria-label="제목"]').length).toBe(0);
+    expect(doc.querySelectorAll('section[aria-label="본문"]').length).toBe(0);
+    const titleEl = articleSections[0].querySelector('h1.yh-detail__title');
+    const contentEl = articleSections[0].querySelector('.yh-detail__content');
+    expect(titleEl).not.toBeNull();
+    expect(contentEl).not.toBeNull();
+    expect(titleEl.parentElement).toBe(contentEl.parentElement);
+    expect(titleEl.compareDocumentPosition(contentEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('AC-DTL-2: 두 섹션은 시각적 분리(섹션 헤더 + border) 속성을 가진다', () => {
+  it('AC-DTL-2: 통합 기사 섹션은 시각적 분리(섹션 헤더 + border) 속성을 가진다', () => {
     const doc = parse(buildArticleDetailHtml(fullArticle));
-    const titleSection = doc.querySelector('section[aria-label="제목"]');
-    const bodySection = doc.querySelector('section[aria-label="본문"]');
+    const articleSection = doc.querySelector('section[aria-label="기사"]');
     // 섹션 헤더 존재
-    expect(titleSection.querySelector('h2.yh-detail__section-title')).not.toBeNull();
-    expect(bodySection.querySelector('h2.yh-detail__section-title')).not.toBeNull();
+    expect(articleSection.querySelector('h2.yh-detail__section-title')).not.toBeNull();
     // 공유 클래스로 시각 토큰 적용 (border + border-left blue)
-    expect(titleSection.classList.contains('yh-detail__section')).toBe(true);
-    expect(bodySection.classList.contains('yh-detail__section')).toBe(true);
+    expect(articleSection.classList.contains('yh-detail__section')).toBe(true);
   });
 
   it('AC-DTL-3: 공통정보 섹션 내 12 필드 라벨이 모두 enumerate된다', () => {
@@ -224,16 +229,15 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
     expect(dts.length).toBe(12);
   });
 
-  it('AC-DTL-4: 빈 제목이면 placeholder "(제목 없음)" 으로 렌더링되고 본문 섹션은 별도 유지', () => {
+  it('AC-DTL-4: 빈 제목이면 placeholder "(제목 없음)" 으로 렌더링되고 통합 기사 섹션에 본문도 함께 유지', () => {
     for (const blank of ['', null, undefined]) {
       const doc = parse(buildArticleDetailHtml({ ...fullArticle, title: blank }));
-      const titleSection = doc.querySelector('section[aria-label="제목"]');
-      const bodySection = doc.querySelector('section[aria-label="본문"]');
-      expect(titleSection).not.toBeNull();
-      expect(bodySection).not.toBeNull();
-      const h1 = titleSection.querySelector('h1.yh-detail__title');
+      const articleSection = doc.querySelector('section[aria-label="기사"]');
+      expect(articleSection).not.toBeNull();
+      const h1 = articleSection.querySelector('h1.yh-detail__title');
       expect(h1).not.toBeNull();
       expect(h1.textContent).toBe('(제목 없음)');
+      expect(articleSection.querySelector('.yh-detail__content')).not.toBeNull();
     }
   });
 
@@ -245,16 +249,16 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
     }));
     expect(doc.querySelectorAll('script').length).toBe(0);
     expect(doc.querySelectorAll('img').length).toBe(0);
-    // 본문 영역에 텍스트로 escape되어 표시
-    const titleSection = doc.querySelector('section[aria-label="제목"]');
-    expect(titleSection.textContent).toContain('<script>alert(1)</script>');
+    // 통합 기사 영역에 텍스트로 escape되어 표시
+    const articleSection = doc.querySelector('section[aria-label="기사"]');
+    expect(articleSection.textContent).toContain('<script>alert(1)</script>');
   });
 
-  it('AC-DTL-6: 공통정보 → 제목 → 본문 순서로 형제 섹션이 배치된다', () => {
+  it('AC-DTL-6: 공통정보 → 기사(제목+본문 통합) 순서로 형제 섹션이 배치된다', () => {
     const doc = parse(buildArticleDetailHtml(fullArticle));
     const sections = Array.from(doc.querySelectorAll('body > section'));
     const labels = sections.map((s) => s.getAttribute('aria-label'));
-    expect(labels).toEqual(['공통정보', '제목', '본문']);
+    expect(labels).toEqual(['공통정보', '기사']);
   });
 });
 
@@ -324,14 +328,14 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     for (const blank of ['', null]) {
       const html = buildArticleDetailHtml({ ...fullArticle, title: blank });
       const doc = new DOMParser().parseFromString(html, 'text/html');
-      // aria-label="제목" 섹션이 존재하고 그 안에 placeholder가 렌더된다.
-      const titleSection = doc.querySelector('section[aria-label="제목"]');
-      expect(titleSection).not.toBeNull();
-      const h1 = titleSection.querySelector('h1.yh-detail__title');
+      // 통합 "기사" 섹션이 존재하고 그 안에 placeholder가 렌더된다.
+      const articleSection = doc.querySelector('section[aria-label="기사"]');
+      expect(articleSection).not.toBeNull();
+      const h1 = articleSection.querySelector('h1.yh-detail__title');
       expect(h1).not.toBeNull();
       expect(h1.textContent).toBe('(제목 없음)');
-      // 본문 섹션도 분리되어 존재.
-      expect(doc.querySelector('section[aria-label="본문"]')).not.toBeNull();
+      // 본문도 같은 통합 영역에 함께 존재한다.
+      expect(articleSection.querySelector('.yh-detail__content')).not.toBeNull();
       // placeholder 케이스에서도 폰트 관계 유지.
       expect(fontSizeRem(html, 'yh-detail__content')).toBeGreaterThan(fontSizeRem(html, 'yh-detail__title'));
     }
@@ -341,13 +345,15 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
   // 느슨한 #DD[0-9A-Fa-f]{4} 패턴이 #DD0000 같은 의도하지 않은 값까지 통과시키던 false-positive 구멍을 막는다.
   it('AC-GRAY-1 (003 AC-EMPH-4 정밀화): 분리 구조 회귀 — 제목/본문 섹션 각 1개 형제 + gray-line 정확 토큰 #DDE3EC 구분선 + 12 공통정보 dt label', () => {
     const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
-    // aria-label="제목" / "본문" 섹션이 정확히 1개씩.
-    const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
-    const bodySections = doc.querySelectorAll('section[aria-label="본문"]');
-    expect(titleSections.length).toBe(1);
-    expect(bodySections.length).toBe(1);
-    // 두 섹션은 동일 부모의 형제 노드.
-    expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
+    // 통합 "기사" 섹션이 정확히 1개이며 그 안에 제목/본문이 함께 들어간다 (분리 섹션 폐지).
+    const articleSections = doc.querySelectorAll('section[aria-label="기사"]');
+    expect(articleSections.length).toBe(1);
+    const titleEl = articleSections[0].querySelector('.yh-detail__title');
+    const contentEl = articleSections[0].querySelector('.yh-detail__content');
+    expect(titleEl).not.toBeNull();
+    expect(contentEl).not.toBeNull();
+    // 제목과 본문은 동일 부모(기사 섹션)의 형제 노드.
+    expect(titleEl.parentElement).toBe(contentEl.parentElement);
 
     // 1px 회색 구분선. gray-line 디자인 토큰이 정확한 production 값 #DDE3EC 임을 단언한다(대소문자 무시).
     const styleText = doc.querySelector('style').textContent;
@@ -394,12 +400,14 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
   // 잠근다. PD1 기본값에 따라 단언 코드는 무변경(주석만 명확화)이며 삭제/통합하지 않는다.
   it('AC-GRAY-3: 정밀화 후에도 제목/본문 섹션 각 1개 형제 + 12 공통정보 dt label 구조가 회귀 없이 유지된다', () => {
     const doc = new DOMParser().parseFromString(buildArticleDetailHtml(fullArticle), 'text/html');
-    // aria-label="제목" / "본문" 섹션이 정확히 1개씩이며 동일 부모의 형제다.
-    const titleSections = doc.querySelectorAll('section[aria-label="제목"]');
-    const bodySections = doc.querySelectorAll('section[aria-label="본문"]');
-    expect(titleSections.length).toBe(1);
-    expect(bodySections.length).toBe(1);
-    expect(titleSections[0].parentElement).toBe(bodySections[0].parentElement);
+    // 통합 "기사" 섹션이 정확히 1개이며 그 안에 제목/본문이 형제로 함께 들어간다.
+    const articleSections = doc.querySelectorAll('section[aria-label="기사"]');
+    expect(articleSections.length).toBe(1);
+    const titleEl = articleSections[0].querySelector('.yh-detail__title');
+    const contentEl = articleSections[0].querySelector('.yh-detail__content');
+    expect(titleEl).not.toBeNull();
+    expect(contentEl).not.toBeNull();
+    expect(titleEl.parentElement).toBe(contentEl.parentElement);
 
     // 공통정보 dt label 12개가 각각 정확히 한 번씩 enumerate.
     const dts = doc.querySelectorAll('section[aria-label="공통정보"] dt');

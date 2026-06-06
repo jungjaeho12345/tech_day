@@ -86,6 +86,37 @@ describe('App routing + auth guard (REQ-FE-APP-002/003/004)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE — 작성(writer.do) → 조회(list.do) 전환 후 복귀해도 작성 중이던 내용이 유지된다.
+// 라우팅 시 WritePage 가 unmount/remount 되지만, 컨트롤러가 새 초안을 sessionStorage 에 영속해 복원한다.
+describe('작성 중 내용 유지 (writer.do → list.do → writer.do 복귀)', () => {
+  beforeEach(() => {
+    try { sessionStorage.clear(); } catch { /* no storage */ }
+  });
+
+  it('본문을 입력하고 조회로 갔다 작성으로 돌아오면 본문이 유지된다', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.type(screen.getByLabelText('아이디'), 'reporter1');
+    await user.type(screen.getByLabelText('암호'), 'secret');
+    await user.click(screen.getByRole('button', { name: '로그인' }));
+    await screen.findByRole('button', { name: '송고' });
+
+    // 작성 페이지 본문에 입력.
+    const editor = screen.getByTestId('editor-body');
+    await user.type(editor, '유지될 제목');
+    expect(screen.getByTestId('editor-body')).toHaveTextContent('유지될 제목');
+
+    // 조회로 이동 → 작성 페이지(에디터)가 사라진다 (unmount).
+    await user.click(screen.getByRole('link', { name: '기사 조회' }));
+    expect(screen.queryByTestId('editor-body')).not.toBeInTheDocument();
+
+    // 작성으로 복귀 → 에디터가 다시 마운트되고, 입력하던 본문이 복원되어 있다.
+    await user.click(screen.getByRole('link', { name: '기사 작성' }));
+    const restored = await screen.findByTestId('editor-body');
+    expect(restored).toHaveTextContent('유지될 제목');
+  });
+});
+
 describe('Logout (사용자 정보: 로그아웃 -> session 종료 + 로그인 redirect)', () => {
   it('AC-LOGOUT-1: write page shows a 로그아웃 button; clicking it calls model.logout and returns to login', async () => {
     const user = userEvent.setup();

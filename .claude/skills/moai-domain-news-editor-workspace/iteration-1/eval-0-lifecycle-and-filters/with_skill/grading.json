@@ -1,0 +1,10 @@
+{
+  "expectations": [
+    {"text": "R 권한 송고 결과를 RDS 유지로 명시", "passed": true, "evidence": "answer.md: 'R 권한... 송고해도 상태값은 그대로 RDS로 유지된다. DPS로 전환되지 않는다' (news.md L154 인용)"},
+    {"text": "D 권한 송고 결과를 DPS로 명시", "passed": true, "evidence": "answer.md: 'D 권한... 송고하면 상태값이 DPS가 되며... 배부 대상으로 전환' (news.md L157 인용)"},
+    {"text": "부서별 송고 메뉴 = DPS만 조회 명시", "passed": true, "evidence": "answer.md: '부서별 송고 메뉴: 상태값이 DPS인 기사만 조회' (news.md L75 인용)"},
+    {"text": "개인별 수정 = 본인 작성 RDS·RRK만 조회 명시", "passed": true, "evidence": "answer.md: '로그인한 계정이 직접 작성한 기사 중 상태값이 RDS, RRK인 기사만 조회' (news.md L76 인용)"}
+  ],
+  "summary": {"passed": 4, "failed": 0, "total": 4, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 116.1, "total_duration_seconds": 116.1}
+}

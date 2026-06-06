@@ -19,10 +19,14 @@ function lastCall() {
 describe('createHttpModel', () => {
   beforeEach(() => {
     global.fetch = vi.fn();
+    // The model seeds its sessionId from sessionStorage (F5 restore); clear it so each test starts
+    // from a clean transport state and persisted ids never leak across cases.
+    try { sessionStorage.clear(); } catch { /* no storage in this env */ }
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    try { sessionStorage.clear(); } catch { /* no storage in this env */ }
   });
 
   it('login success captures sessionId, drops it from the result, and returns { ok, user }', async () => {
@@ -102,6 +106,64 @@ describe('createHttpModel', () => {
     await model.queryArticles({});
     const [, init] = lastCall();
     expect(init.headers).not.toHaveProperty('x-session-id');
+  });
+
+  // --- Session restore on browser refresh (F5) -----------------------------
+  it('login persists the sessionId so a fresh model (after F5) replays it', async () => {
+    global.fetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true, user: { userId: 'r1' }, sessionId: 'sess-persist' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, user: { userId: 'r1', role: 'R' } }));
+
+    // First model logs in -> sessionId is written to sessionStorage.
+    await createHttpModel().login('r1', 'pw');
+
+    // Simulate a refresh: a brand-new model instance must pick the id up from storage.
+    const restored = createHttpModel();
+    const result = await restored.restoreSession();
+    expect(result).toEqual({ ok: true, user: { userId: 'r1', role: 'R' } });
+
+    const [url, init] = lastCall();
+    expect(url).toBe(`${BASE}/api/session`);
+    expect(init.method).toBe('GET');
+    expect(init.headers['x-session-id']).toBe('sess-persist'); // replayed from storage after F5
+  });
+
+  it('restoreSession returns { ok:false } and makes no request when there is no stored session', async () => {
+    const model = createHttpModel(); // sessionStorage cleared in beforeEach
+    const result = await model.restoreSession();
+    expect(result).toEqual({ ok: false });
+    expect(global.fetch).not.toHaveBeenCalled(); // nothing to restore -> no /api/session call
+  });
+
+  it('restoreSession clears the stored id when the server reports the session expired', async () => {
+    global.fetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true, user: {}, sessionId: 'sess-stale' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: false })) // /api/session — server says expired/unknown
+      .mockResolvedValueOnce(jsonResponse([])); // following call after the failed restore
+    await createHttpModel().login('r1', 'pw');
+
+    const restored = createHttpModel();
+    const result = await restored.restoreSession();
+    expect(result).toEqual({ ok: false });
+
+    // The stale id must be purged: a following request carries no x-session-id.
+    await restored.queryArticles({});
+    const [, init] = lastCall();
+    expect(init.headers).not.toHaveProperty('x-session-id');
+  });
+
+  it('logout clears the persisted session so a later refresh cannot restore it', async () => {
+    global.fetch
+      .mockResolvedValueOnce(jsonResponse({ ok: true, user: {}, sessionId: 'sess-logout' }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true })); // logout
+    const model = createHttpModel();
+    await model.login('r1', 'pw');
+    await model.logout();
+
+    // A fresh model after the refresh has no persisted id -> restoreSession is a no-op { ok:false }.
+    const after = createHttpModel();
+    const result = await after.restoreSession();
+    expect(result).toEqual({ ok: false });
   });
 
   it('saveArticle POSTs to /api/articles for a draft (falsy id and the A-DRAFT sentinel)', async () => {
@@ -191,6 +253,17 @@ describe('createHttpModel', () => {
     expect(JSON.parse(init.body)).not.toHaveProperty('role');
   });
 
+  it('applyAction includes the page lock sessionId in the body when provided (edit context)', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ ok: true, status: 'DPS' }));
+    const model = createHttpModel();
+
+    await model.applyAction('A-0007', 'D', 'send', { sessionId: 'P-EDIT' });
+
+    const [, init] = lastCall();
+    // AC-EDIT-LOCK-6: 서버 action 라우트의 락 게이트가 보유자를 식별하도록 페이지 sessionId가 실린다.
+    expect(JSON.parse(init.body)).toEqual({ action: 'send', sessionId: 'P-EDIT' });
+  });
+
   it('queryUsers degrades to [] when the backend returns { ok:false } (unauthenticated)', async () => {
     global.fetch.mockResolvedValueOnce(jsonResponse({ ok: false, reason: 'unauthenticated' }));
     const model = createHttpModel();
@@ -203,8 +276,46 @@ describe('createHttpModel', () => {
     global.fetch.mockRejectedValueOnce(new Error('network down'));
     const model = createHttpModel();
 
-    const result = await model.searchMedia('cats');
+    const result = await model.searchMedia('cats', 'video');
     expect(result).toEqual({ items: [], error: true });
+  });
+
+  it('searchMedia(query, "image") requests the proxy with type=image (Google Images route)', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({ items: [{ source: 'google', title: 'G', url: 'https://g/x' }], error: false }),
+    );
+    const model = createHttpModel();
+
+    const result = await model.searchMedia('flood', 'image');
+    expect(result).toEqual({ items: [{ source: 'google', title: 'G', url: 'https://g/x' }], error: false });
+
+    const [url] = lastCall();
+    expect(url).toContain('/api/media/search?q=flood');
+    expect(url).toContain('type=image');
+  });
+
+  it('searchMedia(query, "video") requests the proxy with type=video (YouTube route)', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({ items: [{ source: 'youtube', title: 'YT', url: 'https://youtu.be/x' }], error: false }),
+    );
+    const model = createHttpModel();
+
+    const result = await model.searchMedia('flood', 'video');
+    expect(result).toEqual({ items: [{ source: 'youtube', title: 'YT', url: 'https://youtu.be/x' }], error: false });
+
+    const [url] = lastCall();
+    expect(url).toContain('/api/media/search?q=flood');
+    expect(url).toContain('type=video');
+  });
+
+  it('searchMedia with no type defaults to type=video on the request URL', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ items: [], error: true }));
+    const model = createHttpModel();
+
+    await model.searchMedia('cats');
+
+    const [url] = lastCall();
+    expect(url).toContain('type=video');
   });
 
   it('queryArticles returns [] on a network rejection (safe default)', async () => {
@@ -281,6 +392,31 @@ describe('createHttpModel', () => {
 
       sub.unsubscribe();
       expect(closeSpy).toHaveBeenCalled();
+    });
+
+    it('wires open/error to connected payloads so the status bar tracks the transport', () => {
+      const listeners = {};
+      class FakeEventSource {
+        static OPEN = 1;
+        constructor(url) {
+          this.url = url;
+          this.readyState = 0; // CONNECTING
+          this.addEventListener = (type, cb) => {
+            listeners[type] = cb;
+          };
+          this.close = vi.fn();
+        }
+      }
+      global.EventSource = FakeEventSource;
+
+      const model = createHttpModel();
+      const onChange = vi.fn();
+      model.subscribe({}, onChange);
+
+      listeners.open();
+      expect(onChange).toHaveBeenCalledWith({ connected: true });
+      listeners.error();
+      expect(onChange).toHaveBeenCalledWith({ connected: false });
     });
 
     it('returns a no-op subscription when EventSource is unavailable', () => {
