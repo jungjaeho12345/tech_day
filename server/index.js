@@ -258,6 +258,20 @@ export function createApp({ controllers, sessionService }) {
     if (!pageSessionId) {
       return res.json({ ok: false, reason: 'invalid-args' });
     }
+    // sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 메서드를 지정할 수 없어
+    // 클라이언트(useWriteController.beaconRelease)가 POST 본문에 release:true 를 실어 보낸다.
+    // 이 플래그가 있으면 acquire 가 아니라 release 로 처리한다 — 종전에는 무시되어 언로드 해제가
+    // 사실상 잠금 재획득이 되는 버그였다 (브라우저 닫힘 후에도 stale 타임아웃까지 lock 잔존).
+    if (req.body && req.body.release === true) {
+      const released = controllers.article.releaseEditLock(req.params.id, {
+        userId: session.userId,
+        sessionId: pageSessionId,
+      });
+      if (released.ok) {
+        bus.emit('change', { type: 'unlock', articleId: req.params.id });
+      }
+      return res.json(released);
+    }
     const result = controllers.article.acquireEditLock(req.params.id, {
       userId: session.userId,
       sessionId: pageSessionId,

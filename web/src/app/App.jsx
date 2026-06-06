@@ -9,7 +9,7 @@ import { assertModel } from '../model/contract.js';
 import { ROUTES, routeFromPath, pathForRoute } from './routing.js';
 import { TopBar } from '../view/TopBar.jsx';
 import { LoginPage } from '../view/LoginPage.jsx';
-import { WritePage } from '../view/WritePage.jsx';
+import { WriteWorkspace } from '../view/WriteWorkspace.jsx';
 import { ViewPage } from '../view/ViewPage.jsx';
 
 export function App({ model }) {
@@ -114,7 +114,9 @@ export function App({ model }) {
           <>
             <TopBar />
             {nav}
-            <WritePage user={user} />
+            {/* 멀티탭 작성 — WriteWorkspace 가 탭 스트립 + 탭별 WritePage 인스턴스를 관리한다.
+                조회(list.do)의 편집/고침/포털고침 진입(?id=)은 워크스페이스가 새 탭으로 연다. */}
+            <WriteWorkspace user={user} />
           </>
         ) : null}
         {activeRoute === ROUTES.VIEW ? (

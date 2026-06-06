@@ -1,0 +1,8 @@
+{
+  "expectations": [
+    {"text": "클립보드 임베드 크기를 17%×17%로 답함 (구형 10% 아님)", "passed": true, "evidence": "answer.md: '에디터 대비 가로 17% × 세로 17%' + yonhap.css .yh-embed--clipboard 검증"},
+    {"text": "(끝) 마커가 모든 embeds 뒤 최종 블록임을 명시", "passed": true, "evidence": "answer.md: '본문 텍스트 → embeds → (끝)' 최종 블록 + editorAdapter.js appendEnd/setBodyText 검증"}
+  ],
+  "summary": {"passed": 2, "failed": 0, "total": 2, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 127.7, "total_duration_seconds": 127.7}
+}

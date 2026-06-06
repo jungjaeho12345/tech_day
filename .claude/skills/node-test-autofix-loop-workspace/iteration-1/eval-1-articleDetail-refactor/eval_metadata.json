@@ -1,0 +1,25 @@
+{
+  "eval_id": 1,
+  "eval_name": "eval-1-articleDetail-refactor",
+  "prompt": "Vitest 프로젝트에서 articleDetail.js 리팩토링 후 임베드 관련 테스트 2개 깨짐 — 변경 파일 우선 실행 후 전체 마무리",
+  "assertions": [
+    {
+      "text": "Identifies composeBody returning {body: ''} as the root cause of AC-EMB-INLINE-1 failure"
+    },
+    {
+      "text": "Fixes source (composeBody or buildArticle) to compose body from bodyText, rather than editing the test"
+    },
+    {
+      "text": "Addresses the second failure (caret advancement) by bumping caret by embed token length in insertEmbedAtCaret"
+    },
+    {
+      "text": "Plans to run full suite as the final iteration before declaring green"
+    },
+    {
+      "text": "Does NOT modify package.json or vitest config to silence failures"
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)"
+    }
+  ]
+}

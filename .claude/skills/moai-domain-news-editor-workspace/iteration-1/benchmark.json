@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "skill_name": "moai-domain-news-editor",
+    "skill_path": "D:/agents/tech_day/.claude/skills/moai-domain-news-editor",
+    "executor_model": "claude-opus-4-8[1m]",
+    "timestamp": "2026-06-06T00:00:00Z",
+    "evals_run": [0, 1, 2],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {"eval_id": 0, "eval_name": "lifecycle-and-filters", "configuration": "with_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 4, "failed": 0, "total": 4, "time_seconds": 116.1, "tokens": 60655, "tool_calls": 5, "errors": 0},
+     "expectations": [
+       {"text": "R 권한 송고 결과를 RDS 유지로 명시", "passed": true, "evidence": "news.md L154 인용"},
+       {"text": "D 권한 송고 결과를 DPS로 명시", "passed": true, "evidence": "news.md L157 인용"},
+       {"text": "부서별 송고 메뉴 = DPS만 조회 명시", "passed": true, "evidence": "news.md L75 인용"},
+       {"text": "개인별 수정 = 본인 작성 RDS·RRK만 조회 명시", "passed": true, "evidence": "news.md L76 인용"}
+     ]},
+    {"eval_id": 0, "eval_name": "lifecycle-and-filters", "configuration": "without_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 4, "failed": 0, "total": 4, "time_seconds": 103.8, "tokens": 64678, "tool_calls": 9, "errors": 0},
+     "expectations": [
+       {"text": "R 권한 송고 결과를 RDS 유지로 명시", "passed": true, "evidence": "lifecycle.js 코드 인용"},
+       {"text": "D 권한 송고 결과를 DPS로 명시", "passed": true, "evidence": "lifecycle.js 코드 인용"},
+       {"text": "부서별 송고 메뉴 = DPS만 조회 명시", "passed": true, "evidence": "useViewController.js 코드 인용"},
+       {"text": "개인별 수정 = 본인 작성 RDS·RRK만 조회 명시", "passed": true, "evidence": "useViewController.js 코드 인용"}
+     ]},
+    {"eval_id": 1, "eval_name": "stale-newsmd-code-reality", "configuration": "with_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 2, "failed": 0, "total": 2, "time_seconds": 127.7, "tokens": 76030, "tool_calls": 10, "errors": 0},
+     "expectations": [
+       {"text": "클립보드 임베드 크기 17%×17%", "passed": true, "evidence": "스킬 §2.4 + yonhap.css 검증"},
+       {"text": "(끝) 마커 = embeds 뒤 최종 블록", "passed": true, "evidence": "스킬 §1.4 + editorAdapter.js 검증"}
+     ]},
+    {"eval_id": 1, "eval_name": "stale-newsmd-code-reality", "configuration": "without_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 2, "failed": 0, "total": 2, "time_seconds": 131.8, "tokens": 62341, "tool_calls": 11, "errors": 0},
+     "expectations": [
+       {"text": "클립보드 임베드 크기 17%×17%", "passed": true, "evidence": "yonhap.css:1079 직접 발견"},
+       {"text": "(끝) 마커 = embeds 뒤 최종 블록", "passed": true, "evidence": "appendEnd() 직접 분석"}
+     ]},
+    {"eval_id": 2, "eval_name": "z-permission-send-guard", "configuration": "with_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 4, "failed": 0, "total": 4, "time_seconds": 94.5, "tokens": 58654, "tool_calls": 2, "errors": 0},
+     "expectations": [
+       {"text": "Z+RDS 3버튼 모두 표시·사용가능", "passed": true, "evidence": "스킬 §2.1 매트릭스"},
+       {"text": "(끝) 없으면 ALERT + 송고 차단", "passed": true, "evidence": "스킬 §1.4 송고 가드"},
+       {"text": "보류/KILL은 (끝) 면제", "passed": true, "evidence": "스킬 §1.4"},
+       {"text": "체크리스트 5항목", "passed": true, "evidence": "표 1~5"}
+     ]},
+    {"eval_id": 2, "eval_name": "z-permission-send-guard", "configuration": "without_skill", "run_number": 1,
+     "result": {"pass_rate": 1.0, "passed": 4, "failed": 0, "total": 4, "time_seconds": 121.7, "tokens": 88706, "tool_calls": 8, "errors": 0},
+     "expectations": [
+       {"text": "Z+RDS 3버튼 모두 표시·사용가능", "passed": true, "evidence": "WritePage.jsx 조건식 분석"},
+       {"text": "(끝) 없으면 ALERT + 송고 차단", "passed": true, "evidence": "useWriteController.js 가드 분석"},
+       {"text": "보류/KILL은 (끝) 면제", "passed": true, "evidence": "send 한정 가드 확인"},
+       {"text": "체크리스트 5항목", "passed": true, "evidence": "표 1~5"}
+     ]}
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 112.8, "stddev": 13.8, "min": 94.5, "max": 127.7},
+      "tokens": {"mean": 65113, "stddev": 7770, "min": 58654, "max": 76030}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 1.0, "stddev": 0.0, "min": 1.0, "max": 1.0},
+      "time_seconds": {"mean": 119.1, "stddev": 11.5, "min": 103.8, "max": 131.8},
+      "tokens": {"mean": 71908, "stddev": 11848, "min": 62341, "max": 88706}
+    },
+    "delta": {
+      "pass_rate": "+0.00",
+      "time_seconds": "-6.3",
+      "tokens": "-6795"
+    }
+  },
+  "notes": [
+    "정답률은 양쪽 모두 10/10 (100%) — 리포 전체 접근이 가능한 유능한 에이전트는 코드를 직접 읽어 보정하므로 정답률로는 변별되지 않음. 변별력은 비용(토큰/시간/툴콜)에서 발생.",
+    "스킬 효과가 가장 큰 케이스: eval-2 (58.7k vs 88.7k 토큰, -33.9%; 94.5s vs 121.7s). 권한 매트릭스·가드처럼 여러 출처에 흩어진 사실일수록 스킬의 단일 출처 가치가 큼.",
+    "eval-1은 with_skill이 오히려 토큰을 더 씀 (76.0k vs 62.3k) — 스킬이 'news.md 미반영' 경고를 줘서 에이전트가 코드 재검증을 수행. 정확도 보증 비용으로 해석 가능.",
+    "eval-1 baseline이 정답에 도달한 경로는 yonhap.css 의 1.7배 변경 이력 주석 — 코드 주석이 없었다면 news.md의 구형 10% 값으로 오답 가능성 높음. clipboardEmbed.js 상단의 낡은 '10%x10%' 주석은 양쪽 에이전트 모두 혼란 요소로 지적.",
+    "발견(스킬 갱신 후보): baseline eval-0이 lifecycle.js 'RDS|Z|send':'DPS' 를 확인 — 스킬 §2.2는 Z 효과를 'R7 미해결'로 표기하나 코드는 이미 D 동등으로 구현(SPEC-NEWS-REVISE-001 D-6). 스킬이 코드 현실보다 보수적으로 낡음.",
+    "runs_per_configuration=1 이므로 stddev는 eval 간 분산이며 동일 eval 반복 분산이 아님 — 토큰 delta(-9.4%)는 참고치."
+  ]
+}

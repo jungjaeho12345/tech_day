@@ -12,7 +12,7 @@ description: >
 license: Apache-2.0
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   category: "domain"
   status: "active"
   updated: "2026-06-06"
@@ -59,6 +59,7 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-06 (v0.1.8): 작성 에디터 멀티탭 동기화 — writer.do 는 WriteWorkspace(web/src/view/WriteWorkspace.jsx) 가 탭 스트립 + 탭별 WritePage 인스턴스(전부 mounted, 비활성 hidden)를 관리. 탭 메타 sessionStorage `newsroom.editorTabs`, 탭별 초안 키 `newsroom.writeDraft.<tabId>` (구 단일 키는 첫 진입 시 1회 이관). 조회(list.do) 편집/고침/포털고침 진입(?id=)은 **새 탭** 생성·활성화, 같은 기사 재진입은 기존 탭 활성화(잠금 자기충돌 방지 — D2-5 strict 정합). 편집 탭에서 송고/보류/KILL 성공 시 그 탭은 빈 '새 기사' 탭으로 전환(잠금 해제 + 주소창 ?id= 제거). 주소창은 활성 탭을 replaceState 로 비춘다. 동반 수정: 서버 POST /lock 이 sendBeacon 페이로드의 release:true 를 해제로 처리하도록 계약 복원 (종전엔 무시되어 언로드 해제가 잠금 재획득이 되는 기존 버그). news.md 기사 작성페이지 절(L60-62)에 규칙 3줄 반영.
 - 2026-06-06 (v0.1.7): 작성 초안 보존 동기화 — writer.do → list.do 이동 후 복귀 시 작성 내용(제목/본문/임베드/공통정보) 유지. sessionStorage 키 `newsroom.writeDraft` 영속(useWriteController, 블랭크-신규 컨텍스트 한정), 편집 진입(?id=)은 서버 ContentsVO 로드 우선(영속/복원 OFF), 송고/보류/KILL 성공 초기화 시 보존 draft 도 함께 제거. news.md 기사 작성페이지 절에 규칙 반영.
 - 2026-06-06 (v0.1.6): 세션 정책 신설 동기화 — (1) 무동작 1시간(IDLE_TIMEOUT_MS=3600000) 세션 만료, 요청마다 sliding 갱신 (src/services/sessionService.js touchSession). (2) 로그아웃 전까지 활동 시 무기한 유지. (3) F5 새로고침 유지 — sessionId 를 sessionStorage 영속 + GET /api/session 복원 (탭/브라우저 닫힘 시 소멸 = lockYN 규칙 정합). news.md "## 세션 정책" 섹션(L94-97 부근) 신설 반영.
 - 2026-06-06 (v0.1.5): 상세보기 새창 레이아웃 개편 동기화 — 공통정보 12필드 세로→**가로 나열**(flex wrap), 제목/본문 분리 섹션 폐지 → 단일 `기사` 섹션에서 제목+본문 통합 표시 (본문>제목 폰트 1.3rem<1.75rem 유지). 구두 지시 기반, news.md L89 반영 완료. 구현: web/src/view/articleDetail.js.
@@ -86,7 +87,7 @@ triggers:
 | URL | 페이지 | 요지 |
 |-----|--------|------|
 | `login.do` | 로그인 페이지 | 아이디/암호 → USER 테이블 대조. 성공 시 writer.do로 이동, 실패 시 실패 이유 포함 ALERT (Source: news.md L44, L95-98) |
-| `writer.do` | 기사 작성 페이지 | 좌측 에디터 60% + 우측 메타데이터 40%. 우측 탭 4종(공통정보/이미지/영상/글기사). 송고/보류/KILL 버튼 (Source: news.md L45, L51-66 — news.md L45 표기는 `wirter.do` 오타, 구현·테스트는 `writer.do`) |
+| `writer.do` | 기사 작성 페이지 | **멀티탭**: 작성 에디터를 탭으로 여러 개 연다 (＋ 추가/× 닫기, 탭별 내용 독립; 조회의 편집/고침/포털고침 진입은 새 탭, 같은 기사 재진입은 기존 탭 활성화 — v0.1.8). 각 탭 = 좌측 에디터 60% + 우측 메타데이터 40%. 우측 탭 4종(공통정보/이미지/영상/글기사). 송고/보류/KILL 버튼 (Source: news.md L45, L51-69 — news.md L45 표기는 `wirter.do` 오타, 구현·테스트는 `writer.do`) |
 | `list.do` | 기사 조회 페이지 | 실시간 + 메뉴 4종(데스크 미송고/부서별 작성/부서별 송고/개인별 수정). 메뉴별 상태 필터·컬럼은 §2.8. 시간 내림차순, 10개씩 페이징 (Source: news.md L46, L68-86) |
 
 ### 1.2 디자인 토큰 (연합뉴스 스타일)

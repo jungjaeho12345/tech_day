@@ -372,6 +372,33 @@ test('AC-EDIT-LOCK-3: DELETE /api/articles/:id/lock releases; a second user can 
   assert.equal(reAcquired.ok, true);
 });
 
+// sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 를 보낼 수 없어 클라이언트가
+// POST 본문에 release:true 를 실어 보낸다. 서버는 이를 acquire 가 아니라 release 로 처리해야 한다 —
+// 종전에는 플래그가 무시되어 언로드 해제가 잠금 재획득이 되는 버그였다 (멀티탭 탭 닫기/브라우저
+// 숨김 경로가 이 계약에 의존한다).
+test('sendBeacon 호환: POST /lock + release:true 는 해제로 처리되어 다른 사용자가 획득할 수 있다', async () => {
+  seedUser('r-lock-beacon-a', 'R');
+  seedUser('r-lock-beacon-b', 'R');
+  const { articleId } = controllers.article.create({ title: 'lock-beacon' });
+  const sessionA = loginSessionId('r-lock-beacon-a');
+  const sessionB = loginSessionId('r-lock-beacon-b');
+  const acquired = await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  assert.equal(acquired.ok, true);
+
+  // 언로드 경로 시뮬레이션 — sendBeacon 페이로드 그대로 POST.
+  const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-session-id': sessionA },
+    body: JSON.stringify({ sessionId: 'page-A', articleId, release: true }),
+  });
+  const released = await res.json();
+  assert.equal(released.ok, true, 'release:true must be treated as a release, not an acquire');
+
+  // 해제됐으므로 두 번째 사용자가 즉시 획득할 수 있어야 한다.
+  const reAcquired = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  assert.equal(reAcquired.ok, true, 'after beacon release the lock must be free');
+});
+
 // AC-EDIT-LOCK-1 boundary: an unauthenticated POST /api/articles/:id/lock is rejected.
 test('AC-EDIT-LOCK-1 boundary: unauthenticated lock acquire is rejected', async () => {
   const { articleId } = controllers.article.create({ title: 'lock-anon' });

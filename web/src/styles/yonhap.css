@@ -342,6 +342,78 @@ textarea {
 }
 
 /* ----------------------------------------------------------
+   6b. Writer workspace tabs (멀티탭 작성 — WriteWorkspace)
+   ---------------------------------------------------------- */
+.yh-edit-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: var(--yh-sp-sm) var(--yh-sp-md) 0;
+  background: var(--yh-gray-bg);
+  border-bottom: 2px solid var(--yh-blue);
+  overflow-x: auto;
+}
+
+.yh-edit-tab {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+  background: #fff;
+  color: var(--yh-gray-mid);
+  border: 1px solid var(--yh-gray-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.yh-edit-tab--active {
+  background: var(--yh-blue);
+  color: #fff;
+}
+
+.yh-edit-tab__label {
+  background: none;
+  border: none;
+  padding: var(--yh-sp-sm) var(--yh-sp-sm) var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.85rem;
+  color: inherit;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yh-edit-tab__close {
+  background: none;
+  border: none;
+  padding: 0 var(--yh-sp-sm);
+  font-size: 0.9rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.yh-edit-tab__close:hover {
+  color: var(--yh-blue);
+}
+
+.yh-edit-tab--active .yh-edit-tab__close:hover {
+  color: #fff;
+  opacity: 0.75;
+}
+
+.yh-edit-tabs__add {
+  background: none;
+  border: 1px dashed var(--yh-gray-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  color: var(--yh-blue);
+}
+
+.yh-edit-tabs__add:hover {
+  background: #fff;
+}
+
+/* ----------------------------------------------------------
    7. Buttons
    ---------------------------------------------------------- */
 .yh-btn {

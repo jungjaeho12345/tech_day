@@ -748,12 +748,22 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   );
 }
 
-export function WritePage({ user }) {
+export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded }) {
   // news.md 데스크 미송고 편집: writer.do?id=<articleId> loads that article for editing.
-  // Read the id once from the URL (the page remounts on navigation, so a per-render read is fine).
-  const editArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
-  const ctrl = useWriteController(user, { editArticleId });
+  // 멀티탭 — 워크스페이스(WriteWorkspace)는 탭 모델의 editArticleId 를 prop 으로 명시한다 (null = 새 기사
+  // 탭; URL 의 ?id= 는 활성 탭만 반영하므로 비활성 탭이 읽으면 안 된다). prop 이 주어지지 않은 단독
+  // 사용(기존 단일 페이지/테스트)은 종전대로 URL 에서 한 번 읽는다 (the page remounts on navigation).
+  const urlArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
+  const editArticleId = editArticleIdProp === undefined ? urlArticleId : (editArticleIdProp || undefined);
+  const ctrl = useWriteController(user, { editArticleId, draftKey });
   const [activeTab, setActiveTab] = useState('공통정보');
+  // 멀티탭 — 편집 컨텍스트 탭에서 송고/보류/KILL 이 성공하면 컨트롤러가 빈 초안으로 리셋된다
+  // (isDraft=true + lifecycleStatus 확정). 워크스페이스에 알려 탭을 '새 기사' 탭으로 전환시킨다
+  // (라벨 갱신 + editArticleId 해제 → 잠금 해제 + 초안 보존 활성화). lifecycleStatus 가드가 있어
+  // 편집 row 로드 전의 일시적 isDraft(A-DRAFT 초기값)에는 절대 발화하지 않는다.
+  useEffect(() => {
+    if (editArticleId && ctrl.isDraft && ctrl.lifecycleStatus != null) onEditContextEnded?.();
+  }, [editArticleId, ctrl.isDraft, ctrl.lifecycleStatus, onEditContextEnded]);
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
   // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
   const alertedRef = useRef(false);

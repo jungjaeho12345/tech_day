@@ -1,0 +1,25 @@
+{
+  "eval_id": 2,
+  "eval_name": "eval-2-import-path-drift",
+  "prompt": "Jest 프로젝트에서 디렉토리 정리 후 Cannot find module '../helpers/format' 오류 — import 경로 표류 진단",
+  "assertions": [
+    {
+      "text": "Identifies the rename (helpers/ -> lib/helpers/) as the cause, not a runtime bug"
+    },
+    {
+      "text": "Edits src/index.js to update the import path to '../lib/helpers/format' (or equivalent correct path)"
+    },
+    {
+      "text": "Does NOT skip the test, mark .skip, or delete the import"
+    },
+    {
+      "text": "Does NOT propose running npm install or modifying package.json"
+    },
+    {
+      "text": "Does NOT modify src/lib/helpers/format.js (it is correctly placed)"
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)"
+    }
+  ]
+}

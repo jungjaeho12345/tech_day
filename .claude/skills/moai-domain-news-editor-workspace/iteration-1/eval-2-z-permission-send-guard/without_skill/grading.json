@@ -1,0 +1,10 @@
+{
+  "expectations": [
+    {"text": "Z+RDS에서 송고/보류/KILL 3버튼 모두 표시·사용가능 명시", "passed": true, "evidence": "answer.md 표: Z = 송고O/보류O/KILL O, RDS gate — WritePage.jsx 조건식 직접 인용"},
+    {"text": "(끝) 없으면 ALERT + 송고 차단 명시", "passed": true, "evidence": "answer.md: window.alert('본문에 (끝) 표시가 없어 송고할 수 없습니다.') 후 즉시 return — useWriteController.js 가드 순서 분석"},
+    {"text": "보류/KILL은 (끝) 면제임을 언급", "passed": true, "evidence": "answer.md: '(끝) 요구는 송고(send)에만 적용... 보류·KILL은 (끝) 없이도 진행'"},
+    {"text": "체크리스트 정확히 5항목", "passed": true, "evidence": "answer.md §(3) 표 1~5번 + 보조 검증 포인트"}
+  ],
+  "summary": {"passed": 4, "failed": 0, "total": 4, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 121.7, "total_duration_seconds": 121.7}
+}

@@ -17,28 +17,30 @@ import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
 // sessionStorage 인 이유가 이 도메인 규칙과 일치한다.
 const DRAFT_STORAGE_KEY = 'newsroom.writeDraft';
 
+// 멀티탭 작성 — 워크스페이스(WriteWorkspace)는 탭마다 별도 초안 키('newsroom.writeDraft.<tabId>')를
+// options.draftKey 로 주입해 탭 간 초안이 섞이지 않게 한다. 키 미지정 단독 사용은 종전 키 그대로.
 /** Safe sessionStorage read — guarded so the controller never throws in non-browser/test contexts. */
-function readStoredDraft() {
+function readStoredDraft(key = DRAFT_STORAGE_KEY) {
   try {
     if (typeof sessionStorage === 'undefined') return null;
-    const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    const raw = sessionStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
-function writeStoredDraft(value) {
+function writeStoredDraft(value, key = DRAFT_STORAGE_KEY) {
   try {
     if (typeof sessionStorage === 'undefined') return;
-    sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(value));
+    sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
     // storage unavailable (private mode/quota) — degrade to in-memory only; no throw.
   }
 }
-function clearStoredDraft() {
+function clearStoredDraft(key = DRAFT_STORAGE_KEY) {
   try {
     if (typeof sessionStorage === 'undefined') return;
-    sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+    sessionStorage.removeItem(key);
   } catch {
     // ignore — clearing is best effort.
   }
@@ -132,11 +134,13 @@ function draftHasContent(markup, common, authorDefault) {
 
 /**
  * @param {AuthUser} user
- * @param {{ editArticleId?: string }} [options] when editArticleId is set, the controller loads that
- *   article on mount (markupVersion + common fields) and saves PUT (update) instead of POST (create).
+ * @param {{ editArticleId?: string, draftKey?: string }} [options] when editArticleId is set, the
+ *   controller loads that article on mount (markupVersion + common fields) and saves PUT (update)
+ *   instead of POST (create). draftKey overrides the sessionStorage key for the NEW-draft persistence
+ *   (멀티탭: 탭별 'newsroom.writeDraft.<tabId>'); defaults to the single-page legacy key.
  */
 export function useWriteController(user, options = {}) {
-  const { editArticleId } = options;
+  const { editArticleId, draftKey = DRAFT_STORAGE_KEY } = options;
   const model = useModel();
   const authorDefault = user.name ?? '';
   // SPEC-NEWS-REVISE: rehydrate a previously-typed NEW draft (작성 → 조회 전환 → 복귀) from sessionStorage.
@@ -144,7 +148,7 @@ export function useWriteController(user, options = {}) {
   // MUST win (편집 로드 우선), so a saved draft never seeds it. A pristine/blank draft is treated as none.
   const initialDraft = (() => {
     if (editArticleId) return null;
-    const stored = readStoredDraft();
+    const stored = readStoredDraft(draftKey);
     if (!stored) return null;
     const markup = typeof stored.markup === 'string' ? stored.markup : '';
     const common = { ...EMPTY_COMMON, author: authorDefault, ...(stored.common ?? {}) };
@@ -211,15 +215,16 @@ export function useWriteController(user, options = {}) {
   // (no editArticleId): an edit context owns its server-loaded row + lock and must not be shadowed by a
   // saved draft. A pristine/blank draft is removed rather than stored so a fresh page never resurrects an
   // empty draft. `content` is the React mirror of the adapter, so the latest markup is read via getMarkup().
+  // 멀티탭: draftKey 가 탭별 키를 지정하므로 각 탭의 초안이 독립적으로 보존된다.
   useEffect(() => {
     if (editArticleId) return;
     const markup = adapter.getMarkup();
     if (draftHasContent(markup, common, authorDefault)) {
-      writeStoredDraft({ markup, common, articleId, status });
+      writeStoredDraft({ markup, common, articleId, status }, draftKey);
     } else {
-      clearStoredDraft();
+      clearStoredDraft(draftKey);
     }
-  }, [editArticleId, adapter, content, common, articleId, status, authorDefault]);
+  }, [editArticleId, adapter, content, common, articleId, status, authorDefault, draftKey]);
 
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire the lock on mount (when editing an existing article)
   // and release on unmount. The page-scoped sessionId (pageSessionIdRef.current) is stable per mount
@@ -358,8 +363,8 @@ export function useWriteController(user, options = {}) {
     // SPEC-NEWS-REVISE — 송고/보류/KILL 성공 후 초기화는 보존 대상이 아니다 (news.md): 보존된 draft 도
     // 함께 비운다. 이렇게 하지 않으면 액션 성공 → 빈 페이지로 복귀 후 다시 옛 초안이 되살아난다. 동기 clear
     // 로 persist effect 의 다음 write 보다 먼저 키를 제거한다 (effect 도 빈 draft 면 어차피 clear 한다).
-    clearStoredDraft();
-  }, [adapter, user.name]);
+    clearStoredDraft(draftKey);
+  }, [adapter, user.name, draftKey]);
 
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
   const submitAction = useCallback(async (action) => {
