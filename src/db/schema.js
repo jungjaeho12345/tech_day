@@ -121,8 +121,11 @@ function ensureUserActiveColumn(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function ensureContentsLockYNColumn(db) {
+  // Column-name comparison is case-insensitive: a legacy news.db migrated by an
+  // earlier branch holds `LockYN`, and SQLite rejects ALTER ADD of `lockYN` as a
+  // duplicate even though the names differ in case.
   const hasLockYN = db.prepare("PRAGMA table_info('Contents')").all()
-    .some((col) => col.name === 'lockYN');
+    .some((col) => col.name.toLowerCase() === 'lockyn');
   if (!hasLockYN) {
     db.exec("ALTER TABLE Contents ADD COLUMN lockYN VARCHAR NOT NULL DEFAULT 'N'");
   }
@@ -135,16 +138,17 @@ function ensureContentsLockYNColumn(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function ensureContentsLockerColumns(db) {
+  // Case-insensitive: legacy news.db carries `LockedAt`; see ensureContentsLockYNColumn.
   const existing = new Set(
-    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name),
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name.toLowerCase()),
   );
-  if (!existing.has('lockerUserId')) {
+  if (!existing.has('lockeruserid')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockerUserId VARCHAR');
   }
-  if (!existing.has('lockerSessionId')) {
+  if (!existing.has('lockersessionid')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockerSessionId VARCHAR');
   }
-  if (!existing.has('lockedAt')) {
+  if (!existing.has('lockedat')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockedAt VARCHAR');
   }
 }
@@ -158,11 +162,12 @@ function ensureContentsLockerColumns(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function ensureContentsCommonInfoColumns(db) {
+  // Case-insensitive: see ensureContentsLockYNColumn.
   const existing = new Set(
-    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name),
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name.toLowerCase()),
   );
   for (const column of CONTENTS_COMMON_INFO_COLUMNS) {
-    if (!existing.has(column)) {
+    if (!existing.has(column.toLowerCase())) {
       db.exec(`ALTER TABLE Contents ADD COLUMN ${column} VARCHAR`);
     }
   }
