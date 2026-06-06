@@ -203,8 +203,46 @@ describe('createHttpModel', () => {
     global.fetch.mockRejectedValueOnce(new Error('network down'));
     const model = createHttpModel();
 
-    const result = await model.searchMedia('cats');
+    const result = await model.searchMedia('cats', 'video');
     expect(result).toEqual({ items: [], error: true });
+  });
+
+  it('searchMedia(query, "image") requests the proxy with type=image (Google Images route)', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({ items: [{ source: 'google', title: 'G', url: 'https://g/x' }], error: false }),
+    );
+    const model = createHttpModel();
+
+    const result = await model.searchMedia('flood', 'image');
+    expect(result).toEqual({ items: [{ source: 'google', title: 'G', url: 'https://g/x' }], error: false });
+
+    const [url] = lastCall();
+    expect(url).toContain('/api/media/search?q=flood');
+    expect(url).toContain('type=image');
+  });
+
+  it('searchMedia(query, "video") requests the proxy with type=video (YouTube route)', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({ items: [{ source: 'youtube', title: 'YT', url: 'https://youtu.be/x' }], error: false }),
+    );
+    const model = createHttpModel();
+
+    const result = await model.searchMedia('flood', 'video');
+    expect(result).toEqual({ items: [{ source: 'youtube', title: 'YT', url: 'https://youtu.be/x' }], error: false });
+
+    const [url] = lastCall();
+    expect(url).toContain('/api/media/search?q=flood');
+    expect(url).toContain('type=video');
+  });
+
+  it('searchMedia with no type defaults to type=video on the request URL', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ items: [], error: true }));
+    const model = createHttpModel();
+
+    await model.searchMedia('cats');
+
+    const [url] = lastCall();
+    expect(url).toContain('type=video');
   });
 
   it('queryArticles returns [] on a network rejection (safe default)', async () => {
@@ -281,6 +319,31 @@ describe('createHttpModel', () => {
 
       sub.unsubscribe();
       expect(closeSpy).toHaveBeenCalled();
+    });
+
+    it('wires open/error to connected payloads so the status bar tracks the transport', () => {
+      const listeners = {};
+      class FakeEventSource {
+        static OPEN = 1;
+        constructor(url) {
+          this.url = url;
+          this.readyState = 0; // CONNECTING
+          this.addEventListener = (type, cb) => {
+            listeners[type] = cb;
+          };
+          this.close = vi.fn();
+        }
+      }
+      global.EventSource = FakeEventSource;
+
+      const model = createHttpModel();
+      const onChange = vi.fn();
+      model.subscribe({}, onChange);
+
+      listeners.open();
+      expect(onChange).toHaveBeenCalledWith({ connected: true });
+      listeners.error();
+      expect(onChange).toHaveBeenCalledWith({ connected: false });
     });
 
     it('returns a no-op subscription when EventSource is unavailable', () => {

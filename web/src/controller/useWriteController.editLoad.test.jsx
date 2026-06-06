@@ -167,6 +167,139 @@ describe('useWriteController edit-load (Feature 3)', () => {
     });
   });
 
+  // SPEC-NEWS-REVISE-007 — ContentsVO 읽기전용 8필드 매핑 (REQ-VO-MAPPING / AC-MAP-2/4) +
+  // 고침/포털고침 단순 편집 진입(전이 없음, REQ-REVISE-SEMANTICS / AC-REV-1).
+  describe('SPEC-NEWS-REVISE-007 ContentsVO read-only 8 fields + no transition (REQ-VO-MAPPING/REQ-REVISE-SEMANTICS)', () => {
+    const fullRow = {
+      articleId: 'A-VO',
+      markupVersion: markupFor('본문'),
+      author: '작성자',
+      modifier: '수정자값',
+      sender: '송고자값',
+      department: '정치부',
+      departmentCode: 'POL',
+      createdAt: '2026-06-01T08:00:00Z',
+      editedAt: '2026-06-02T09:00:00Z',
+      sentAt: '2026-06-03T10:00:00Z',
+      embargoAt: '2026-06-04T11:00',
+      secondEmbargoAt: '2026-06-05T12:00',
+      status: 'DPS',
+    };
+
+    it('AC-MAP-2: 편집 컨텍스트에서 읽기전용 8필드가 controller state(readonlyMeta)로 노출된다', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([fullRow]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-VO' });
+      await waitFor(() => expect(result.current.readonlyMeta).toBeTruthy());
+      expect(result.current.readonlyMeta).toMatchObject({
+        articleId: 'A-VO',
+        modifier: '수정자값',
+        sender: '송고자값',
+        department: '정치부',
+        departmentCode: 'POL',
+        createdAt: '2026-06-01T08:00:00Z',
+        editedAt: '2026-06-02T09:00:00Z',
+        sentAt: '2026-06-03T10:00:00Z',
+      });
+    });
+
+    it('AC-MAP-1 (회귀): 읽기전용 매핑 추가가 편집 5필드(author/embargo/2차) 로드를 깨지 않는다', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([fullRow]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-VO' });
+      await waitFor(() => expect(result.current.common.author).toBe('작성자'));
+      expect(result.current.common.embargoAt).toBe('2026-06-04T11:00');
+      expect(result.current.common.secondaryEmbargoAt).toBe('2026-06-05T12:00');
+    });
+
+    it('AC-MAP-3: 신규 작성 컨텍스트(editArticleId 없음)에서는 readonlyMeta가 null이다', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }));
+      // 한 틱 양보해도 신규 컨텍스트에서는 매핑이 절대 채워지지 않는다.
+      await act(async () => {});
+      expect(result.current.readonlyMeta).toBeNull();
+      expect(queryArticles).not.toHaveBeenCalled();
+    });
+
+    it('AC-MAP-4: 누락(undefined/null) 필드는 빈 문자열로 안전 표시되고 다른 필드는 보존된다', async () => {
+      const partialRow = {
+        articleId: 'A-PART',
+        markupVersion: markupFor('부분'),
+        author: 'a',
+        modifier: '수정만',
+        // sender/department/departmentCode/editedAt/sentAt 누락 + createdAt null
+        createdAt: null,
+        status: 'DPS',
+      };
+      const queryArticles = vi.fn().mockResolvedValue([partialRow]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-PART' });
+      await waitFor(() => expect(result.current.readonlyMeta).toBeTruthy());
+      const meta = result.current.readonlyMeta;
+      // 존재하는 필드는 보존.
+      expect(meta.articleId).toBe('A-PART');
+      expect(meta.modifier).toBe('수정만');
+      // 누락/널 필드는 빈 문자열 — 'undefined'/'null' 문자열을 노출하지 않는다.
+      for (const key of ['sender', 'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt']) {
+        expect(meta[key]).toBe('');
+      }
+    });
+
+    it('AC-REV-1: 고침/포털고침 진입(편집 로드)은 lifecycle 전이 API(applyAction)를 호출하지 않는다', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([fullRow]);
+      const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+      const { result } = renderCtrl(
+        createFakeModel({ queryArticles, applyAction }),
+        { editArticleId: 'A-VO' },
+      );
+      // 편집 로드가 완료될 때까지 기다린다 (진입 = 단순 편집 로드).
+      await waitFor(() => expect(result.current.readonlyMeta).toBeTruthy());
+      // 진입 자체로는 applyAction(전이)이 전혀 호출되지 않는다.
+      expect(applyAction).not.toHaveBeenCalled();
+    });
+
+    it('AC-REV-1: 고침/포털고침 진입 후 편집 상태값은 원래 상태값(DPS)을 그대로 채택한다', async () => {
+      const queryArticles = vi.fn().mockResolvedValue([fullRow]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-VO' });
+      await waitFor(() => expect(result.current.status).toBe('DPS'));
+    });
+
+    it('AC-REV-2: 고침 모드 플래그를 도입하지 않는다 — 편집/고침/포털고침은 동일한 단일 editArticleId 컨텍스트', async () => {
+      // (a) 진입점이 무엇이든(편집/고침/포털고침) controller에는 "고침 전용" 모드 플래그 키가 없다.
+      // 데스크 미송고 편집과 동일한 단일 편집 컨텍스트(editArticleId)만 사용한다는 계약을 잠근다.
+      const queryArticles = vi.fn().mockResolvedValue([fullRow]);
+      const { result } = renderCtrl(createFakeModel({ queryArticles }), { editArticleId: 'A-VO' });
+      await waitFor(() => expect(result.current.readonlyMeta).toBeTruthy());
+
+      // 반환 객체에 reviseMode/isRevise/mode 등 어떤 고침 모드 플래그도 노출되지 않는다.
+      for (const flag of ['reviseMode', 'isRevise', 'mode', 'revise', 'reviseRoute', 'reviseParam']) {
+        expect(result.current).not.toHaveProperty(flag);
+      }
+
+      // (b) 별도 라우트 파라미터 없이 동일한 editArticleId 단일 컨텍스트로 로드된다 — queryArticles는
+      // 오직 { articleId } 만으로 호출되며, 고침/포털고침 전용 식별자(action/revise 등)를 받지 않는다.
+      expect(queryArticles).toHaveBeenCalledWith({ articleId: 'A-VO' });
+      for (const [filter] of queryArticles.mock.calls) {
+        expect(Object.keys(filter)).toEqual(['articleId']);
+      }
+    });
+
+    it('AC-REV-2: 데스크 미송고 편집과 부서별 송고 고침 진입의 controller 반환 키 집합이 동일하다', async () => {
+      // 진입점이 달라도 작성 페이지(controller) 표면은 동일해야 한다(고침 전용 키 무도입 증거).
+      const baseRow = { articleId: 'A-K', markupVersion: markupFor('본문'), author: 'a', status: 'DPS' };
+      const deskEdit = renderCtrl(
+        createFakeModel({ queryArticles: vi.fn().mockResolvedValue([{ ...baseRow, articleId: 'A-DESK' }]) }),
+        { editArticleId: 'A-DESK' },
+      );
+      const songoRevise = renderCtrl(
+        createFakeModel({ queryArticles: vi.fn().mockResolvedValue([{ ...baseRow, articleId: 'A-SONGO' }]) }),
+        { editArticleId: 'A-SONGO' },
+      );
+      await waitFor(() => expect(deskEdit.result.current.readonlyMeta).toBeTruthy());
+      await waitFor(() => expect(songoRevise.result.current.readonlyMeta).toBeTruthy());
+      // 두 진입점의 반환 키 집합이 정확히 같다 — 고침 진입이 추가 플래그/상태를 끼워넣지 않는다.
+      expect(new Set(Object.keys(songoRevise.result.current)))
+        .toEqual(new Set(Object.keys(deskEdit.result.current)));
+    });
+  });
+
   it('after a successful action the edit id is cleared (articleId back to A-DRAFT) so a new save creates', async () => {
     const row = { articleId: 'A-300', markupVersion: markupFor('reset me(끝)'), author: 'A' };
     const queryArticles = vi.fn().mockResolvedValue([row]);

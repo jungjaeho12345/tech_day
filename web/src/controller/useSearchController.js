@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useModel } from '../app/context.js';
 
-export function useMediaSearch() {
+export function useMediaSearch(mediaType) {
   const model = useModel();
   const [results, setResults] = useState([]);
   const [state, setState] = useState('idle'); // idle | empty | error
@@ -11,10 +11,12 @@ export function useMediaSearch() {
   const search = useCallback(async (query) => {
     setState('idle');
     try {
-      const { items, error } = await model.searchMedia(query);
+      // type-routed: 'video' -> YouTube, 'image' -> Google Images (server-side). The tab supplies
+      // mediaType ('image'|'video'); there is no cross-provider fallback anymore.
+      const { items, error } = await model.searchMedia(query, mediaType);
       if (error || !items || items.length === 0) {
         setResults([]);
-        setState('empty'); // EC-2: both providers empty.
+        setState('empty'); // EC-2: the routed provider returned nothing (or errored).
         return;
       }
       setResults(items);
@@ -23,7 +25,7 @@ export function useMediaSearch() {
       setResults([]);
       setState('error'); // EC-2b: proxy call failed.
     }
-  }, [model]);
+  }, [model, mediaType]);
 
   return { results, state, search };
 }

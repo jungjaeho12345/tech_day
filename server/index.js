@@ -227,6 +227,10 @@ export function createApp({ controllers, sessionService }) {
       userId: session.userId,
       sessionId: pageSessionId,
     });
+    if (result.ok) {
+      // LockYN is a displayed list column — notify subscribers so open views refresh live.
+      bus.emit('change', { type: 'lock', articleId: req.params.id });
+    }
     return res.json(result);
   });
   app.delete('/api/articles/:id/lock', (req, res) => {
@@ -243,17 +247,24 @@ export function createApp({ controllers, sessionService }) {
       userId: session.userId,
       sessionId: pageSessionId,
     });
+    if (result.ok) {
+      bus.emit('change', { type: 'unlock', articleId: req.params.id });
+    }
     return res.json(result);
   });
 
   // --- Media ----------------------------------------------------------------
-  // GET /api/media/search?q= -> { items, error }.
+  // GET /api/media/search?q=&type=image|video -> { items, error }.
+  // 2026-06-06 directive (supersedes D2-8 fallback): type 'video' -> YouTube, 'image' -> Google
+  // Image Search. Unknown/missing type normalizes to 'video'. No cross-provider fallback.
   app.get('/api/media/search', async (req, res) => {
-    res.json(await controllers.media.search(req.query.q ?? ''));
+    const type = req.query.type === 'image' ? 'image' : 'video';
+    res.json(await controllers.media.search(req.query.q ?? '', type));
   });
 
   // --- Realtime (SSE) -------------------------------------------------------
-  // GET /api/stream -> Server-Sent Events. Emits `event: change` on article create/status change.
+  // GET /api/stream -> Server-Sent Events. Emits `event: change` on article create/update/status
+  // and edit-lock acquire/release (row-less invalidation signals; the client re-queries its filter).
   // Filtering is intentionally naive (send all) per the build spec; the client may filter.
   app.get('/api/stream', (req, res) => {
     res.set({

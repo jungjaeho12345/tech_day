@@ -16,7 +16,7 @@
     "test:web": "vitest run --root web",
     "test:web:coverage": "vitest run --root web --coverage",
     "coverage": "node --test --experimental-sqlite --experimental-test-coverage test/*.test.js",
-    "server": "node server/index.js"
+    "server": "node --env-file-if-exists=.env server/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

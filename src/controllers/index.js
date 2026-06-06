@@ -109,7 +109,9 @@ export function createControllers(db, deps = {}) {
       login: (userId, password) => userService.login(userId, password),
     },
     media: {
-      search: (queryText) => mediaService.search(queryText),
+      // 2026-06-06 directive (supersedes D2-8 fallback): route by media type —
+      // type 'image' -> Google Image Search, anything else -> YouTube.
+      search: (queryText, type) => mediaService.search(queryText, type),
     },
   };
 }

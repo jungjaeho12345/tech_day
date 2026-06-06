@@ -46,6 +46,26 @@ function commonFromRow(row) {
   return next;
 }
 
+// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO fields shown (non-editable) in the write
+// page's edit context. These 8 fields (기사아이디·수정자·송고자·부서·부서코드·작성시간·편집시간·송고시간)
+// map to the loaded Contents row's backend column names. They are display-only, so a missing/null value
+// becomes an empty string (AC-MAP-4: never surface 'undefined'/'null'). The list also fixes the display
+// order of the read-only panel. createdAt/editedAt/sentAt are passed through verbatim (the panel decides
+// presentation); the article id is the row PK.
+const READONLY_META_KEYS = Object.freeze([
+  'articleId', 'modifier', 'sender', 'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
+]);
+
+// Build the read-only metadata object from a loaded row, coercing absent/null values to '' so the
+// display area never renders the strings 'undefined'/'null' and one missing field cannot affect another.
+function readonlyMetaFromRow(row) {
+  const meta = {};
+  for (const key of READONLY_META_KEYS) {
+    meta[key] = row[key] != null ? row[key] : '';
+  }
+  return meta;
+}
+
 /**
  * @param {AuthUser} user
  * @param {{ editArticleId?: string }} [options] when editArticleId is set, the controller loads that
@@ -75,6 +95,10 @@ export function useWriteController(user, options = {}) {
   // reason ('locked' / 'unauthenticated' / 'network-error') so WritePage can show ALERT + banner +
   // disable the editor body (AC-EDIT-LOCK-2 / NFR-A11Y).
   const [lockError, setLockError] = useState(null);
+  // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields, populated only in an edit
+  // context (editArticleId present). Null in a blank-new context so WritePage renders no read-only area
+  // (AC-MAP-3). Set from the loaded row on edit-load; reset to null when the page returns to a draft.
+  const [readonlyMeta, setReadonlyMeta] = useState(null);
   // Page-scoped UUID — generated ONCE per editor mount (D2-5 strict so two tabs collide).
   const pageSessionIdRef = useRef(null);
   if (pageSessionIdRef.current == null) {
@@ -94,6 +118,10 @@ export function useWriteController(user, options = {}) {
       setContent(adapter.getContent());
       setCommon(commonFromRow(row));
       setArticleId(row.articleId);
+      // SPEC-NEWS-REVISE-007 — surface the read-only ContentsVO 8 fields for the write page's display
+      // area. Edit/고침/포털고침 entry is a plain edit load (no lifecycle transition), so this just
+      // exposes the row metadata; the status below is adopted verbatim (no state change on entry).
+      setReadonlyMeta(readonlyMetaFromRow(row));
       // Adopt the loaded row's status so the action buttons gate on the real article state.
       if (row.status != null) setStatus(row.status);
     })();
@@ -226,6 +254,9 @@ export function useWriteController(user, options = {}) {
     setArticleId('A-DRAFT');
     // A new blank draft starts at INITIAL_STATUS = 'RDS' so the action buttons re-appear.
     setStatus('RDS');
+    // SPEC-NEWS-REVISE-007 — back to a blank-new context, so the read-only ContentsVO area disappears
+    // (AC-MAP-3): a fresh draft has no articleId/sender/sentAt yet.
+    setReadonlyMeta(null);
   }, [adapter, user.name]);
 
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
@@ -255,11 +286,15 @@ export function useWriteController(user, options = {}) {
     }
     try {
       let id = articleId;
-      if (action === 'send') {
-        // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / REQ-API-INSERT-UPDATE-SPLIT — when this is an edit
-        // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
-        // route's lock guard (assertLockHolder) accepts the request. The DTO field is stripped by
-        // server/index.js before the partial update is applied (it is transport-only metadata).
+      // REQ-FE-WRITE-013 v0.3.0 — 송고뿐 아니라 보류/KILL도 액션 전에 현재 DTO를 저장한다. 종전에는
+      // send만 저장해서, 미저장 새 초안(A-DRAFT)에 보류/KILL을 누르면 applyAction이 존재하지 않는
+      // 기사 ID로 호출되어 서버가 not-found로 거부했다 (보류/KILL 미동작의 원인).
+      //
+      // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / REQ-API-INSERT-UPDATE-SPLIT — when this is an edit
+      // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
+      // route's lock guard (assertLockHolder) accepts the request. The DTO field is stripped by
+      // server/index.js before the partial update is applied (it is transport-only metadata).
+      {
         const dto = assembleDto();
         const isEditContext = articleId !== 'A-DRAFT';
         const payload = isEditContext ? { ...dto, sessionId: pageSessionIdRef.current } : dto;
@@ -295,6 +330,9 @@ export function useWriteController(user, options = {}) {
     assembleDto,
     common, updateCommon,
     status,
+    // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields; null in a blank-new context
+    // (WritePage renders the read-only area only when this is non-null — AC-MAP-2/3).
+    readonlyMeta,
     lifecycleStatus, actionError,
     // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — null when the lock is free / acquired; non-null
     // ({ reason }) when the editor must stay read-only because another holder is editing.

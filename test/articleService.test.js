@@ -83,6 +83,70 @@ test('AC-2: empty filter returns all articles', () => {
   assert.equal(svc.query({}).length, 1);
 });
 
+// SPEC-FRONTEND-UI-001 v0.3.0 (REQ-FE-VIEW-008) — status filter, single + comma-separated multi-value.
+// Previously `status` was silently ignored (not in QUERY_FILTERS) so menu filters returned all rows.
+test('v0.3.0: query filters by a single status', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000001', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000002', 'DPS');
+  const rows = svc.query({ status: 'RDS' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, 'RDS');
+});
+
+test('v0.3.0: query expands comma-separated status to an IN clause (데스크 미송고 RDS,DDH)', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000003', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000004', 'DDH');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000005', 'DPS');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000006', 'RRK');
+  const rows = svc.query({ status: 'RDS,DDH' });
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.status).sort(), ['DDH', 'RDS']);
+});
+
+test('v0.3.0: status filter AND-combines with other filters', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+    .run('AKR202606060000000007', 'alice', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, author, status) VALUES (?,?,?)')
+    .run('AKR202606060000000008', 'bob', 'RDS');
+  const rows = svc.query({ author: 'alice', status: 'RDS,DDH' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].author, 'alice');
+});
+
+// SPEC-FRONTEND-UI-001 v0.4.0 (REQ-FE-VIEW-005) — statusNot exclusion filter, NOT IN mirror of status.
+// 부서별 작성 queries { department, statusNot: 'DPS,RRH' } so sent/held articles drop out of the list.
+test('v0.4.0: query excludes comma-separated statusNot states (부서별 작성 DPS,RRH 제외)', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000011', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000012', 'DPS');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000013', 'RRH');
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000014', 'RRK');
+  const rows = svc.query({ statusNot: 'DPS,RRH' });
+  assert.deepEqual(rows.map((r) => r.status).sort(), ['RDS', 'RRK']);
+});
+
+test('v0.4.0: statusNot AND-combines with department (부서별 작성 menu filter shape)', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, department, status) VALUES (?,?,?)')
+    .run('AKR202606060000000015', '정치부', 'RDS');
+  db.prepare('INSERT INTO Contents (articleId, department, status) VALUES (?,?,?)')
+    .run('AKR202606060000000016', '정치부', 'DPS');
+  db.prepare('INSERT INTO Contents (articleId, department, status) VALUES (?,?,?)')
+    .run('AKR202606060000000017', '경제부', 'RDS');
+  const rows = svc.query({ department: '정치부', statusNot: 'DPS,RRH' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].articleId, 'AKR202606060000000015');
+});
+
+test('v0.4.0: empty statusNot is ignored (no NOT IN clause)', () => {
+  const { db, svc } = freshService();
+  db.prepare('INSERT INTO Contents (articleId, status) VALUES (?,?)').run('AKR202606060000000018', 'DPS');
+  assert.equal(svc.query({ statusNot: '' }).length, 1);
+});
+
 // AC-3: update by articleId changes Contents.status; not-found rejected without changing rows
 test('AC-3: update changes Contents.status by articleId', () => {
   const { db, svc } = freshService();

@@ -2,6 +2,23 @@
 
 > 본 계획은 WHAT/WHY를 구현으로 옮기기 위한 마일스톤·기술 접근·위험을 정의한다. 구체 컴포넌트명/파일 구조는 Run 단계 소관이다.
 
+> [v0.4.0 개정 — 2026-06-06 사용자 요청] (1) 조회 4개 메뉴 전부 기사 목록을 데스크 미송고와 동일한
+> 7컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN)으로 통일 — 상태 배지·인라인 액션
+> 버튼 제거, (2) 부서별 작성 = 부서 Select(분리된 데이터-소스 인터페이스 재사용, 초기값 로그인
+> 사용자 부서 + 자동 조회) + 조회 버튼 재조회, 필터는 `{ department, statusNot: 'DPS,RRH' }` —
+> 백엔드 articleModel.query에 statusNot(NOT IN) 필터 신설 및 누락돼 있던 department 동등 필터 추가,
+> (3) 개인별 수정 = `{ author, status: 'RDS,RRK' }`, (4) DPS 고침/포털고침 게이팅은 우클릭 컨텍스트
+> 메뉴의 고침(포털제외)/포털고침 항목으로 이동 — DPS + D 권한일 때만 활성화, 선택 시 기사작성(편집)
+> 페이지로 이동.
+>
+> [v0.3.0 개정 — 2026-06-06 사용자 요청] (1) 송고/보류/KILL은 `window.confirm` 확인창 선행 + 성공 시
+> 버튼 아래 상태 메시지 미표시(작성 페이지 초기화는 유지), (2) 보류/KILL도 송고와 동일하게 DTO 저장
+> (saveArticle) 후 applyAction — 미저장 초안에 대한 not-found 거부 해소, (3) 데스크 미송고 = status
+> IN (RDS, DDH) + 7컬럼 테이블(기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN) — 백엔드
+> articleModel.query에 status 다중값(IN) 필터 추가, (4) 에디터 '본문' 라벨 텍스트 제거(aria-label 유지),
+> (5) 문말 trailing '\n'이 pre-wrap에서 줄박스를 만들지 않아 Enter가 두 번 필요해 보이던 렌더 증상을
+> trailing <br> 패딩으로 보정.
+
 ## 기술 접근 (Technical Approach)
 
 - **스택**: React + Vite. MVC 분리 — View(화면/컴포넌트), Model(서버 데이터·앱 상태·인증 사용자), Controller(액션 핸들러·서버 호출·라우팅·상태 전이 조정).

@@ -21,6 +21,31 @@ const COMMON_FIELDS = [
   ['externalComment', '외부코멘트'], ['attachmentFile', '첨부파일'], ['referenceFile', '자료파일'],
 ];
 
+// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields shown in the edit context
+// (기사아이디·수정자·송고자·부서·부서코드·작성시간·편집시간·송고시간). Ordered label/value pairs.
+const READONLY_META_FIELDS = [
+  ['articleId', '기사아이디'], ['modifier', '수정자'], ['sender', '송고자'],
+  ['department', '부서'], ['departmentCode', '부서코드'], ['createdAt', '작성시간'],
+  ['editedAt', '편집시간'], ['sentAt', '송고시간'],
+];
+
+// @MX:NOTE: [AUTO] Read-only ContentsVO display area (SPEC-NEWS-REVISE-007 AC-MAP-2/4). Rendered ONLY
+// when meta is non-null (edit context); a blank-new page passes null and renders nothing (AC-MAP-3).
+// Values are display-only <span>s (never inputs) so the 8 fields cannot be edited; a missing field is
+// already coerced to '' by the controller, so no 'undefined'/'null' text ever appears.
+function ReadonlyMetaPanel({ meta }) {
+  return (
+    <dl data-testid="readonly-meta" className="yh-readonly-meta" aria-label="기사 정보">
+      {READONLY_META_FIELDS.map(([key, label]) => (
+        <div key={key} className="yh-readonly-meta__row">
+          <dt className="yh-readonly-meta__label">{label}</dt>
+          <dd className="yh-readonly-meta__value" data-testid={`readonly-${key}`}>{meta[key]}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function CommonInfoPanel({ common, updateCommon }) {
   return (
     <div data-testid="panel-공통정보" role="tabpanel" className="yh-tabpanel">
@@ -46,7 +71,8 @@ function CommonInfoPanel({ common, updateCommon }) {
 
 // '이미지' tab embeds images; '영상' tab embeds video references (REQ-EDIT-EMBED-002/003).
 function MediaPanel({ tabName, embedType, onEmbed }) {
-  const { results, state, search } = useMediaSearch();
+  // type-routed search: embedType ('image'|'video') selects the provider (image=Google, video=YouTube).
+  const { results, state, search } = useMediaSearch(embedType);
   const [query, setQuery] = useState('');
   return (
     <div data-testid={`panel-${tabName}`} role="tabpanel" className="yh-tabpanel">
@@ -60,6 +86,7 @@ function MediaPanel({ tabName, embedType, onEmbed }) {
       <ul className="yh-result-list">
         {results.map((r) => (
           <li key={r.url} className="yh-result-row">
+            {r.thumbnailUrl ? <img className="yh-result-thumb" src={r.thumbnailUrl} alt="" /> : null}
             <span>{r.title}</span>
             <button
               type="button"
@@ -293,6 +320,13 @@ function paintEditor(el, content, onRemoveEmbed) {
     const { embed, index } = embedAtPos[nextEmbedIdx];
     frag.appendChild(buildEmbedInlineSpan(doc, embed, index));
     nextEmbedIdx += 1;
+  }
+  // Trailing-newline render padding (v0.3.0 Enter-2회 증상 보정): in a pre-wrap contentEditable a
+  // document-final '\n' does NOT create a visible line box, so Enter at the end of the body LOOKED
+  // like a no-op until pressed twice. A trailing <br> renders that last empty line; <br> contributes
+  // nothing to textContent, so bodyText/caret math is unaffected.
+  if (bodyText.endsWith('\n')) {
+    frag.appendChild(doc.createElement('br'));
   }
   el.replaceChildren(frag);
 }
@@ -559,7 +593,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
 
   return (
     <>
-      <label htmlFor="editor-body">본문</label>
+      {/* news.md v0.3.0: 에디터 본문 영역 위에 '본문' 라벨 텍스트는 표시하지 않는다 (aria-label 유지). */}
       <div
         id="editor-body"
         data-testid="editor-body"
@@ -781,24 +815,30 @@ export function WritePage({ user }) {
             - KILL:    role R or Z      AND status RDS
             SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS (D-1 잠금): Z권한도 R/D와 동일한 RDS gate를
             적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다. */}
+        {/* REQ-FE-WRITE-012/013 v0.3.0: 송고/보류/KILL은 확인창(window.confirm)을 선행하고,
+            확인했을 때만 진행한다. 취소 시 저장/액션 모두 미발생 (AC-5.4). */}
         <div className="yh-meta-actions">
           {(user.role === 'R' || user.role === 'D' || user.role === 'Z') && isRds ? (
             <>
-              <button type="button" className="yh-btn yh-btn--primary" onClick={ctrl.send}>송고</button>
-              <button type="button" className="yh-btn yh-btn--hold" onClick={ctrl.hold}>보류</button>
+              <button type="button" className="yh-btn yh-btn--primary"
+                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+              <button type="button" className="yh-btn yh-btn--hold"
+                onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
             </>
           ) : null}
           {(user.role === 'R' || user.role === 'Z') && isRds ? (
-            <button type="button" className="yh-btn yh-btn--kill" onClick={ctrl.kill}>KILL</button>
+            <button type="button" className="yh-btn yh-btn--kill"
+              onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
         </div>
 
-        {ctrl.lifecycleStatus ? (
-          <div data-testid="lifecycle-status" className="yh-lifecycle-status">
-            상태: {ctrl.lifecycleStatus}
-          </div>
-        ) : null}
+        {/* REQ-FE-WRITE-014 v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — lifecycleStatus
+            표시 블록 제거. 거부/오류(actionError)는 종전대로 노출한다. */}
         {ctrl.actionError ? <div role="alert" className="yh-alert">{ctrl.actionError}</div> : null}
+
+        {/* SPEC-NEWS-REVISE-007 REQ-VO-MAPPING (AC-MAP-2/3): read-only ContentsVO 8 fields, shown only in
+            an edit context (ctrl.readonlyMeta non-null). A blank-new draft renders nothing here. */}
+        {ctrl.readonlyMeta ? <ReadonlyMetaPanel meta={ctrl.readonlyMeta} /> : null}
 
         {/* Tab strip */}
         <div role="tablist" className="yh-tabs">

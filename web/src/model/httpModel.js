@@ -114,12 +114,15 @@ export function createHttpModel({ baseUrl } = {}) {
     },
 
     // --- Media proxy (DP-F3) -------------------------------------------------
-    async searchMedia(query) {
+    // type-routed: 'video' -> YouTube Data API v3; 'image' -> Google Custom Search (searchType=image).
+    // The server normalizes a missing/unknown type to 'video'; we default to 'video' on the client too.
+    // API keys stay server-side env only and never appear in the client-bound payload.
+    async searchMedia(query, type) {
       // On network failure return the documented safe default so the UI shows the error state.
-      const data = await getJson(`/api/media/search?q=${encodeURIComponent(query ?? '')}`, {
-        items: [],
-        error: true,
-      });
+      const data = await getJson(
+        `/api/media/search?q=${encodeURIComponent(query ?? '')}&type=${encodeURIComponent(type ?? 'video')}`,
+        { items: [], error: true },
+      );
       return data ?? { items: [], error: true };
     },
 
@@ -178,6 +181,10 @@ export function createHttpModel({ baseUrl } = {}) {
           // Ignore malformed SSE payloads; the next valid event will refresh the view.
         }
       });
+      // Connection-state wiring (REQ-FE-VIEW-002): surface open/error transitions so the status
+      // bar tracks the real transport. EventSource auto-reconnects after error, firing open again.
+      es.addEventListener('open', () => onChange({ connected: true }));
+      es.addEventListener('error', () => onChange({ connected: false }));
       return {
         unsubscribe() {
           es.close();

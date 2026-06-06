@@ -8,7 +8,7 @@
 // The contract mirrors the confirmed backend service contracts (SPEC-BACKEND-CORE-001):
 //   - userService.login / query
 //   - articleService.query / searchArticles / applyAction
-//   - mediaSearch.search (YouTube-first, Google fallback, server-side)
+//   - mediaSearch.search (type-routed: video=YouTube, image=Google Images, server-side)
 //
 // @typedef {object} AuthUser              normalized identity returned by login (NEVER includes password hash)
 // @property {string} userId
@@ -23,7 +23,7 @@
 // @property {(filters:object)=>Promise<Array<object>>} queryUsers           // used for department data-source (DP-F4)
 // @property {(filters:object)=>Promise<Array<object>>} queryArticles        // AND-combined metadata filters
 // @property {(queryText:string)=>Promise<Array<object>>} searchArticles     // internal text-article search (글기사)
-// @property {(query:string)=>Promise<{items:Array<object>,error:boolean}>} searchMedia // proxy: YouTube->Google
+// @property {(query:string,type:'image'|'video')=>Promise<{items:Array<object>,error:boolean}>} searchMedia // proxy: type-routed (video=YouTube, image=Google Images)
 // @property {(articleId:string,role:string,action:'send'|'hold'|'kill')=>Promise<{ok:boolean,status?:string,reason?:string}>} applyAction
 // @property {(articleId:string,dto:object)=>Promise<{ok:boolean,articleId?:string}>} saveArticle // assemble+persist DTO
 // @property {(filter:object,onChange:(payload:object)=>void)=>{unsubscribe:()=>void, connected:boolean}} subscribe // realtime (DP-F2)

@@ -1,5 +1,6 @@
-// Article-view page (REQ-FE-VIEW-001..010). Realtime status bar + four menus + role-gated DPS edit actions
-// + a right-click context menu and a 데스크 미송고 편집 button (news.md 기사 조회페이지).
+// Article-view page (REQ-FE-VIEW-001..011). Realtime status bar + four menus sharing one 7-column list
+// (기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN, REQ-FE-VIEW-011 v0.4.0) + a right-click context
+// menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
 import { useState, useEffect } from 'react';
 import { useViewController, MENUS } from '../controller/useViewController.js';
 import { useSession } from '../app/context.js';
@@ -43,8 +44,10 @@ const DISABLED = Object.freeze({ disabled: true });
 
 // Build the context-menu item list for an article under the active menu (ctrl.menu).
 // 데스크 미송고 has an 편집 entry (and 본문복사/제목만복사); the other three menus share a longer
-// send-history/translate/etc. set where only 상세보기/본문복사/제목만복사 are functional.
-function buildContextItems({ article, menu, navigate }) {
+// send-history/translate/etc. set where 상세보기/본문복사/제목만복사 are functional and, on a DPS
+// article, 고침(포털제외)/포털고침 are enabled for role D only (REQ-FE-VIEW-009/010 v0.4.0) —
+// selecting either navigates to the write page in edit context (news.md 기사 제어 권한).
+function buildContextItems({ article, menu, role, navigate }) {
   const detail = { label: '상세보기', onSelect: () => openArticleDetail(article) };
   const copyBody = { label: '본문복사', onSelect: () => copyToClipboard(article.content) };
   const copyTitle = { label: '제목만복사', onSelect: () => copyToClipboard(article.title) };
@@ -59,7 +62,34 @@ function buildContextItems({ article, menu, navigate }) {
     ];
   }
 
-  // 부서별 작성 / 부서별 송고 / 개인별 수정
+  // DPS-edit gating (REQ-FE-VIEW-009/010 v0.4.0): enabled only for role D on a DPS article.
+  const canDpsEdit = article.status === 'DPS' && role === 'D';
+  const dpsEditItem = (label) => (canDpsEdit
+    ? { label, onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) }
+    : { label, ...DISABLED });
+
+  // 부서별 송고 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS): 편집 항목은 권한과 무관하게 항상 활성
+  // (AC-FWD-1/AC-REV-3). 고침/포털고침은 role D + DPS 기사에만 활성 (AC-FWD-2).
+  if (menu === '부서별 송고') {
+    return [
+      { label: '편집', onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) },
+      detail,
+      { label: '이력보기', ...DISABLED },
+      { label: '송고이력보기', ...DISABLED },
+      copyBody,
+      copyTitle,
+      { label: '번역', ...DISABLED },
+      { label: '매핑', ...DISABLED },
+      { label: '후속기사작성', ...DISABLED },
+      { label: '계속기사작성', ...DISABLED },
+      dpsEditItem('고침(포털제외)'),
+      dpsEditItem('포털고침'),
+      { label: '삭제요청', ...DISABLED },
+      { label: '재송', ...DISABLED },
+    ];
+  }
+
+  // 부서별 작성 / 개인별 수정
   return [
     detail,
     { label: '이력보기', ...DISABLED },
@@ -70,23 +100,11 @@ function buildContextItems({ article, menu, navigate }) {
     { label: '매핑', ...DISABLED },
     { label: '후속기사작성', ...DISABLED },
     { label: '계속기사작성', ...DISABLED },
-    { label: '고침(포털제외)', ...DISABLED },
-    { label: '포털고침', ...DISABLED },
+    dpsEditItem('고침(포털제외)'),
+    dpsEditItem('포털고침'),
     { label: '삭제요청', ...DISABLED },
     { label: '재송', ...DISABLED },
   ];
-}
-
-// Derive a badge modifier class from a status string.
-// Grouping: *PS = send, *H = hold, *K = kill, RDS = rds (default draft), else rds.
-function statusBadgeClass(status) {
-  if (!status) return 'yh-badge yh-badge--rds';
-  const s = String(status).toUpperCase();
-  if (s.endsWith('PS'))  return 'yh-badge yh-badge--send';
-  if (s.endsWith('H'))   return 'yh-badge yh-badge--hold';
-  if (s.endsWith('K'))   return 'yh-badge yh-badge--kill';
-  if (s === 'RDS')       return 'yh-badge yh-badge--rds';
-  return 'yh-badge yh-badge--rds';
 }
 
 function RealtimeStatus({ connected }) {
@@ -101,16 +119,11 @@ function RealtimeStatus({ connected }) {
 }
 
 // One article rendered as a dense newspaper-index row (news.md 디자인: "기사 목록은 신문 인덱스처럼
-// 제목·작성자·시간·상태를 한 줄에 조밀하게 표시"). The <li> is the clickable row itself: status badge +
-// title + author + modifier + time on one line. Click-to-detail, the right-click menu, the 데스크
-// 미송고 편집 button, and the DPS 고침/포털고침 gating are all unchanged.
+// 한 줄에 조밀하게 표시"). REQ-FE-VIEW-011 v0.4.0: ALL four menus share the same seven-column base —
+// 기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN. 부서별 송고는 DPS 기사에 고침/포털고침 버튼을
+// 추가한다 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS AC-FWD-3).
+// Props: article, role, menu, navigate, onContextMenu — 모두 ViewPage에서 전달됨.
 function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
-  // Role gating (REQ-FE-VIEW-009/010): 고침/포털고침 only for role D on DPS articles.
-  const showDpsEdit = article.status === 'DPS';
-  const canDpsEdit = role === 'D';
-  // 데스크 미송고: each row gets a visible 편집 button that loads the article into the write page.
-  const showEditBtn = menu === '데스크 미송고';
-
   // Click anywhere on the row (but not the action buttons) opens the detail window.
   const openDetail = () => openArticleDetail(article);
   const onKeyDown = (e) => {
@@ -120,35 +133,36 @@ function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
     }
   };
 
+  // SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS (AC-FWD-3): 부서별 송고 DPS 행의 인라인 고침/포털고침 버튼.
+  // Role D + DPS: 활성 + 포워딩. 그 외 권한: disabled (AC-FWD-3 게이팅).
+  // stopPropagation으로 행 클릭(상세보기)이 동시 발생하지 않도록 차단.
+  const showDpsButtons = menu === '부서별 송고' && article.status === 'DPS';
+  const canDpsEdit = role === 'D';
+  const handleDpsEdit = (e) => {
+    e.stopPropagation();
+    if (canDpsEdit && navigate) navigate(ROUTES.WRITE, { id: article.articleId });
+  };
+
   return (
     <li
-      className="yh-article-row"
+      className="yh-article-row yh-desk-row"
       role="button"
       tabIndex={0}
       onClick={openDetail}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => onContextMenu(e, article)}
     >
-      <span className={statusBadgeClass(article.status)} data-testid="article-status">{article.status}</span>
+      <span className="yh-desk-row__id" data-testid="article-id">{article.articleId}</span>
       <span className="yh-article-row__title">{article.title}</span>
       <span className="yh-article-row__author" data-testid="article-author">{article.author}</span>
       <span className="yh-article-row__modifier" data-testid="article-modifier">{article.modifier}</span>
       <span className="yh-article-row__time" data-testid="article-time">{formatCreatedAt(article.createdAt)}</span>
-      {showEditBtn ? (
+      <span className="yh-article-row__time" data-testid="article-edited-time">{formatCreatedAt(article.editedAt)}</span>
+      <span className="yh-desk-row__lock" data-testid="article-lockyn">{article.lockYN ?? 'N'}</span>
+      {showDpsButtons ? (
         <span className="yh-article-row__actions">
-          {/* stopPropagation so the edit click doesn't also open the detail window */}
-          <button
-            type="button"
-            className="yh-btn yh-btn--secondary yh-btn--sm"
-            onClick={(e) => { e.stopPropagation(); navigate(ROUTES.WRITE, { id: article.articleId }); }}
-          >편집</button>
-        </span>
-      ) : null}
-      {showDpsEdit ? (
-        <span className="yh-article-row__actions">
-          {/* stopPropagation so edit clicks don't also open the detail window */}
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={(e) => e.stopPropagation()}>고침</button>
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={(e) => e.stopPropagation()}>포털고침</button>
+          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>고침</button>
+          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>포털고침</button>
         </span>
       ) : null}
     </li>
@@ -174,12 +188,14 @@ export function ViewPage({ user, nav }) {
   const pageCount = Math.max(1, Math.ceil(ctrl.articles.length / PAGE_SIZE));
   const pageItems = ctrl.articles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Reset to page 1 and close any open context menu whenever the active menu changes
-  // (new query => start from the top; a stale menu would point at a now-hidden row).
+  // Reset to page 1, close any open context menu, and re-seed the department Select whenever the
+  // active menu changes (부서별 작성 starts on the logged-in user's department and is auto-queried by
+  // the controller, REQ-FE-VIEW-005 v0.4.0; 부서별 송고 starts unselected).
   useEffect(() => {
     setPage(1);
     setContextMenu(null);
-  }, [ctrl.menu]);
+    setSelectedDept(ctrl.menu === '부서별 작성' ? (user.department ?? '') : '');
+  }, [ctrl.menu, user.department]);
 
   // Clamp the page if the list shrinks below the current offset (e.g. a realtime update
   // removes rows) so we never land on an empty page.
@@ -206,7 +222,7 @@ export function ViewPage({ user, nav }) {
           ))}
         </nav>
 
-        {ctrl.menu === '부서별 송고' ? (
+        {ctrl.menu === '부서별 송고' || ctrl.menu === '부서별 작성' ? (
           <div className="yh-dept-filter">
             <label htmlFor="dept-select">부서</label>
             <select
@@ -224,6 +240,19 @@ export function ViewPage({ user, nav }) {
               className="yh-btn yh-btn--secondary yh-btn--sm"
               onClick={() => { setPage(1); ctrl.queryDepartment(selectedDept); }}
             >조회</button>
+          </div>
+        ) : null}
+
+        {/* Shared 7-column header for ALL four menus (REQ-FE-VIEW-011 v0.4.0). */}
+        {pageItems.length > 0 ? (
+          <div className="yh-desk-header" data-testid="desk-header">
+            <span>기사아이디</span>
+            <span>제목</span>
+            <span>작성자</span>
+            <span>수정자</span>
+            <span>작성시간</span>
+            <span>수정시간</span>
+            <span>LockYN</span>
           </div>
         ) : null}
 
@@ -266,7 +295,7 @@ export function ViewPage({ user, nav }) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={buildContextItems({ article: contextMenu.article, menu: ctrl.menu, navigate })}
+          items={buildContextItems({ article: contextMenu.article, menu: ctrl.menu, role: user.role, navigate })}
           onClose={closeContextMenu}
         />
       ) : null}

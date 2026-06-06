@@ -11,6 +11,9 @@ const QUERY_FILTERS = Object.freeze({
   articleId: 'articleId',
   author: 'author',
   sender: 'sender',
+  // SPEC-FRONTEND-UI-001 v0.4.0 — 부서별 작성/송고 menus filter by department. Previously this key
+  // was silently ignored (not in QUERY_FILTERS), so department menu queries returned ALL rows.
+  department: 'department',
 });
 
 /**
@@ -53,6 +56,24 @@ export function createArticleModel(db) {
         if (filters[key] !== undefined && filters[key] !== null) {
           clauses.push(`${column} = ?`);
           values.push(filters[key]);
+        }
+      }
+      // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).
+      // Previously status was silently ignored (not in QUERY_FILTERS), so menu filters returned all rows.
+      if (filters.status !== undefined && filters.status !== null && filters.status !== '') {
+        const statuses = String(filters.status).split(',').filter(Boolean);
+        if (statuses.length > 0) {
+          clauses.push(`status IN (${statuses.map(() => '?').join(',')})`);
+          values.push(...statuses);
+        }
+      }
+      // statusNot filter — comma-separated exclusion (e.g. 'DPS,RRH' from 부서별 작성).
+      // Mirrors the status IN clause as NOT IN so menu filters can exclude lifecycle states.
+      if (filters.statusNot !== undefined && filters.statusNot !== null && filters.statusNot !== '') {
+        const excluded = String(filters.statusNot).split(',').filter(Boolean);
+        if (excluded.length > 0) {
+          clauses.push(`status NOT IN (${excluded.map(() => '?').join(',')})`);
+          values.push(...excluded);
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
