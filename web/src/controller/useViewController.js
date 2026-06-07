@@ -28,14 +28,29 @@ export function sortByCreatedAtDesc(rows) {
   });
 }
 
-/** Map a menu (and optional selected department) to the backend query filter. */
+/**
+ * Normalize department selection to a comma-separated string for the backend query.
+ * Accepts: string (single dept), array of strings (multi-select), or falsy (no selection).
+ * @param {string|string[]|null|undefined} depts
+ * @returns {string|null} Comma-separated string or null if empty
+ */
+function normalizeDepartments(depts) {
+  if (!depts) return null;
+  if (Array.isArray(depts)) {
+    return depts.length > 0 ? depts.join(',') : null;
+  }
+  return depts; // single string
+}
+
+/** Map a menu (and optional selected department(s)) to the backend query filter. */
 function filterForMenu(menu, user, selectedDepartment) {
   switch (menu) {
     case '부서별 작성': {
       // REQ-FE-VIEW-005 v0.4.0: department Select (initial = the logged-in user's department) and
       // exclusion of sent/held states — "상태값이 DPS와 RRH가 아닌 기사들". statusNot expands to a
       // NOT IN clause in articleModel.query.
-      const department = selectedDepartment || user.department;
+      // Multi-select: normalize array to comma-separated string.
+      const department = normalizeDepartments(selectedDepartment) || user.department;
       return department ? { department, statusNot: 'DPS,RRH' } : null;
     }
     case '개인별 수정':
@@ -50,10 +65,13 @@ function filterForMenu(menu, user, selectedDepartment) {
       // RDS + DDH articles (REQ-FE-VIEW-008 v0.3.0: "데스크 미송고 페이지는 상태값이 RDS, DDH인
       // 기사만 나열한다"). Comma-separated multi-status expands to an IN clause in articleModel.query.
       return { status: 'RDS,DDH' };
-    case '부서별 송고':
+    case '부서별 송고': {
       // DPS-only (news.md: "부서별 송고페이지는 DPS기사만 조회"). Query only after a
       // department is selected and 조회 is pressed (handled by caller).
-      return selectedDepartment ? { department: selectedDepartment, status: 'DPS' } : null;
+      // Multi-select: normalize array to comma-separated string.
+      const department = normalizeDepartments(selectedDepartment);
+      return department ? { department, status: 'DPS' } : null;
+    }
     default:
       return null;
   }
@@ -98,6 +116,8 @@ export function useViewController(user) {
       (async () => {
         const users = await model.queryUsers({});
         const distinct = [...new Set(users.map((u) => u.department).filter(Boolean))];
+        // 부서명코드 내림차순 정렬
+        distinct.sort((a, b) => b.localeCompare(a, 'ko'));
         setDepartments(distinct);
       })();
     }

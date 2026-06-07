@@ -127,10 +127,11 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Politics', statusNot: 'DPS,RRH' });
     expect(await screen.findByText('dep art')).toBeInTheDocument();
-    // The department Select is seeded with the user's own department.
-    const select = await screen.findByLabelText('부서');
-    await within(select).findByRole('option', { name: 'Politics' });
-    expect(select).toHaveValue('Politics');
+    // The department multi-select is seeded with the user's own department.
+    expect(screen.getByText('부서')).toBeInTheDocument();
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    // Trigger button should show user's department as display text.
+    expect(within(multiSelect).getByRole('button')).toHaveTextContent('Politics');
   });
 
   it('AC-7.1b: 부서별 작성 — 다른 부서 선택 + 조회 → statusNot 유지 재조회 (v0.4.0)', async () => {
@@ -138,9 +139,12 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-1e', title: 'econ written' }]);
     renderView(createFakeModel({ queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 작성' }));
-    const select = await screen.findByLabelText('부서');
-    await within(select).findByRole('option', { name: 'Economy' });
-    await user.selectOptions(select, 'Economy');
+    // Open multi-select dropdown.
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await user.click(within(multiSelect).getByRole('button'));
+    // Uncheck current department (Politics), check another (Economy).
+    await user.click(screen.getByTestId('dept-checkbox-Politics'));
+    await user.click(screen.getByTestId('dept-checkbox-Economy'));
     await user.click(screen.getByRole('button', { name: '조회' }));
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Economy', statusNot: 'DPS,RRH' });
@@ -152,17 +156,38 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'econ art' }]);
     renderView(createFakeModel({ queryUsers, queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 송고' }));
-    // Dropdown populated (distinct) from the separated data-source.
-    const select = await screen.findByLabelText('부서');
-    expect(within(select).getByRole('option', { name: 'Economy' })).toBeInTheDocument();
+    // Multi-select populated (distinct) from the separated data-source.
+    expect(screen.getByText('부서')).toBeInTheDocument();
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await user.click(within(multiSelect).getByRole('button'));
+    expect(screen.getByTestId('dept-checkbox-Economy')).toBeInTheDocument();
     // Before pressing 조회, no department articles are queried.
     expect(queryArticles).not.toHaveBeenCalledWith(expect.objectContaining({ sender: expect.anything() }));
-    await user.selectOptions(select, 'Economy');
+    await user.click(screen.getByTestId('dept-checkbox-Economy'));
+    // Close dropdown by clicking trigger again.
+    await user.click(within(multiSelect).getByRole('button'));
     await user.click(screen.getByRole('button', { name: '조회' }));
     expect(await screen.findByText('econ art')).toBeInTheDocument();
     // news.md: 부서별 송고 is DPS-only — the query filter must carry status: 'DPS'.
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Economy', status: 'DPS' });
+  });
+
+  it('AC-7.2b: 부서별 송고 — multi-select 전체 선택 + 다중 부서 조회', async () => {
+    const user = userEvent.setup();
+    const queryUsers = vi.fn().mockResolvedValue([{ department: 'Politics' }, { department: 'Economy' }]);
+    const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'multi art' }]);
+    renderView(createFakeModel({ queryUsers, queryArticles }));
+    await user.click(screen.getByRole('button', { name: '부서별 송고' }));
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await user.click(within(multiSelect).getByRole('button'));
+    // Click 전체 checkbox to select all departments.
+    await user.click(screen.getByTestId('dept-checkbox-all'));
+    await user.click(screen.getByRole('button', { name: '조회' }));
+    expect(await screen.findByText('multi art')).toBeInTheDocument();
+    // Query should have comma-separated departments (order by descending: Politics > Economy).
+    const call = queryArticles.mock.calls.at(-1)[0];
+    expect(call).toEqual({ department: 'Politics,Economy', status: 'DPS' });
   });
 
   it('AC-7.3: 개인별 수정 — 본인 작성 + 상태 RDS/RRK만 (v0.4.0)', async () => {
