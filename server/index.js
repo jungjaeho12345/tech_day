@@ -15,7 +15,7 @@ import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 
-import { createSchema } from '../src/db/schema.js';
+import { createSchema, backfillContentsDepartmentFromAuthor } from '../src/db/schema.js';
 import { createControllers } from '../src/controllers/index.js';
 import { createSessionService } from '../src/services/sessionService.js';
 
@@ -45,8 +45,10 @@ export function createApp({ controllers, sessionService }) {
   // @MX:REASON: every protected route derives role from here, never from req.body.role; this closes the
   // server측 인가 미배선 Critical by making client-supplied role values irrelevant (REQ-AUTH-ROLE-004).
   // Returns the validated identity ({ role, ... }) or undefined when the session is absent/expired.
+  // Uses touchSession so every authenticated request refreshes the 1h sliding idle window — an active
+  // user is kept logged in indefinitely; only true inactivity (>1h) or logout ends the session.
   function sessionOf(req) {
-    return sessionService.validateSession(sessionIdOf(req));
+    return sessionService.touchSession(sessionIdOf(req));
   }
 
   // --- Health ---------------------------------------------------------------
@@ -65,6 +67,18 @@ export function createApp({ controllers, sessionService }) {
   // POST /api/logout -> invalidate the server-side session for x-session-id.
   app.post('/api/logout', (req, res) => {
     res.json(controllers.auth.logout(sessionIdOf(req)));
+  });
+
+  // GET /api/session -> { ok, user? }. Session-restore endpoint for client F5/refresh: the client
+  // replays its stored x-session-id and, if the server-side session is still live (within the 1h
+  // sliding window), gets back the sanitized identity so the UI rehydrates WITHOUT a re-login.
+  // sessionOf() touches the session, so a refresh also counts as activity (keeps the window fresh).
+  app.get('/api/session', (req, res) => {
+    const session = sessionOf(req);
+    if (session === undefined) {
+      return res.json({ ok: false });
+    }
+    return res.json({ ok: true, user: session });
   });
 
   // --- Users ----------------------------------------------------------------
@@ -131,7 +145,8 @@ export function createApp({ controllers, sessionService }) {
   app.post('/api/articles/:id/action', (req, res) => {
     const { action } = req.body ?? {};
     const sessionId = sessionIdOf(req);
-    const session = sessionService.validateSession(sessionId);
+    // Sliding window: an action is activity, so refresh the 1h idle deadline (touchSession).
+    const session = sessionService.touchSession(sessionId);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -141,7 +156,15 @@ export function createApp({ controllers, sessionService }) {
       return res.json(gate);
     }
     // Transition is driven by the SESSION role, never by any client-supplied body.role.
-    const result = controllers.article.applyAction(req.params.id, session.role, action);
+    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): pass the caller's lock identity — the page-scoped sessionId
+    // from the body (or x-page-session-id header) + the session-derived userId — so a transition on
+    // an article live-locked by ANOTHER holder is rejected ({ok:false, reason:'lock-required'}).
+    // Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
+    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    const result = controllers.article.applyAction(req.params.id, session.role, action, {
+      userId: session.userId,
+      sessionId: pageSessionId,
+    });
     if (result.ok) {
       bus.emit('change', { type: 'status', articleId: req.params.id, status: result.status });
     }
@@ -152,7 +175,8 @@ export function createApp({ controllers, sessionService }) {
   // M-2: create/update is gated behind an authenticated edit-capable (R/D/Z) session.
   function saveArticle(req, res) {
     const sessionId = sessionIdOf(req);
-    const session = sessionService.validateSession(sessionId);
+    // Sliding window: saving is activity, so refresh the 1h idle deadline (touchSession).
+    const session = sessionService.touchSession(sessionId);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -161,7 +185,18 @@ export function createApp({ controllers, sessionService }) {
       return res.json({ ok: false, reason: 'forbidden' });
     }
     try {
-      const { articleId } = controllers.article.create(req.body ?? {});
+      // 부서별 작성/송고 menus filter on Contents.department, but the client DTO never carried the
+      // writer's department — every row was saved with department=NULL so the menus matched nothing.
+      // Stamp the session user's department/departmentCode at create time (the session is the trusted
+      // identity source, REQ-AUTH-ROLE-004). Explicit DTO values are preserved when present.
+      const dto = { ...(req.body ?? {}) };
+      if (dto.department == null || dto.department === '') {
+        dto.department = session.department ?? null;
+      }
+      if (dto.departmentCode == null || dto.departmentCode === '') {
+        dto.departmentCode = session.departmentCode ?? null;
+      }
+      const { articleId } = controllers.article.create(dto);
       bus.emit('change', { type: 'create', articleId, status: 'RDS' });
       return res.json({ ok: true, articleId });
     } catch {
@@ -176,7 +211,7 @@ export function createApp({ controllers, sessionService }) {
   // @MX:NOTE: [AUTO] page-scoped UUID 의존 제거 — holder 식별은 sessionIdOf(req) 단일 출처(SPEC-EDIT-LOCK-001).
   app.put('/api/articles/:id', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.json({ ok: false, reason: 'unauthenticated' });
     }
@@ -207,7 +242,7 @@ export function createApp({ controllers, sessionService }) {
   // @MX:NOTE: [AUTO] holder = sessionIdOf(req); userId는 서비스 계층 식별용, HTTP 응답에 노출 안 함.
   app.post('/api/articles/:id/lock', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
@@ -220,18 +255,29 @@ export function createApp({ controllers, sessionService }) {
     if (existing === undefined) {
       return res.status(404).json({ ok: false, reason: 'not-found' });
     }
-    // holder = 로그인 세션 id (page-scoped UUID 폐기; D2-5 기준은 이제 세션 단위).
-    const result = controllers.article.acquireEditLock(articleId, {
+    // sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 메서드를 지정할 수 없어
+    // 클라이언트(useWriteController.beaconRelease)가 POST 본문에 release:true 를 실어 보낸다.
+    // 이 플래그가 있으면 acquire 가 아니라 release 로 처리한다 — 종전에는 무시되어 언로드 해제가
+    // 사실상 잠금 재획득이 되는 버그였다 (브라우저 닫힘 후에도 stale 타임아웃까지 lock 잔존).
+    if (req.body && req.body.release === true) {
+      const released = controllers.article.releaseEditLock(req.params.id, {
+        userId: session.userId,
+        sessionId: pageSessionId,
+      });
+      if (released.ok) {
+        bus.emit('change', { type: 'unlock', articleId: req.params.id });
+      }
+      return res.json(released);
+    }
+    const result = controllers.article.acquireEditLock(req.params.id, {
       userId: session.userId,
       sessionId: sid,
     });
-    if (!result.ok) {
-      // 비보유·비스테일 → 409; lockedBy(홀더 신원) 응답 body 비노출(보안 AC-BLK-2).
-      return res.status(409).json({ ok: false, reason: result.reason });
+    if (result.ok) {
+      // LockYN is a displayed list column — notify subscribers so open views refresh live.
+      bus.emit('change', { type: 'lock', articleId: req.params.id });
     }
-    // 성공 응답: article 최신 상태 포함 (AC-AUTH-1 계약).
-    const [article] = controllers.article.query({ articleId });
-    return res.json({ ok: true, article: { ...article, LockYN: 'Y', LockedBySessionId: sid } });
+    return res.json(result);
   });
 
   // SPEC-EDIT-LOCK-001 — POST /api/articles/:id/unlock (신규 라우트; DELETE /lock 대체).
@@ -240,7 +286,7 @@ export function createApp({ controllers, sessionService }) {
   // @MX:NOTE: [AUTO] 비보유자 해제는 no-op + released:false (AC-RLE-2); 보유자만 실제 해제 (AC-RLE-1).
   app.post('/api/articles/:id/unlock', (req, res) => {
     const sid = sessionIdOf(req);
-    const session = sessionService.validateSession(sid);
+    const session = sessionService.touchSession(sid);
     if (session === undefined) {
       return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
@@ -256,27 +302,24 @@ export function createApp({ controllers, sessionService }) {
       userId: session.userId,
       sessionId: sid,
     });
-    // releaseEditLock: ok:true(보유자 해제 또는 이미 해제됨) / ok:false(not-holder).
-    // 신설계 AC-RLE-2: 비보유자 해제는 no-op, released:false 반환 (409 아님).
-    if (!result.ok && result.reason === 'not-holder') {
-      return res.json({ ok: true, released: false });
+    if (result.ok) {
+      bus.emit('change', { type: 'unlock', articleId: req.params.id });
     }
-    if (!result.ok) {
-      // not-found 등 예상치 못한 오류.
-      return res.status(404).json({ ok: false, reason: result.reason });
-    }
-    // lockYN='N' 이미 해제(idempotent) 혹은 정상 해제 → released:true.
-    return res.json({ ok: true, released: true });
+    return res.json(result);
   });
 
   // --- Media ----------------------------------------------------------------
-  // GET /api/media/search?q= -> { items, error }.
+  // GET /api/media/search?q=&type=image|video -> { items, error }.
+  // 2026-06-06 directive (supersedes D2-8 fallback): type 'video' -> YouTube, 'image' -> Google
+  // Image Search. Unknown/missing type normalizes to 'video'. No cross-provider fallback.
   app.get('/api/media/search', async (req, res) => {
-    res.json(await controllers.media.search(req.query.q ?? ''));
+    const type = req.query.type === 'image' ? 'image' : 'video';
+    res.json(await controllers.media.search(req.query.q ?? '', type));
   });
 
   // --- Realtime (SSE) -------------------------------------------------------
-  // GET /api/stream -> Server-Sent Events. Emits `event: change` on article create/status change.
+  // GET /api/stream -> Server-Sent Events. Emits `event: change` on article create/update/status
+  // and edit-lock acquire/release (row-less invalidation signals; the client re-queries its filter).
   // Filtering is intentionally naive (send all) per the build spec; the client may filter.
   app.get('/api/stream', (req, res) => {
     res.set({
@@ -309,6 +352,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // Open the existing SQLite file and ensure schema idempotently (never drops/deletes).
   const db = new DatabaseSync(DB_PATH);
   createSchema(db);
+  // Non-destructive legacy backfill: resolve department/departmentCode for rows saved before the
+  // department stamp existed (idempotent — only rows still missing a department are touched).
+  backfillContentsDepartmentFromAuthor(db);
 
   // Single session service shared by the controllers and the HTTP role-resolution layer.
   const sessionService = createSessionService();

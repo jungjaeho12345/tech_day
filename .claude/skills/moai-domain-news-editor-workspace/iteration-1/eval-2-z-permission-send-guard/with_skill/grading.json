@@ -1,0 +1,10 @@
+{
+  "expectations": [
+    {"text": "Z+RDS에서 송고/보류/KILL 3버튼 모두 표시·사용가능 명시", "passed": true, "evidence": "answer.md 표: 송고/보류/KILL 모두 '보이고 사용가능' + RDS 한정 + 3버튼 한정 오해 경고 포함"},
+    {"text": "(끝) 없으면 ALERT + 송고 차단 명시", "passed": true, "evidence": "answer.md: 'ALERT를 띄우고 송고를 차단... articleUpdate 호출로 이어지지 않고 상태값 전이도 없음'"},
+    {"text": "보류/KILL은 (끝) 면제임을 언급", "passed": true, "evidence": "answer.md: '보류/KILL은 이 가드의 영향을 받지 않는다 — (끝) 없이도 진행'"},
+    {"text": "체크리스트 정확히 5항목", "passed": true, "evidence": "answer.md §(3) 표 1~5번 항목"}
+  ],
+  "summary": {"passed": 4, "failed": 0, "total": 4, "pass_rate": 1.0},
+  "timing": {"executor_duration_seconds": 94.5, "total_duration_seconds": 94.5}
+}

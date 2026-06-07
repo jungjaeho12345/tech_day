@@ -14,11 +14,24 @@ export const ARTICLE_COLUMNS = Object.freeze([
 // SPEC-DB-FOUNDATION-001. Together they enable race-safe atomic lock acquisition via a single SQL
 // `UPDATE Contents SET ... WHERE articleId=? AND (lockYN='N' OR lockedAt < ?)`. lockYN is NEVER
 // NULL ('Y'/'N'); the locker identification columns are NULL when no edit lock is held.
+// @MX:NOTE: [AUTO] The trailing 8 common-info columns (coAuthor..referenceFile) persist the write
+// page's 공통정보 fields that previously lived only in the client DTO and were silently dropped on
+// INSERT, so 편집 진입 시 공통정보 복원이 불가능했다 (news.md 기사 편집 기능). Appended LAST so a
+// fresh CREATE TABLE and an ALTER-migrated legacy DB share the same column order.
 export const CONTENTS_COLUMNS = Object.freeze([
   'articleId', 'title', 'content', 'author', 'modifier', 'sender',
   'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
   'distributedAt', 'embargoAt', 'secondEmbargoAt', 'status', 'lockYN',
   'lockerUserId', 'lockerSessionId', 'lockedAt',
+  'coAuthor', 'region', 'attribute', 'keyword',
+  'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
+]);
+
+// The 8 common-info columns added by the edit-load fix (nullable VARCHAR, no default).
+// Shared by CREATE_CONTENTS and the idempotent ALTER migration below.
+const CONTENTS_COMMON_INFO_COLUMNS = Object.freeze([
+  'coAuthor', 'region', 'attribute', 'keyword',
+  'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
 ]);
 
 // @MX:NOTE: [AUTO] `active` is a SPEC-AUTH-001 amendment to SPEC-DB-FOUNDATION-001: status-based
@@ -65,7 +78,15 @@ CREATE TABLE IF NOT EXISTS Contents (
   lockYN VARCHAR NOT NULL DEFAULT 'N',
   lockerUserId VARCHAR,
   lockerSessionId VARCHAR,
-  lockedAt VARCHAR
+  lockedAt VARCHAR,
+  coAuthor VARCHAR,
+  region VARCHAR,
+  attribute VARCHAR,
+  keyword VARCHAR,
+  internalComment VARCHAR,
+  externalComment VARCHAR,
+  attachmentFile VARCHAR,
+  referenceFile VARCHAR
 )`;
 
 const CREATE_USER = `
@@ -134,6 +155,58 @@ function ensureContentsLockerColumns(db) {
 }
 
 /**
+ * Idempotently add the 8 common-info columns (coAuthor/region/attribute/keyword/internalComment/
+ * externalComment/attachmentFile/referenceFile) to a pre-existing Contents table so the write
+ * page's 공통정보 fields persist and 편집 진입 시 복원된다 (news.md 기사 편집 기능). Mirrors
+ * ensureContentsLockerColumns: PRAGMA check → ALTER ADD COLUMN only when absent; re-running
+ * preserves existing rows (REQ-SCH-010, CLAUDE.md HARD: DB 내용은 삭제하지 않는다).
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function ensureContentsCommonInfoColumns(db) {
+  const existing = new Set(
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name),
+  );
+  for (const column of CONTENTS_COMMON_INFO_COLUMNS) {
+    if (!existing.has(column)) {
+      db.exec(`ALTER TABLE Contents ADD COLUMN ${column} VARCHAR`);
+    }
+  }
+}
+
+/**
+ * Idempotent, NON-DESTRUCTIVE data backfill: legacy Contents rows were saved with department/
+ * departmentCode = NULL (the write DTO never carried them), so the 부서별 작성/부서별 송고 menus
+ * could never match them. Resolve each row's department from the author's User row (author stores
+ * the display name — news.md 공통정보: 작성자=로그인 사용자 이름). Nothing is ever deleted
+ * (CLAUDE.md HARD rule).
+ *
+ * A row is backfilled ONLY when EXACTLY ONE active user matches the author name AND that user has
+ * a non-empty department. The single-match guard avoids stamping an arbitrary department for
+ * 동명이인 (User.name is not UNIQUE — only userId is the PK), and the non-empty-department guard
+ * keeps re-runs a true no-op: without it a NULL-department user would rewrite NULL into the row
+ * forever, so the WHERE clause would keep matching on every run (idempotency violation).
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @returns {number} number of backfilled rows
+ */
+export function backfillContentsDepartmentFromAuthor(db) {
+  const info = db.prepare(`
+    UPDATE Contents
+       SET department = (SELECT u.department FROM User u
+                          WHERE u.name = Contents.author AND u.active = 'Y'
+                            AND u.department IS NOT NULL AND u.department <> ''),
+           departmentCode = (SELECT u.departmentCode FROM User u
+                              WHERE u.name = Contents.author AND u.active = 'Y'
+                                AND u.department IS NOT NULL AND u.department <> '')
+     WHERE (department IS NULL OR department = '')
+       AND author IS NOT NULL AND author <> ''
+       AND (SELECT COUNT(*) FROM User u
+             WHERE u.name = Contents.author AND u.active = 'Y'
+               AND u.department IS NOT NULL AND u.department <> '') = 1
+  `).run();
+  return Number(info.changes);
+}
+
+/**
  * Create the three foundation tables idempotently on the given DatabaseSync handle.
  * @param {import('node:sqlite').DatabaseSync} db
  */
@@ -144,4 +217,5 @@ export function createSchema(db) {
   ensureUserActiveColumn(db);
   ensureContentsLockYNColumn(db);
   ensureContentsLockerColumns(db);
+  ensureContentsCommonInfoColumns(db);
 }

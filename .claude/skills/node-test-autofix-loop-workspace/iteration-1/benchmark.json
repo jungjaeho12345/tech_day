@@ -1,0 +1,362 @@
+{
+  "metadata": {
+    "skill_name": "node-test-autofix-loop",
+    "skill_path": "<path/to/skill>",
+    "executor_model": "<model-name>",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-06-06T04:49:45Z",
+    "evals_run": [
+      1,
+      2,
+      3
+    ],
+    "runs_per_configuration": 3
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies composeBody returning {body: ''} as the root cause of AC-EMB-INLINE-1 failure",
+          "passed": true,
+          "evidence": "steps.md Cause A explicitly names the stub returning ''"
+        },
+        {
+          "text": "Fixes source (composeBody or buildArticle) to compose body from bodyText, rather than editing the test",
+          "passed": true,
+          "evidence": "edits.md Edit 2 rewrites composeBody to return {body: state.bodyText}; explicit 'no test edits'"
+        },
+        {
+          "text": "Addresses the second failure (caret advancement) by bumping caret by embed token length in insertEmbedAtCaret",
+          "passed": true,
+          "evidence": "edits.md Edit 1 adds caret: caret + token.length"
+        },
+        {
+          "text": "Plans to run full suite as the final iteration before declaring green",
+          "passed": true,
+          "evidence": "steps.md step 5 explicitly runs focused then full suite"
+        },
+        {
+          "text": "Does NOT modify package.json or vitest config to silence failures",
+          "passed": true,
+          "evidence": "edits.md 'What I did NOT do' lists this"
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": true,
+          "evidence": "report.md exactly matches the template"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies the rename (helpers/ -> lib/helpers/) as the cause, not a runtime bug",
+          "passed": true,
+          "evidence": "steps.md Step 3 Diagnose: \"the rename moved format.js under src/lib/helpers/, but src/index.js's import '../helpers/format' still resolves relative to the old layout and now points to a nonexistent path\" and classifies it as \"Pattern: Import / module path\". edits.md states \"Update the import path to reflect the src/helpers/ -> src/lib/helpers/ rename.\" It is explicitly a stale-import problem, not a runtime bug."
+        },
+        {
+          "text": "Edits src/index.js to update the import path to '../lib/helpers/format' (or equivalent correct path)",
+          "passed": true,
+          "evidence": "edits.md diff for src/index.js: -import { format } from '../helpers/format'; +import { format } from './lib/helpers/format';. Since src/index.js lives at src/ and the moved file is at src/lib/helpers/format.js, the correct relative path is './lib/helpers/format' (sibling-descent, not parent-ascent). This qualifies as the 'equivalent correct path' the expectation allows, and the rationale in edits.md ('Relative to src/index.js, that resolves as ./lib/helpers/format') is geometrically sound."
+        },
+        {
+          "text": "Does NOT skip the test, mark .skip, or delete the import",
+          "passed": true,
+          "evidence": "steps.md Step 4: \"Do not edit the test (test is correct; it just imports the module under test).\" The import is preserved and merely repointed (+import { format } from './lib/helpers/format';), not deleted. No .skip, no test removal anywhere in steps.md, edits.md, or report.md."
+        },
+        {
+          "text": "Does NOT propose running npm install or modifying package.json",
+          "passed": true,
+          "evidence": "No mention of npm install, package.json modification, or dependency reinstall in any of the three files. package.json is referenced only in steps.md Step 1 to read scripts.test ('jest' -> Jest runner), which is diagnostic detection, not a modification proposal. Next move in report.md is 'review the diff and commit; grep for any other stale importers' — no install/package.json edit."
+        },
+        {
+          "text": "Does NOT modify src/lib/helpers/format.js (it is correctly placed)",
+          "passed": true,
+          "evidence": "steps.md Step 4: \"Do not touch the moved file.\" edits.md: \"the moved module (src/lib/helpers/format.js) are correct as-is\" and \"No other files edited.\" report.md Files edited lists only src/index.js. The moved module is never edited."
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": true,
+          "evidence": "report.md contains exactly the five prescribed sections in order: 'Result: green', 'Iterations: 1', 'Files edited:' (with src/index.js bullet), 'Tests still failing: none', 'Next move: review the diff and commit; grep for any other stale ...'. All five labels present and correctly populated."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags the Modal diff as containing changes unrelated to the user's stated intent (aria-label removal)",
+          "passed": true,
+          "evidence": "steps.md line 53-54: \"(b) aria-label=\\\"Confirm action\\\" was removed from the dialog <div>. This is NOT in the user's stated intent.\" and line 60 \"Verdict: DO NOT auto-update. Flag to user.\" edits.md line 26 separates \"Undeclared: aria-label=\\\"Confirm action\\\" removed from the <div role=\\\"dialog\\\">.\" Explicitly identifies the aria-label removal as unrelated to the stated intent."
+        },
+        {
+          "text": "Approves Hero and Card snapshot updates as consistent with the stated UI copy change intent",
+          "passed": true,
+          "evidence": "steps.md line 27 (Hero) \"Verdict: SAFE to update. Articulable reason: intentional copy localization.\" and line 39 (Card) \"Verdict: SAFE to update. Articulable reason: intentional copy localization.\" Both diffs noted as \"Matches user intent verbatim\" (lines 25, 37). edits.md section 1 confirms updating Hero + Card snapshots only as text-node copy changes matching stated intent."
+        },
+        {
+          "text": "Stops short of a bulk `jest -u` for all three; either selective update or explicit hand-back on Modal",
+          "passed": true,
+          "evidence": "steps.md line 81 \"I would NOT run npx jest -u (would silence Modal canary).\" and line 76 shows the selective command targeting only Hero+Card test files with -u. edits.md section 3 \"Do NOT run npx jest -u (bulk update)\" with reasoning that bulk would silently accept the Modal aria-label removal. report.md recommends \"selective update: npx jest src/components/__tests__/Hero.test.jsx src/components/__tests__/Card.test.jsx -u\". Both selective update AND explicit hand-back on Modal are present."
+        },
+        {
+          "text": "Identifies the aria-label removal as a potential accessibility regression worth surfacing",
+          "passed": true,
+          "evidence": "steps.md line 55-56 \"Change (b) is an accessibility regression signal: A role=\\\"dialog\\\" with no accessible name (no aria-label, no aria-labelledby) fails WCAG / ARIA authoring practices.\" edits.md line 27 \"A role=\\\"dialog\\\" without an accessible name is an a11y regression.\" report.md line 7 Next move: \"ask user whether the Modal aria-label removal was intentional. If no, restore aria-label (or use aria-labelledby pointing at the title h2)\". Surfaced as a question to the user."
+        },
+        {
+          "text": "Does NOT delete or .skip the Modal test",
+          "passed": true,
+          "evidence": "edits.md line 42 under \"What I would NOT touch\": \"Modal test file or snapshot file — leave failing as the canary.\" report.md lists Modal under \"Tests still failing\" rather than removed. No .skip or deletion appears anywhere; the Modal test is intentionally left red as a canary. steps.md line 82 \"I would NOT update the Modal snapshot myself.\""
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": true,
+          "evidence": "report.md contains all five prescribed sections in order: line 1 \"Result: blocked (partial)\", line 2 \"Iterations: 0\", line 3 \"Files edited:\", line 5 \"Tests still failing:\", line 7 \"Next move:\". This matches the skill Step 6 prescribed shape exactly."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.6667,
+        "passed": 4,
+        "failed": 2,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies composeBody returning {body: ''} as the root cause of AC-EMB-INLINE-1 failure",
+          "passed": true,
+          "evidence": "steps.md line 4: 'AC-EMB-INLINE-1: article.body is '' instead of the composed body. Root cause: composeBody is a stub returning { body: '' }. It must rebuild from state.bodyText.' report.md line 5 repeats this: 'composeBody was a stub left behind by the refactor (return { body: '' })'. Root cause correctly named and tied to AC-EMB-INLINE-1."
+        },
+        {
+          "text": "Fixes source (composeBody or buildArticle) to compose body from bodyText, rather than editing the test",
+          "passed": true,
+          "evidence": "edits.md Edit 2 rewrites composeBody from 'return { body: '' }' to 'function composeBody(state) { return { body: state.bodyText }; }', composing body from state.bodyText. steps.md line 11 and report.md line 12 both explicitly state the test file was NOT touched ('No changes to web/src/view/articleDetail.test.js'). Source fixed, test preserved."
+        },
+        {
+          "text": "Addresses the second failure (caret advancement) by bumping caret by embed token length in insertEmbedAtCaret",
+          "passed": true,
+          "evidence": "edits.md Edit 1 adds 'const token = `[EMBED:${embed.id}]`;' and returns 'caret: caret + token.length' in insertEmbedAtCaret, replacing the original 'NOTE: did not bump caret'. report.md line 7 confirms: 'Now computes token = [EMBED:${embed.id}] once and returns caret: caret + token.length.' Caret advanced by exact token length."
+        },
+        {
+          "text": "Plans to run full suite as the final iteration before declaring green",
+          "passed": false,
+          "evidence": "The task explicitly says '변경 파일 우선 실행 후 전체 마무리' (run changed file first, THEN finish with full suite). But steps.md line 13 plans only a single-file run: 'Re-run npx vitest run web/src/view/articleDetail.test.js and confirm 10/10 pass', then line 15: 'If green, stop. No other files in scope.' report.md line 16 likewise only references the single-file run. There is no plan to run the full suite as a final iteration; the executor deliberately scopes to the one file and stops, omitting the required '전체 마무리' full-suite step."
+        },
+        {
+          "text": "Does NOT modify package.json or vitest config to silence failures",
+          "passed": true,
+          "evidence": "edits.md lists only one file changed: 'web/src/view/articleDetail.js' (2 functions). report.md line 21: 'No changes outside the two refactor-touched files.' No edit to package.json, vitest.config, or any config to silence/skip tests anywhere in the three output files."
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": false,
+          "evidence": "report.md sections are: 'Failures diagnosed', 'Edits', 'Expected result', 'Risk / scope notes'. None of the prescribed sections (Result / Iterations / Files edited / Tests still failing / Next move) are present. There is no 'Iterations' section, no explicit 'Tests still failing' section, and no 'Next move' section. The report does not follow the prescribed shape."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.833,
+        "passed": 5,
+        "failed": 1,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies the rename (helpers/ -> lib/helpers/) as the cause, not a runtime bug",
+          "passed": true,
+          "evidence": "steps.md step 2: \"src/helpers/format.js was renamed to src/lib/helpers/format.js. So the import target moved, but the importer was not updated.\" report.md Root cause section: \"Import-path drift from an incomplete refactor. The file move was recorded in git as a rename (R src/helpers/format.js -> src/lib/helpers/format.js), but the importer in src/index.js was not updated... Jest's resolver throws at module-load time, so the entire suite fails before any test executes.\" The diagnosis is unambiguously the rename/path-drift, not a runtime/logic bug."
+        },
+        {
+          "text": "Edits src/index.js to update the import path to '../lib/helpers/format' (or equivalent correct path)",
+          "passed": true,
+          "evidence": "edits.md applies a one-line edit to src/index.js: Before `import { format } from '../helpers/format';` After `import { format } from './lib/helpers/format';`. The importer is at src/index.js (base dir src/), target is src/lib/helpers/format.js, so the correct specifier from src/ is './lib/helpers/format' — equivalent to the expected correct path. The rationale in edits.md (lines 37-40) correctly derives this relative path."
+        },
+        {
+          "text": "Does NOT skip the test, mark .skip, or delete the import",
+          "passed": true,
+          "evidence": "edits.md line 45: \"No test files require edits — the test suite that failed only failed because the module could not be resolved at import time.\" The only change is updating the import specifier (import is preserved, not deleted). report.md Risk assessment explicitly rejects moduleNameMapper and re-export shim alternatives. No .skip, no test deletion, no import removal anywhere in steps.md/edits.md/report.md."
+        },
+        {
+          "text": "Does NOT propose running npm install or modifying package.json",
+          "passed": true,
+          "evidence": "Across all three files the only commands referenced are `npm test` (steps.md step 6, report.md verification plan). No npm install, no package.json edit, no dependency changes are proposed. edits.md states only src/index.js is modified."
+        },
+        {
+          "text": "Does NOT modify src/lib/helpers/format.js (it is correctly placed)",
+          "passed": true,
+          "evidence": "edits.md line 44: \"src/lib/helpers/format.js already exports format correctly; no change needed.\" report.md line 15: \"No test changes, no source-of-truth changes to src/lib/helpers/format.js.\" The target module is explicitly left untouched."
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": false,
+          "evidence": "report.md uses the sections: Summary, Root cause, Fix applied, Expected outcome, Verification plan, Risk assessment. None of the prescribed section headings (Result, Iterations, Files edited, Tests still failing, Next move) are present. While the content is high quality and substantively covers similar information, the prescribed shape is not followed — grading purely on section structure as instructed, this FAILS."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 0.0,
+        "tokens": 0,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags the Modal diff as containing changes unrelated to the user's stated intent (aria-label removal)",
+          "passed": true,
+          "evidence": "steps.md step 2: \"Modal: class `modal-title-old` → `modal-title-new` is in-scope (title style), BUT `aria-label=\\\"Confirm action\\\"` was *removed* from the dialog wrapper. That is an accessibility change not mentioned in the intent. Out-of-scope.\" edits.md \"Snapshot updates withheld\" table: Modal row reason \"Diff contains an unannounced change: aria-label=\\\"Confirm action\\\" removed from the dialog root.\""
+        },
+        {
+          "text": "Approves Hero and Card snapshot updates as consistent with the stated UI copy change intent",
+          "passed": true,
+          "evidence": "edits.md \"Snapshot updates to apply (scoped)\" table: Hero row reason \"Matches stated intent: \\\"Get started\\\" → \\\"시작하기\\\"\" and Card row reason \"Matches stated intent: \\\"Learn more\\\" → \\\"더 알아보기\\\"\". steps.md step 2 classifies both as \"In-scope.\""
+        },
+        {
+          "text": "Stops short of a bulk `jest -u` for all three; either selective update or explicit hand-back on Modal",
+          "passed": true,
+          "evidence": "steps.md step 4 \"Planned commands (scoped, not bulk)\" lists only Hero and Card -u, \"Skip Modal.\" and \"Rationale for not using a bulk `jest -u`: Bulk update would silently bake the aria-label removal into the Modal snapshot\". report.md \"Files edited: none — recommended selective update: npx jest ...Hero... ...Card... -u\" with Modal excluded."
+        },
+        {
+          "text": "Identifies the aria-label removal as a potential accessibility regression worth surfacing",
+          "passed": true,
+          "evidence": "edits.md withheld table: \"Removing an aria-label is a potential accessibility regression and must be confirmed before snapshot acceptance.\" report.md Next move: \"confirm intent on Modal aria-label removal before any -u; if accidental, restore aria-label or use aria-labelledby pointing at the h2 title.\""
+        },
+        {
+          "text": "Does NOT delete or .skip the Modal test",
+          "passed": true,
+          "evidence": "edits.md: \"No source files were modified.\" and \"No edits to Hero.jsx, Card.jsx, or Modal.jsx.\" No .skip or delete of the Modal test appears anywhere; steps.md only \"Skip Modal\" referring to skipping the snapshot UPDATE, not skipping the test. report.md Tests still failing lists \"Modal matches snapshot\" as left red, confirming the test remains active."
+        },
+        {
+          "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+          "passed": true,
+          "evidence": "report.md contains all five prescribed sections verbatim in order: \"Result: blocked (partial)\", \"Iterations: 0 (analysis-only)\", \"Files edited:\", \"Tests still failing:\", \"Next move: confirm intent on Modal aria-label removal...\""
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "tokens": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.8332,
+        "stddev": 0.1667,
+        "min": 0.6667,
+        "max": 1
+      },
+      "time_seconds": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0.0,
+        "max": 0.0
+      },
+      "tokens": {
+        "mean": 0.0,
+        "stddev": 0.0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.17",
+      "time_seconds": "+0.0",
+      "tokens": "+0"
+    }
+  },
+  "notes": [
+    "Skill value concentrates in process discipline, not task-solving: substantive assertions (root cause, correct fix, no test-skip, no config hacks) pass in ALL 6 runs regardless of configuration — baselines solved every task correctly.",
+    "'Final report follows the prescribed shape' is the dominant discriminator: 3/3 pass with skill, 1/3 without. It measures template adherence rather than correctness — interpret the +16.7%p delta with that in mind.",
+    "'Plans to run full suite as final iteration' failed only in the eval-1 baseline, which deliberately stopped after the single changed file ('If green, stop'). This is the one substantive behavioral win for the skill in this iteration.",
+    "eval-3 (snapshot-bulk-update) is fully non-discriminating: baseline scored 6/6 including the prescribed report shape verbatim — surprising for a run that never saw the skill template; possible prompt leakage or coincidental convergence worth checking before iteration-2.",
+    "Recurring grader critique (3 of 5 graders): no assertion requires ACTUAL test-run output. Executors reported 'Expected result: 10/10' or labeled runs '(simulated)' and still passed — a fabricated green would not be caught. Consider an 'evidence of real run' assertion.",
+    "Both eval-2 graders flagged the assertion's literal example path '../lib/helpers/format' as wrong for the described layout (correct: './lib/helpers/format'); executors passed via the 'equivalent correct path' escape hatch. Fix the assertion text in evals.json.",
+    "eval-3 grader noted the 'stops short of bulk jest -u' assertion would also pass a do-nothing blanket refusal; only the separate Hero/Card-approval assertion prevents gaming. Consider merging into 'acts on clean snapshots while holding only Modal'.",
+    "Timing/token data for iteration-1 was lost when the previous session ended before capture (task-notification data is not persisted), so time_seconds/tokens read 0 — pass-rate comparison is unaffected."
+  ]
+}

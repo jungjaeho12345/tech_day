@@ -11,12 +11,6 @@
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-l", "-c", "export PATH=\"/c/Program Files/nodejs:$PATH\"; exec npx -y @modelcontextprotocol/server-sequential-thinking"]
     },
-    "moai-lsp": {
-      "$comment": "LSP code intelligence via moai binary (goto definition, find references, hover, diagnostics, rename)",
-      "command": "moai",
-      "args": ["mcp", "lsp"],
-      "timeout": 30
-    },
     "slack": {
       "$comment": "Slack messaging — posts task completion summaries to the tech-day channel. Token/team read from user env vars (not committed).",
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",

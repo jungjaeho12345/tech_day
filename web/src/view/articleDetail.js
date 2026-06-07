@@ -1,5 +1,5 @@
 // Article-detail document builder (news.md "# 상세보기"):
-// 상세보기 클릭 시 새 창 — 상단에 공통정보 12개 필드, 하단에 기사 제목/본문.
+// 상세보기 클릭 시 새 창 — 상단에 공통정보 12개 필드(가로 나열), 하단에 제목/본문을 한 통합 영역에 함께.
 // Pure functions only — no DOM/window access here, so they are unit-testable in isolation.
 // The view layer (ViewPage) calls window.open and writes the returned HTML string.
 
@@ -20,12 +20,12 @@ export function escapeHtml(value) {
 }
 
 // 공통정보 (common-info) fields per news.md "# 상세보기" enumeration, in display order.
-// `description` is the form-only "내용" field (distinct from the article body which is shown
-// at the bottom). `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
+// `content` is the form's "내용" field saved by WritePage (COMMON_FIELDS key: content).
+// `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
 const COMMON_INFO_FIELDS = Object.freeze([
   ['author', '작성자'],
   ['coAuthor', '공동작성'],
-  ['description', '내용'],
+  ['content', '내용'],
   ['region', '지역'],
   ['attribute', '속성'],
   ['keyword', '키워드'],
@@ -62,7 +62,7 @@ function buildCommonInfoRows(article) {
 
 /**
  * Build a full standalone HTML document for the article-detail popup window.
- * Layout per news.md "# 상세보기": 상단 공통정보(12 필드) → 하단 제목 + 본문.
+ * Layout: 상단 공통정보(12 필드, 가로 나열) → 하단 통합 "기사" 영역(제목 → 본문 함께).
  * 연합뉴스 블루/화이트 톤 (CLAUDE.md 디자인 규칙: 파란색과 흰색, 글자색은 파란색).
  * @param {Record<string, unknown>} article
  * @returns {string}
@@ -114,16 +114,24 @@ export function buildArticleDetailHtml(article) {
     padding-bottom: 8px;
     border-bottom: 1px solid var(--yh-gray-line);
   }
+  /* 공통정보 12 필드를 세로가 아닌 가로로 나열한다 (list.do 상세보기 레이아웃 개편).
+     flex-wrap 으로 좁은 새창에서도 줄바꿈되어 깨지지 않는다. */
   .yh-detail__info {
     margin: 0;
-    border-top: 1px solid var(--yh-gray-line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .yh-detail__row {
-    display: grid;
-    grid-template-columns: 8rem 1fr;
-    gap: 8px;
+    flex: 1 1 9rem;
+    min-width: 9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     padding: 6px 8px;
-    border-bottom: 1px solid var(--yh-gray-line);
+    border: 1px solid var(--yh-gray-line);
+    border-radius: 4px;
+    background: var(--yh-blue-soft);
     font-size: 0.9rem;
   }
   .yh-detail__row dt {
@@ -138,14 +146,17 @@ export function buildArticleDetailHtml(article) {
   .yh-detail__row--empty dd {
     color: var(--yh-gray-mid);
   }
-  /* SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS: body font-size > title font-size (시각적 강조). */
+  /* 제목/본문을 하나의 통합 영역(.yh-detail__article)에서 제목 → 본문 순으로 함께 보여준다 (분리 2영역 폐지).
+     SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS 유지: body font-size > title font-size (시각적 강조). */
   .yh-detail__title {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
     font-size: 1.3rem;
     font-weight: 700;
     line-height: 1.3;
     color: var(--yh-blue-deep);
-    margin: 0;
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--yh-gray-line);
   }
   .yh-detail__content {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
@@ -165,12 +176,9 @@ export function buildArticleDetailHtml(article) {
 ${commonRows}
     </dl>
   </section>
-  <section class="yh-detail__section" aria-label="제목">
-    <h2 class="yh-detail__section-title">제목</h2>
+  <section class="yh-detail__section yh-detail__article" aria-label="기사">
+    <h2 class="yh-detail__section-title">기사</h2>
     <h1 class="yh-detail__title">${title}</h1>
-  </section>
-  <section class="yh-detail__section" aria-label="본문">
-    <h2 class="yh-detail__section-title">본문</h2>
     <div class="yh-detail__content">${body}</div>
   </section>
 </body>

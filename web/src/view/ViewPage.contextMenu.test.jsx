@@ -2,7 +2,7 @@
 // Verifies the item sets per active menu, the functional actions (상세보기 / 본문복사 / 제목만복사 / 편집),
 // disabled placeholders for non-functional actions, and close-on-Escape / outside-click.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, within, act, fireEvent } from '@testing-library/react';
+import { render, screen, within, act, fireEvent, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ViewPage } from './ViewPage.jsx';
 import { ModelContext, SessionContext } from '../app/context.js';
@@ -175,14 +175,194 @@ describe('ViewPage context menu — close behavior', () => {
   });
 });
 
-describe('ViewPage 데스크 미송고 visible 편집 button — Feature 3 entry', () => {
-  it('renders a visible 편집 button that navigates to the write page with the id', async () => {
-    const u = userEvent.setup();
+describe('ViewPage 데스크 미송고 — 7컬럼 전용 행 (REQ-FE-VIEW-008 v0.3.0)', () => {
+  it('does NOT render an inline 편집 button (편집 is context-menu only); columns render instead', async () => {
     const navigate = vi.fn();
-    const row = { articleId: 'A-VIS', title: 'visible edit', status: 'RDS', createdAt: '2026-05-02T08:00:00Z' };
+    const row = {
+      articleId: 'A-VIS', title: 'visible edit', author: '작', modifier: '수',
+      status: 'RDS', createdAt: '2026-05-02T08:00:00Z', editedAt: '2026-05-03T08:00:00Z', lockYN: 'N',
+    };
     renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }), navigate });
-    const editBtn = await screen.findByRole('button', { name: '편집' });
-    await u.click(editBtn);
-    expect(navigate).toHaveBeenCalledWith('write', { id: 'A-VIS' });
+    await screen.findByText('visible edit');
+    // 인라인 편집 버튼 제거 — 컬럼 8개 (기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN).
+    expect(screen.queryByRole('button', { name: '편집' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('article-id')).toHaveTextContent('A-VIS');
+    expect(screen.getByTestId('article-status')).toHaveTextContent('RDS');
+    expect(screen.getByTestId('article-lockyn')).toHaveTextContent('N');
+  });
+});
+
+// SPEC-NEWS-REVISE-007 — 부서별 송고 진입점 와이어링 (REQ-FWD-ENTRYPOINTS / REQ-REVISE-SEMANTICS).
+// 부서별 송고 메뉴는 DPS 기사만 조회한다 (news.md). 이 describe는 부서별 송고로 메뉴를 전환한 뒤
+// 우클릭 컨텍스트 메뉴(편집/고침/포털고침)와 DPS 행 버튼(고침/포털고침)의 포워딩을 검증한다.
+describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)', () => {
+  const D_USER = { userId: 'd1', name: 'Desk', role: 'D', department: 'Politics' };
+  const R_USER = { userId: 'r1', name: 'Rep', role: 'R', department: 'Politics' };
+  const Z_USER = { userId: 'z1', name: 'Adm', role: 'Z', department: 'Politics' };
+
+  // Switch to 부서별 송고, pick a department, press 조회 so the DPS rows load. The fake model returns
+  // the same rows regardless of the filter, so any department selection surfaces the seeded row.
+  async function gotoSongoMenu({ user = D_USER, rows } = {}) {
+    const u = userEvent.setup();
+    const model = createFakeModel({
+      queryUsers: vi.fn().mockResolvedValue([{ department: 'Politics' }]),
+      queryArticles: vi.fn().mockResolvedValue(rows),
+    });
+    const navigate = vi.fn();
+    renderView({ model, user, navigate });
+    await u.click(screen.getByRole('button', { name: '부서별 송고' }));
+    // Open multi-select dropdown and select Politics.
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await u.click(within(multiSelect).getByRole('button'));
+    await u.click(screen.getByTestId('dept-checkbox-Politics'));
+    await u.click(screen.getByRole('button', { name: '조회' }));
+    return { u, navigate };
+  }
+
+  const dpsRow = {
+    articleId: 'AKR20260606XYZ', title: 'songo row', status: 'DPS',
+    author: '작', createdAt: '2026-06-06T08:00:00Z',
+  };
+
+  it('AC-FWD-1: 부서별 송고 우클릭 메뉴에 활성 편집 항목이 있고 클릭 시 작성 페이지로 포워딩', async () => {
+    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    const edit = within(menu).getByRole('menuitem', { name: /편집/ });
+    expect(edit).toBeEnabled();
+    await u.click(edit);
+    expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+  });
+
+  it('AC-FWD-2: D 권한 + DPS 에서 고침(포털제외)/포털고침이 활성이고 각각 포워딩', async () => {
+    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    const gochim = within(menu).getByRole('menuitem', { name: /고침\(포털제외\)/ });
+    const portal = within(menu).getByRole('menuitem', { name: /포털고침/ });
+    expect(gochim).toBeEnabled();
+    expect(portal).toBeEnabled();
+    await u.click(gochim);
+    expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+  });
+
+  it('AC-FWD-2 (포털고침 포워딩): 우클릭 포털고침 클릭 시 작성 페이지로 포워딩', async () => {
+    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    await u.click(within(menu).getByRole('menuitem', { name: /포털고침/ }));
+    expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+  });
+
+  it('AC-FWD-2/AC-REV-3: R 권한은 고침/포털고침이 비활성으로 남고 포워딩하지 않는다', async () => {
+    const { u, navigate } = await gotoSongoMenu({ user: R_USER, rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    const gochim = within(menu).getByRole('menuitem', { name: /고침\(포털제외\)/ });
+    const portal = within(menu).getByRole('menuitem', { name: /포털고침/ });
+    expect(gochim).toBeDisabled();
+    expect(portal).toBeDisabled();
+    await u.click(gochim).catch(() => {});
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('AC-REV-3: Z 권한도 고침/포털고침이 비활성으로 남는다', async () => {
+    const { navigate } = await gotoSongoMenu({ user: Z_USER, rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    expect(within(menu).getByRole('menuitem', { name: /고침\(포털제외\)/ })).toBeDisabled();
+    expect(within(menu).getByRole('menuitem', { name: /포털고침/ })).toBeDisabled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('AC-FWD-1/AC-REV-3: 편집 항목은 권한과 무관하게 R 권한에서도 활성이며 포워딩한다', async () => {
+    const { u, navigate } = await gotoSongoMenu({ user: R_USER, rows: [dpsRow] });
+    const menu = await openMenuOnRow('songo row');
+    const edit = within(menu).getByRole('menuitem', { name: /편집/ });
+    expect(edit).toBeEnabled();
+    await u.click(edit);
+    expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+  });
+
+  it('AC-FWD-3: DPS 행의 고침 버튼 클릭 시 포워딩하며 행 클릭(상세보기)을 동시 발생시키지 않는다', async () => {
+    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      const gochimBtn = await screen.findByRole('button', { name: '고침' });
+      await u.click(gochimBtn);
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      // 행 클릭(상세보기 새창)은 발생하지 않는다 (stopPropagation 유지).
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('AC-FWD-3 (포털고침 버튼): DPS 행의 포털고침 버튼 클릭 시 포워딩 + 전파 차단', async () => {
+    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    try {
+      const portalBtn = await screen.findByRole('button', { name: '포털고침' });
+      await u.click(portalBtn);
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('AC-FWD-3 (게이팅): D 권한이 아니면 행 버튼은 비활성으로 남고 포워딩하지 않는다', async () => {
+    const { u, navigate } = await gotoSongoMenu({ user: R_USER, rows: [dpsRow] });
+    const gochimBtn = await screen.findByRole('button', { name: '고침' });
+    const portalBtn = screen.getByRole('button', { name: '포털고침' });
+    expect(gochimBtn).toBeDisabled();
+    expect(portalBtn).toBeDisabled();
+    await u.click(gochimBtn).catch(() => {});
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('AC-FWD-4: 5 진입점(우클릭 편집/고침/포털고침 + 행 고침/포털고침)이 동일 id 로 동일 경로 포워딩', async () => {
+    // Each leg renders a fresh ViewPage; cleanup() between legs prevents duplicate DOM (multiple menus).
+    // (a) 우클릭 편집
+    {
+      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+      const menu = await openMenuOnRow('songo row');
+      await u.click(within(menu).getByRole('menuitem', { name: /편집/ }));
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      cleanup();
+    }
+    // (b) 우클릭 고침(포털제외)
+    {
+      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+      const menu = await openMenuOnRow('songo row');
+      await u.click(within(menu).getByRole('menuitem', { name: /고침\(포털제외\)/ }));
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      cleanup();
+    }
+    // (c) 우클릭 포털고침
+    {
+      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+      const menu = await openMenuOnRow('songo row');
+      await u.click(within(menu).getByRole('menuitem', { name: /포털고침/ }));
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      cleanup();
+    }
+    // (d) 행 고침 버튼
+    {
+      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+      await u.click(await screen.findByRole('button', { name: '고침' }));
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+      cleanup();
+    }
+    // (e) 행 포털고침 버튼
+    {
+      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
+      await u.click(await screen.findByRole('button', { name: '포털고침' }));
+      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
+    }
+  });
+
+  it('AC-FWD-1 (중복 금지): 부서별 작성 메뉴에는 부서별 송고 전용 편집 항목이 추가되지 않는다', async () => {
+    const u = userEvent.setup();
+    const row = { articleId: 'A-W', title: 'write-menu row', status: 'RDS', createdAt: '2026-05-02T08:00:00Z' };
+    renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }) });
+    await u.click(screen.getByRole('button', { name: '부서별 작성' }));
+    const menu = await openMenuOnRow('write-menu row');
+    expect(within(menu).queryByRole('menuitem', { name: /편집/ })).not.toBeInTheDocument();
   });
 });

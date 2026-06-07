@@ -11,7 +11,8 @@ const QUERY_FILTERS = Object.freeze({
   articleId: 'articleId',
   author: 'author',
   sender: 'sender',
-  status: 'status',
+  // SPEC-FRONTEND-UI-001 v0.4.0 — 부서별 작성/송고 menus filter by department. Previously this key
+  // was silently ignored (not in QUERY_FILTERS), so department menu queries returned ALL rows.
   department: 'department',
 });
 
@@ -32,14 +33,20 @@ export function createArticleModel(db) {
       db.prepare(
         `INSERT INTO Contents (articleId, title, content, author, modifier, sender,
           department, departmentCode, createdAt, editedAt, sentAt, distributedAt,
-          embargoAt, secondEmbargoAt, status, lockYN)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          embargoAt, secondEmbargoAt, status, lockYN,
+          coAuthor, region, attribute, keyword,
+          internalComment, externalComment, attachmentFile, referenceFile)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         articleId, data.title ?? null, data.content ?? null, data.author ?? null,
         data.modifier ?? null, data.sender ?? null, data.department ?? null,
         data.departmentCode ?? null, data.createdAt ?? null, data.editedAt ?? null,
         data.sentAt ?? null, data.distributedAt ?? null, data.embargoAt ?? null,
         data.secondEmbargoAt ?? null, data.status, data.lockYN ?? 'N',
+        // 공통정보 8 fields persisted so edit-load can restore them (news.md 기사 편집 기능).
+        data.coAuthor ?? null, data.region ?? null, data.attribute ?? null, data.keyword ?? null,
+        data.internalComment ?? null, data.externalComment ?? null,
+        data.attachmentFile ?? null, data.referenceFile ?? null,
       );
     },
 
@@ -47,33 +54,55 @@ export function createArticleModel(db) {
       return db.prepare('SELECT * FROM Contents WHERE articleId = ?').get(articleId);
     },
 
-    /** Query Contents by an AND-combination of the supported metadata filters.
-     * Array values use IN (?,?,...) — each element is bound individually.
-     * Empty arrays produce a always-false clause (0 rows) safely via parameterized SQL.
-     * Scalar values use the existing column = ? path.
+    /**
+     * Query Contents by an AND-combination of the supported metadata filters.
+     * Rows are joined with Article.markupVersion (LEFT JOIN on the shared PK) so an edit-load
+     * fetch (`query({ articleId })`) can repaint the editor body — markupVersion lives ONLY in
+     * the Article table and was previously absent from these rows (편집 진입 시 빈 화면 원인).
+     * Filter columns are c.-qualified because articleId/title/content exist in BOTH tables.
      */
     query(filters = {}) {
       const clauses = [];
       const values = [];
       for (const [key, column] of Object.entries(QUERY_FILTERS)) {
-        const val = filters[key];
-        if (val === undefined || val === null) continue;
-        if (Array.isArray(val)) {
-          if (val.length === 0) {
-            // Empty array: match nothing — inject a reliably false clause without values.
-            clauses.push('1 = 0');
+        if (filters[key] !== undefined && filters[key] !== null) {
+          // department filter — comma-separated multi-value supported (e.g. 'Politics,Economy').
+          if (key === 'department') {
+            const depts = String(filters[key]).split(',').filter(Boolean);
+            if (depts.length > 0) {
+              clauses.push(`c.${column} IN (${depts.map(() => '?').join(',')})`);
+              values.push(...depts);
+            }
           } else {
-            const placeholders = val.map(() => '?').join(', ');
-            clauses.push(`${column} IN (${placeholders})`);
-            values.push(...val);
+            clauses.push(`c.${column} = ?`);
+            values.push(filters[key]);
           }
-        } else {
-          clauses.push(`${column} = ?`);
-          values.push(val);
+        }
+      }
+      // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).
+      // Previously status was silently ignored (not in QUERY_FILTERS), so menu filters returned all rows.
+      if (filters.status !== undefined && filters.status !== null && filters.status !== '') {
+        const statuses = String(filters.status).split(',').filter(Boolean);
+        if (statuses.length > 0) {
+          clauses.push(`c.status IN (${statuses.map(() => '?').join(',')})`);
+          values.push(...statuses);
+        }
+      }
+      // statusNot filter — comma-separated exclusion (e.g. 'DPS,RRH' from 부서별 작성).
+      // Mirrors the status IN clause as NOT IN so menu filters can exclude lifecycle states.
+      if (filters.statusNot !== undefined && filters.statusNot !== null && filters.statusNot !== '') {
+        const excluded = String(filters.statusNot).split(',').filter(Boolean);
+        if (excluded.length > 0) {
+          clauses.push(`c.status NOT IN (${excluded.map(() => '?').join(',')})`);
+          values.push(...excluded);
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
-      return db.prepare(`SELECT * FROM Contents${where}`).all(...values);
+      return db.prepare(
+        `SELECT c.*, a.markupVersion AS markupVersion
+           FROM Contents c
+           LEFT JOIN Article a ON a.articleId = c.articleId${where}`,
+      ).all(...values);
     },
 
     /** Full-text-ish search over title/content. */

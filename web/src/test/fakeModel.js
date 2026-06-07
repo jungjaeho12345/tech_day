@@ -29,7 +29,7 @@ export function createFakeModel(overrides = {}) {
     async searchArticles() {
       return [];
     },
-    async searchMedia() {
+    async searchMedia(_query, _type) {
       return { items: [], error: false };
     },
     async applyAction(_articleId, role, action) {

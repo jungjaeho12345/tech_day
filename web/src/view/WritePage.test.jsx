@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WritePage } from './WritePage.jsx';
 import { ModelContext } from '../app/context.js';
@@ -19,6 +19,15 @@ function renderWrite(model = createFakeModel(), user = USER) {
     </ModelContext.Provider>,
   );
 }
+
+// REQ-FE-WRITE-012/013 v0.3.0 — 송고/보류/KILL은 window.confirm 확인창을 선행한다. 기존 시나리오가
+// 액션 경로를 그대로 검증할 수 있도록 기본은 '확인(true)'으로 모킹한다 (취소 경로는 AC-5.4 전용 테스트).
+beforeEach(() => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('WritePage layout/tabs/fields (REQ-FE-WRITE-001..006,015)', () => {
   it('AC-3.1: two regions + four tabs + 송고/보류 above tabs', () => {
@@ -57,30 +66,49 @@ describe('WritePage layout/tabs/fields (REQ-FE-WRITE-001..006,015)', () => {
 });
 
 describe('WritePage media + text-article search (REQ-FE-WRITE-007..011) [DP-F3]', () => {
-  it('AC-4.1: image search calls Model.searchMedia (proxy) and shows YouTube results', async () => {
+  it('AC-4.1: image search calls Model.searchMedia with type "image" and shows Google Image results', async () => {
     const user = userEvent.setup();
     const searchMedia = vi.fn().mockResolvedValue({
-      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x' }],
+      items: [{ source: 'google', title: 'G image', url: 'https://g/img' }],
       error: false,
     });
     renderWrite(createFakeModel({ searchMedia }));
     await user.click(screen.getByRole('tab', { name: '이미지' }));
     await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'flood');
     await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
-    expect(searchMedia).toHaveBeenCalledWith('flood');
+    // type-routed: 이미지 tab -> Google Image Search (source 'google'), called with type 'image'.
+    expect(searchMedia).toHaveBeenCalledWith('flood', 'image');
+    expect(await screen.findByText('G image')).toBeInTheDocument();
+  });
+
+  it('AC-4.1b: 영상 tab search calls Model.searchMedia with type "video" (YouTube results)', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'flood');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    // type-routed: 영상 tab -> YouTube (source 'youtube'), called with type 'video'.
+    expect(searchMedia).toHaveBeenCalledWith('flood', 'video');
     expect(await screen.findByText('YT clip')).toBeInTheDocument();
   });
 
-  it('AC-4.2: provider-agnostic — Google fallback results are shown the same way', async () => {
+  it('AC-4.2: provider-agnostic rendering — Google Image results render the same way (이미지 tab)', async () => {
     const user = userEvent.setup();
+    // 이미지 tab is now type-routed to Google Image Search (source 'google'); the result list renders
+    // google-source items identically to any other provider (the View is provider-agnostic).
     const searchMedia = vi.fn().mockResolvedValue({
       items: [{ source: 'google', title: 'G result', url: 'https://g/x' }],
       error: false,
     });
     renderWrite(createFakeModel({ searchMedia }));
-    await user.click(screen.getByRole('tab', { name: '영상' }));
-    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'q');
-    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    expect(searchMedia).toHaveBeenCalledWith('q', 'image');
     expect(await screen.findByText('G result')).toBeInTheDocument();
   });
 
@@ -216,7 +244,7 @@ describe('WritePage media + text-article search (REQ-FE-WRITE-007..011) [DP-F3]'
 });
 
 describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
-  it('AC-5.1: 송고 assembles DTO, sends action+DTO only, shows backend-returned state', async () => {
+  it('AC-5.1: 송고 confirms, assembles DTO, sends action+DTO only, hides status message on success', async () => {
     const user = userEvent.setup();
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -226,24 +254,71 @@ describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
     // it is sent in the DTO without retyping.
     await user.click(screen.getByRole('button', { name: '송고' }));
 
+    // v0.3.0: 확인창 선행 ('송고하시겠습니까?').
+    expect(window.confirm).toHaveBeenCalledWith('송고하시겠습니까?');
     // DTO assembled from editor markup + common-info fields and persisted.
     expect(saveArticle).toHaveBeenCalled();
     const dto = saveArticle.mock.calls[0][1];
     expect(dto).toMatchObject({ markupVersion: expect.stringContaining('hello body'), author: 'Desk' });
     // Action sent as send; client did NOT compute next state.
     expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DPS');
+    // v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — 페이지 초기화(리셋)로 성공을 확인.
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 
-  it('AC-5.2: 보류 submits hold action and shows returned state', async () => {
+  it('AC-5.2: 보류 confirms, SAVES the DTO first, then submits hold (no status message on success)', async () => {
     const user = userEvent.setup();
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-H' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDH' });
-    renderWrite(createFakeModel({ applyAction }));
+    renderWrite(createFakeModel({ saveArticle, applyAction }));
     // 보류 now requires a title (the editor's first line); type one so the DDH success path is exercised.
     await user.type(screen.getByTestId('editor-body'), '보류 제목');
     await user.click(screen.getByRole('button', { name: '보류' }));
-    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'D', 'hold');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DDH');
+    expect(window.confirm).toHaveBeenCalledWith('보류하시겠습니까?');
+    // v0.3.0: 보류도 송고처럼 DTO를 먼저 저장하고, 저장된 articleId로 hold를 제출한다.
+    expect(saveArticle).toHaveBeenCalled();
+    expect(applyAction).toHaveBeenCalledWith('A-H', 'D', 'hold');
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
+  });
+
+  it('AC-5.3: KILL confirms, SAVES the DTO first, then submits kill (편집 컨텍스트)', async () => {
+    // v0.6.0: KILL은 기사아이디가 생성된(편집) 컨텍스트에서만 노출 — 편집 로드 후 KILL을 누른다.
+    window.history.replaceState({}, '', '/writer.do?id=A-K');
+    const row = {
+      articleId: 'A-K', status: 'RDS', author: '원작성자',
+      markupVersion: contentToMarkup(contentFromText('킬 대상(끝)')),
+    };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-K' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRK' });
+    const user = userEvent.setup();
+    renderWrite(createFakeModel({ queryArticles, saveArticle, applyAction }), REPORTER);
+    await screen.findByDisplayValue('원작성자');
+    await user.click(screen.getByRole('button', { name: 'KILL' }));
+    expect(window.confirm).toHaveBeenCalledWith('KILL하시겠습니까?');
+    expect(saveArticle).toHaveBeenCalled();
+    // 편집 컨텍스트의 applyAction은 페이지 락 sessionId를 4번째 인자로 싣는다 (AC-EDIT-LOCK-6).
+    expect(applyAction).toHaveBeenCalledWith('A-K', 'R', 'kill',
+      expect.objectContaining({ sessionId: expect.any(String) }));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('AC-5.4: cancelling the confirmation dialog aborts — no save, no action, no state change', async () => {
+    const user = userEvent.setup();
+    window.confirm.mockReturnValue(false); // 취소
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    renderWrite(createFakeModel({ saveArticle, applyAction }));
+    await user.type(screen.getByTestId('editor-body'), '취소 제목(끝)');
+    await user.click(screen.getByRole('button', { name: '송고' }));
+    await user.click(screen.getByRole('button', { name: '보류' }));
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+    // 에디터 내용 유지 (페이지 미초기화).
+    expect(screen.getByTestId('editor-body')).toHaveTextContent('취소 제목(끝)');
   });
 
   it('EC-5: backend rejects transition -> no state change shown, rejection notified', async () => {
@@ -291,7 +366,9 @@ describe('WritePage 송고/보류 title requirement (news.md: 제목이 없으�
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle).toHaveBeenCalled();
     expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DPS');
+    // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋(에디터 초기화)으로 성공을 확인.
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 });
 
@@ -390,22 +467,47 @@ describe('WritePage Backspace-after-embed deletes one embed (SPEC-NEWS-REVISE-00
 });
 
 describe('WritePage KILL action (news.md 기사작성 워크플로우, 기사 생애주기) [DP-F5]', () => {
-  it('AC-KILL-1: KILL button appears alongside 송고/보류 for role R', () => {
-    // KILL is role-R-only (news.md 기사 작성 페이지 내 버튼); render with a reporter to see it.
-    renderWrite(createFakeModel(), REPORTER);
-    expect(screen.getByRole('button', { name: 'KILL' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '보류' })).toBeInTheDocument();
+  afterEach(() => {
+    // 편집 컨텍스트 테스트가 바꾼 공유 jsdom URL을 원복해 다른 테스트로 새지 않게 한다.
+    window.history.replaceState({}, '', '/');
   });
 
-  it('AC-KILL-2: KILL submits the kill action and shows the backend-returned state (R->RRK)', async () => {
+  // 편집 컨텍스트 공통 셋업: 기사아이디가 생성된 RDS 기사를 로드한다 (v0.6.0 KILL 노출 조건).
+  function editContextModel(articleId, overrides = {}) {
+    window.history.replaceState({}, '', `/writer.do?id=${articleId}`);
+    const row = {
+      articleId, status: 'RDS', author: '원작성자',
+      markupVersion: contentToMarkup(contentFromText('킬 대상(끝)')),
+    };
+    return createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]), ...overrides });
+  }
+
+  it('AC-KILL-1: 기사아이디 미생성 초안에는 KILL 비표시, 편집 컨텍스트(R)에는 표시', async () => {
+    // v0.6.0 (news.md): 기사아이디가 생성되지 않은 기사를 작성 페이지에서 편집 시 KILL 버튼이 없다.
+    const { unmount } = renderWrite(createFakeModel(), REPORTER);
+    expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '보류' })).toBeInTheDocument();
+    unmount();
+
+    // 기사아이디가 생성된(편집 로드) RDS 기사에서는 종전 매트릭스대로 R에게 KILL이 보인다.
+    renderWrite(editContextModel('A-KILL-VIS'), REPORTER);
+    await screen.findByDisplayValue('원작성자');
+    expect(screen.getByRole('button', { name: 'KILL' })).toBeInTheDocument();
+  });
+
+  it('AC-KILL-2: KILL submits the kill action (R->RRK), no status message on success', async () => {
     const user = userEvent.setup();
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRK' });
-    // Role R required: KILL only renders for reporters.
-    renderWrite(createFakeModel({ applyAction }), REPORTER);
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-KILL-2' });
+    // Role R + 편집 컨텍스트 (v0.6.0: KILL은 기사아이디가 생성된 기사에서만 렌더된다).
+    renderWrite(editContextModel('A-KILL-2', { applyAction, saveArticle }), REPORTER);
+    await screen.findByDisplayValue('원작성자');
     await user.click(screen.getByRole('button', { name: 'KILL' }));
-    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'R', 'kill');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('RRK');
+    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'R', 'kill',
+      expect.objectContaining({ sessionId: expect.any(String) }));
+    // v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다.
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 });
 
@@ -423,31 +525,60 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
     expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
   });
 
-  it('role R draft (RDS): 송고/보류/KILL all visible', () => {
+  // v0.6.0 편집 컨텍스트 셋업 — 기사아이디가 생성된 RDS 기사를 로드해야 KILL이 노출된다.
+  function gotoEditContext(articleId) {
+    window.history.replaceState({}, '', `/writer.do?id=${articleId}`);
+    const row = {
+      articleId, status: 'RDS', author: '원작성자',
+      markupVersion: contentToMarkup(contentFromText('편집 본문(끝)')),
+    };
+    return createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) });
+  }
+
+  it('role R draft (RDS): 송고/보류 visible, KILL hidden (기사아이디 미생성, v0.6.0)', () => {
     renderWrite(createFakeModel(), REPORTER);
+    expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '보류' })).toBeInTheDocument();
+    // v0.6.0 (news.md): 기사아이디가 생성되지 않은 초안에서는 KILL을 표시하지 않는다.
+    expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
+  });
+
+  it('role R 편집 컨텍스트 (RDS, 기사아이디 보유): 송고/보류/KILL all visible', async () => {
+    renderWrite(gotoEditContext('A-R-EDIT'), REPORTER);
+    await screen.findByDisplayValue('원작성자');
     expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '보류' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'KILL' })).toBeInTheDocument();
   });
 
-  // SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS AC-Z-1:
-  // Z권한도 RDS 기사에서는 송고/보류/KILL 3개 버튼이 모두 보인다 (R과 동일 매트릭스).
-  it('AC-Z-1: role Z draft (RDS): 송고/보류/KILL all visible and enabled', () => {
+  // SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS AC-Z-1 (v0.6.0 개정):
+  // Z권한도 R과 동일 매트릭스 — 초안에선 송고/보류만, 기사아이디가 생성된 편집 컨텍스트에선 KILL까지.
+  it('AC-Z-1: role Z draft (RDS): 송고/보류 visible+enabled, KILL hidden (기사아이디 미생성)', () => {
     renderWrite(createFakeModel(), EDITOR_Z);
     const send = screen.getByRole('button', { name: '송고' });
     const hold = screen.getByRole('button', { name: '보류' });
-    const kill = screen.getByRole('button', { name: 'KILL' });
     expect(send).toBeInTheDocument();
     expect(hold).toBeInTheDocument();
-    expect(kill).toBeInTheDocument();
     expect(send).toBeEnabled();
     expect(hold).toBeEnabled();
-    expect(kill).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
+  });
+
+  it('AC-Z-1: role Z 편집 컨텍스트 (RDS): 송고/보류/KILL all visible and enabled', async () => {
+    renderWrite(gotoEditContext('A-Z-EDIT'), EDITOR_Z);
+    await screen.findByDisplayValue('원작성자');
+    for (const name of ['송고', '보류', 'KILL']) {
+      const btn = screen.getByRole('button', { name });
+      expect(btn).toBeInTheDocument();
+      expect(btn).toBeEnabled();
+    }
   });
 
   // SPEC-NEWS-REVISE-001 AC-Z-2: Z권한이라도 송고/보류/KILL 외 추가 액션 버튼은 노출 금지.
-  it('AC-Z-2: role Z (RDS) does not expose any extra action buttons beyond 송고/보류/KILL', () => {
-    renderWrite(createFakeModel(), EDITOR_Z);
+  // v0.6.0: KILL까지 전부 노출되는 편집 컨텍스트에서 정확히 3개임을 단언한다.
+  it('AC-Z-2: role Z (RDS, 편집 컨텍스트) does not expose any extra action buttons beyond 송고/보류/KILL', async () => {
+    renderWrite(gotoEditContext('A-Z-EXTRA'), EDITOR_Z);
+    await screen.findByDisplayValue('원작성자');
     for (const extra of ['고침', '포털고침', '재송', '삭제요청', '후속기사작성']) {
       expect(screen.queryByRole('button', { name: extra })).not.toBeInTheDocument();
     }
@@ -478,8 +609,10 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
   });
 
   // SPEC-NEWS-REVISE-001 AC-Z-5: 접근성 — Z권한 버튼들이 키보드 포커스 가능 + visible text.
-  it('AC-Z-5: role Z buttons are keyboard-focusable and have visible accessible labels', () => {
-    renderWrite(createFakeModel(), EDITOR_Z);
+  // v0.6.0: 3개 버튼이 전부 노출되는 편집 컨텍스트에서 검증한다.
+  it('AC-Z-5: role Z buttons are keyboard-focusable and have visible accessible labels', async () => {
+    renderWrite(gotoEditContext('A-Z-A11Y'), EDITOR_Z);
+    await screen.findByDisplayValue('원작성자');
     for (const name of ['송고', '보류', 'KILL']) {
       const btn = screen.getByRole('button', { name });
       // visible text가 있어 role + name 기반 쿼리가 성공한다는 사실이 접근 가능 라벨 존재의 증거.
@@ -490,13 +623,24 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
   });
 
   // SPEC-NEWS-REVISE-001 REQ-AUTH-Z-BUTTONS 회귀 가드: Z 클릭 시 articleUpdate 호출 경로가 살아 있다.
-  it('AC-Z (regression): role Z KILL click triggers applyAction(kill) and shows returned status', async () => {
+  // v0.6.0: KILL은 편집 컨텍스트에서만 노출되므로 편집 로드 후 클릭한다.
+  it('AC-Z (regression): role Z KILL click triggers applyAction(kill)', async () => {
     const user = userEvent.setup();
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRK' });
-    renderWrite(createFakeModel({ applyAction }), EDITOR_Z);
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-Z-KILL' });
+    window.history.replaceState({}, '', '/writer.do?id=A-Z-KILL');
+    const row = {
+      articleId: 'A-Z-KILL', status: 'RDS', author: '원작성자',
+      markupVersion: contentToMarkup(contentFromText('킬 대상(끝)')),
+    };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    renderWrite(createFakeModel({ queryArticles, saveArticle, applyAction }), EDITOR_Z);
+    await screen.findByDisplayValue('원작성자');
     await user.click(screen.getByRole('button', { name: 'KILL' }));
-    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'kill');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('RRK');
+    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'kill',
+      expect.objectContaining({ sessionId: expect.any(String) }));
+    // v0.3.0: 성공 시 상태 메시지 미표시.
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 
   // PR-REVIEW REGRESSION (lifecycle gap): Z권한 송고/보류 클릭 시 applyAction이 'Z' role로 호출되는지
@@ -506,7 +650,7 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
   // 성공 mock으로 자연스럽게 진화시킬 수 있다.
   // SPEC-NEWS-REVISE-001 D-6: Z권한 송고/보류 click -> applyAction('Z', send|hold) dispatch +
   // 백엔드 success 응답 (DPS/DDH) 반영. visibility AC-Z-1과는 별개로 click->backend 경로를 잠근다.
-  it('AC-Z (regression): role Z 송고 click -> applyAction(Z, send) and DPS status displayed', async () => {
+  it('AC-Z (regression): role Z 송고 click -> applyAction(Z, send), success resets the page', async () => {
     const user = userEvent.setup();
     // D-6: lifecycle.js Z|send -> DPS (D-mirror)
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -515,17 +659,20 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
     await user.type(screen.getByTestId('editor-body'), 'Z테스트제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'send');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DPS');
+    // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋으로 성공 확인.
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 
-  it('AC-Z (regression): role Z 보류 click -> applyAction(Z, hold) and DDH status displayed', async () => {
+  it('AC-Z (regression): role Z 보류 click -> applyAction(Z, hold), success resets the page', async () => {
     const user = userEvent.setup();
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDH' });
     renderWrite(createFakeModel({ applyAction }), EDITOR_Z);
     await user.type(screen.getByTestId('editor-body'), 'Z보류제목');
     await user.click(screen.getByRole('button', { name: '보류' }));
     expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'hold');
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DDH');
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
 
   it('edit-loaded non-RDS article (DPS): all three buttons hidden even for role R', async () => {
@@ -575,10 +722,9 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
 
     await user.click(screen.getByRole('button', { name: '송고' }));
 
-    // Status confirmation remains (AC-5.1 invariant).
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('DPS');
-    // Editor body text cleared.
-    expect(screen.getByTestId('editor-body')).toHaveTextContent('');
+    // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋 자체가 성공 신호.
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
     // Inline embeds gone.
     expect(within(screen.getByTestId('editor-region')).queryByTestId('embed-image')).not.toBeInTheDocument();
     // Common field reset: 작성자 re-defaults to the logged-in user name (news.md 공통정보), not blank.
@@ -587,15 +733,25 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
 
   it('AC-RESET-2: after KILL, the write page resets the same way', async () => {
     const user = userEvent.setup();
+    // v0.6.0: KILL은 기사아이디가 생성된 편집 컨텍스트에서만 노출 — 편집 로드 후 KILL을 누른다.
+    window.history.replaceState({}, '', '/writer.do?id=A-RESET-K');
+    const row = {
+      articleId: 'A-RESET-K', status: 'RDS', author: '원작성자',
+      markupVersion: contentToMarkup(contentFromText('킬 대상 본문(끝)')),
+    };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-RESET-K' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRK' });
-    // KILL is role-R-only now; render with a reporter so the KILL button exists to click.
-    renderWrite(createFakeModel({ applyAction }), REPORTER);
-    await user.type(screen.getByTestId('editor-body'), 'kill body');
+    renderWrite(createFakeModel({ queryArticles, saveArticle, applyAction }), REPORTER);
+    await screen.findByDisplayValue('원작성자');
+    expect(screen.getByTestId('editor-body')).toHaveTextContent('킬 대상 본문(끝)');
     await user.click(screen.getByRole('button', { name: 'KILL' }));
-    expect(await screen.findByTestId('lifecycle-status')).toHaveTextContent('RRK');
-    expect(screen.getByTestId('editor-body')).toHaveTextContent('');
+    // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋으로 성공 확인.
+    await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
+    expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
     // 작성자 re-defaults to the reporter's name after reset (news.md 공통정보).
     expect(within(screen.getByTestId('panel-공통정보')).getByLabelText('작성자')).toHaveValue(REPORTER.name);
+    window.history.replaceState({}, '', '/');
   });
 
   it('EC-RESET-3: a rejected action does NOT reset the page', async () => {
@@ -689,6 +845,19 @@ describe('WritePage Enter inserts a model "\\n" (caret-jump bug fix)', () => {
     fireEnter(body);
     // Model now holds the text + a trailing newline (the new blank line the caret should sit on).
     expect(body.textContent).toBe('제목줄\n');
+  });
+
+  it('v0.3.0: a document-final "\\n" is padded with a trailing <br> so the new line is VISIBLE (Enter-2회 증상)', async () => {
+    // pre-wrap에서 문서 끝의 '\n'은 줄박스를 만들지 않아 첫 Enter가 무동작처럼 보였다. paintEditor가
+    // bodyText가 '\n'으로 끝날 때 trailing <br>을 덧붙여 마지막 빈 줄을 렌더한다 (textContent 불변).
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '제목줄');
+    fireEnter(body);
+    // 모델은 '\n' 1개 — 그리고 마지막 자식으로 <br> 패딩이 렌더되어 빈 줄이 보인다.
+    expect(body.textContent).toBe('제목줄\n');
+    expect(body.lastElementChild?.tagName).toBe('BR');
   });
 
   it('Enter in the MIDDLE splits the line at the caret, not at offset 0', async () => {
@@ -1015,11 +1184,15 @@ describe('WritePage inline embed at caret (AC-EMB-INLINE)', () => {
     expect(saveArticle).toHaveBeenCalled();
     const dto = saveArticle.mock.calls[0][1];
     const parsed = JSON.parse(dto.markupVersion);
-    // 기대: [text:"안녕", embed:video, text:"하세요(끝)"] — 블록 분할/순서 단언은 보존, 끝 텍스트만 (끝) 정합.
-    expect(parsed.blocks.length).toBe(3);
+    // 기대: [text:"안녕", embed:video, text:"하세요", text:"(끝)"] — 블록 분할/순서 단언은 보존.
+    // SPEC-NEWS-REVISE: "(끝)" 마커는 구분된 최종 텍스트 블록으로 항상 마지막에 위치한다
+    // (최종 시각 순서: 본문 텍스트 → embeds → "(끝)"). getBodyText()는 여전히 "(끝)"으로
+    // 끝나므로 송고 (끝) 가드(SPEC-NEWS-REVISE-005)는 그대로 통과한다.
+    expect(parsed.blocks.length).toBe(4);
     expect(parsed.blocks[0]).toMatchObject({ type: 'text', text: '안녕' });
     expect(parsed.blocks[1]).toMatchObject({ type: 'embed', embed: { type: 'video' } });
-    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요(끝)' });
+    expect(parsed.blocks[2]).toMatchObject({ type: 'text', text: '하세요' });
+    expect(parsed.blocks[3]).toMatchObject({ type: 'text', text: '(끝)' });
   });
 
   it('AC-EMB-INLINE-2: contentEditable 내부에 인라인 embed 스팬이 올바른 위치에 렌더된다', async () => {
@@ -1371,6 +1544,28 @@ describe('WritePage inline embed delete (AC-EMB-DEL-1/2/4)', () => {
     // embed는 여전히 0개.
     expect(within(editorRegion).queryByTestId('embed-image')).not.toBeInTheDocument();
   });
+
+  it('AC-EMB-DEL-TRAIL: trailing embed (at end of empty body) also renders × button', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'trail-img', url: 'https://yt/t', thumbnailUrl: 'https://th/t' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    // Insert embed into an empty body (no preceding text) -> it becomes a trailing embed.
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 trail-img' }));
+
+    const editorRegion = screen.getByTestId('editor-region');
+    // Trailing embed must have the × affordance.
+    const delBtn = within(editorRegion).getByRole('button', { name: '임베드 삭제' });
+    expect(delBtn).toBeInTheDocument();
+    // Clicking × removes the embed.
+    await user.click(delBtn);
+    expect(within(editorRegion).queryByTestId('embed-image')).not.toBeInTheDocument();
+  });
 });
 
 // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — lockError UI (AC-EDIT-LOCK-2, NFR-A11Y).
@@ -1411,6 +1606,118 @@ describe('WritePage edit lock rejection UI (AC-EDIT-LOCK-2, NFR-A11Y)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields display area (AC-MAP-2/3/4)
+// + 편집 5필드 회귀 (AC-REG-3). The read-only area appears ONLY in an edit context (?id= present).
+describe('SPEC-NEWS-REVISE-007 read-only ContentsVO 8 fields (AC-MAP-2/3/4, AC-REG-3)', () => {
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
+
+  const READONLY_LABELS = ['기사아이디', '수정자', '송고자', '부서', '부서코드', '작성시간', '편집시간', '송고시간'];
+
+  it('AC-MAP-2: 편집 컨텍스트에서 읽기전용 8필드가 라벨/값과 함께 readonly-meta 영역에 노출된다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=A-META');
+    const row = {
+      articleId: 'A-META',
+      markupVersion: contentToMarkup(contentFromText('메타 본문')),
+      author: '작성기자',
+      modifier: '수정기자',
+      sender: '송고기자',
+      department: '정치부',
+      departmentCode: 'POL',
+      createdAt: '2026-06-01T08:00:00Z',
+      editedAt: '2026-06-02T09:00:00Z',
+      sentAt: '2026-06-03T10:00:00Z',
+      status: 'DPS',
+    };
+    const queryArticles = vi.fn().mockResolvedValue([row]);
+    renderWrite(createFakeModel({ queryArticles }));
+
+    const meta = await screen.findByTestId('readonly-meta');
+    // 8개 라벨이 모두 영역 안에 노출된다.
+    for (const label of READONLY_LABELS) {
+      expect(within(meta).getByText(label)).toBeInTheDocument();
+    }
+    // 값도 노출된다.
+    expect(within(meta).getByTestId('readonly-articleId')).toHaveTextContent('A-META');
+    expect(within(meta).getByTestId('readonly-modifier')).toHaveTextContent('수정기자');
+    expect(within(meta).getByTestId('readonly-sender')).toHaveTextContent('송고기자');
+    expect(within(meta).getByTestId('readonly-department')).toHaveTextContent('정치부');
+    expect(within(meta).getByTestId('readonly-departmentCode')).toHaveTextContent('POL');
+  });
+
+  it('AC-MAP-2: 읽기전용 8필드는 입력 요소가 아니다 (편집 불가)', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=A-META2');
+    const row = {
+      articleId: 'A-META2', markupVersion: contentToMarkup(contentFromText('본문')),
+      author: 'a', modifier: 'm', sender: 's', department: 'd', departmentCode: 'c',
+      createdAt: 'x', editedAt: 'y', sentAt: 'z', status: 'DPS',
+    };
+    renderWrite(createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }));
+    const meta = await screen.findByTestId('readonly-meta');
+    // 영역 안에는 어떤 <input>/<textarea>/<select> 도 없다 — 표시 전용.
+    expect(meta.querySelectorAll('input, textarea, select')).toHaveLength(0);
+  });
+
+  it('AC-MAP-3: 신규 작성(?id= 없음)에서는 readonly-meta 영역이 렌더되지 않는다', async () => {
+    renderWrite(createFakeModel());
+    // 신규 작성 컨텍스트 — 읽기전용 영역 없음. 4탭/송고·보류 버튼은 그대로(회귀 없음).
+    expect(screen.queryByTestId('readonly-meta')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
+    for (const tab of ['공통정보', '이미지', '영상', '글기사']) {
+      expect(screen.getByRole('tab', { name: tab })).toBeInTheDocument();
+    }
+  });
+
+  it('AC-MAP-4: 누락 필드(송고시간 등)는 빈 값으로 안전 표시되고 undefined/null 문자열을 노출하지 않는다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=A-PARTIAL');
+    const row = {
+      articleId: 'A-PARTIAL',
+      markupVersion: contentToMarkup(contentFromText('부분 본문')),
+      author: '작성',
+      modifier: '수정',
+      // sender/department/departmentCode/editedAt/sentAt 누락 + createdAt null
+      createdAt: null,
+      status: 'DPS',
+    };
+    renderWrite(createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }));
+    const meta = await screen.findByTestId('readonly-meta');
+    // 존재하는 필드는 보존.
+    expect(within(meta).getByTestId('readonly-articleId')).toHaveTextContent('A-PARTIAL');
+    expect(within(meta).getByTestId('readonly-modifier')).toHaveTextContent('수정');
+    // 누락 필드는 빈 텍스트 — 'undefined'/'null' 문자열이 보이지 않는다.
+    for (const key of ['sender', 'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt']) {
+      const cell = within(meta).getByTestId(`readonly-${key}`);
+      expect(cell).toHaveTextContent('');
+      expect(cell.textContent).not.toMatch(/undefined|null/);
+    }
+  });
+
+  it('AC-REG-3: 읽기전용 영역 추가가 편집 5필드 입력란(작성자/엠바고/2차)을 읽기전용으로 바꾸지 않는다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=A-REG3');
+    const row = {
+      articleId: 'A-REG3',
+      markupVersion: contentToMarkup(contentFromText('회귀 본문')),
+      author: '편집기자',
+      modifier: '수정',
+      embargoAt: '2026-06-04T11:00',
+      secondEmbargoAt: '2026-06-05T12:00',
+      status: 'DPS',
+    };
+    renderWrite(createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]) }));
+    await screen.findByDisplayValue('편집기자');
+    const panel = screen.getByTestId('panel-공통정보');
+    const author = within(panel).getByLabelText('작성자');
+    const embargo = within(panel).getByLabelText('엠바고 시간');
+    const embargo2 = within(panel).getByLabelText('2차 엠바고 시간');
+    // 5필드 중 author/embargo/2차는 편집 가능(읽기전용 아님) + 로드된 값이 채워진다.
+    expect(author).toHaveValue('편집기자');
+    expect(author).not.toHaveAttribute('readonly');
+    expect(embargo).toHaveValue('2026-06-04T11:00');
+    expect(embargo2).toHaveValue('2026-06-05T12:00');
+  });
+});
+
 describe('WritePage edit-load from ?id= (Feature 3 — 데스크 미송고 편집)', () => {
   afterEach(() => {
     // Reset the shared jsdom URL so a stale ?id= does not leak into other WritePage tests.
@@ -1446,6 +1753,8 @@ describe('WritePage edit-load from ?id= (Feature 3 — 데스크 미송고 편�
     await screen.findByDisplayValue('원본');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle.mock.calls[0][0]).toBe('A-777');
-    expect(applyAction).toHaveBeenCalledWith('A-777', 'D', 'send');
+    // 편집 컨텍스트의 applyAction은 페이지 락 sessionId를 4번째 인자로 싣는다 (AC-EDIT-LOCK-6).
+    expect(applyAction).toHaveBeenCalledWith('A-777', 'D', 'send',
+      expect.objectContaining({ sessionId: expect.any(String) }));
   });
 });

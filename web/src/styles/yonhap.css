@@ -1,6 +1,8 @@
 /* ============================================================
-   yonhap.css  –  연합뉴스 visual design system
+   yonhap.css  –  연합뉴스 visual design system  (v2.0)
    Single-file stylesheet: tokens → resets → layout → components
+   Design direction: 연합뉴스 스타일 — blue+white, blue text accents,
+   white backgrounds, blue chrome leadership, red brand accent.
    ============================================================ */
 
 /* ----------------------------------------------------------
@@ -13,60 +15,80 @@
      BLUE leads the UI chrome (header border/wordmark, primary buttons, active tabs/nav, links, focus,
      table underline); RED stays as the 연합 brand accent (logo rule, alert border, "send" status badge).
      White backgrounds dominate. */
-  --yh-blue:         #0A4DA6;   /* primary chrome — 연합뉴스-compatible deep blue */
-  --yh-blue-dark:    #083d84;   /* hover/active emphasis */
-  --yh-blue-light:   rgba(10, 77, 166, 0.08); /* tint for hover rows / focus tints */
+  --yh-blue: #0a4da6; /* primary chrome — 연합뉴스-compatible deep blue */
+  --yh-blue-dark: #083d84; /* hover/active emphasis */
+  --yh-blue-light: rgba(
+    10,
+    77,
+    166,
+    0.08
+  ); /* tint for hover rows / focus tints */
 
-  --yh-red:          #C8102E;   /* accent/point — 연합 brand identity */
-  --yh-red-dark:     #a50d26;
-  --yh-red-light:    rgba(200, 16, 46, 0.08);
+  --yh-red: #c8102e; /* accent/point — 연합 brand identity */
+  --yh-red-dark: #a50d26;
+  --yh-red-light: rgba(200, 16, 46, 0.08);
 
-  --yh-gold:         #D4AF37;   /* 골드색 — Alt+Y "(끝)" end marker (news.md 기사 에디터) */
+  --yh-gold: #d4af37; /* 골드색 — Alt+Y "(끝)" end marker (news.md 기사 에디터) */
 
   /* Neutral palette */
-  --yh-ink:          #1a1a1a;
-  --yh-gray-line:    #DDD;
-  --yh-gray-bg:      #f5f5f5;
-  --yh-gray-mid:     #888;
-  --yh-gray-dark:    #444;
-  --yh-white:        #ffffff;
+  --yh-ink: #1a1a1a;
+  --yh-gray-line: #ddd;
+  --yh-gray-bg: #f5f5f5;
+  --yh-gray-mid: #888;
+  --yh-gray-dark: #444;
+  --yh-white: #ffffff;
 
   /* Typography stacks */
-  --yh-serif:  'Nanum Myeongjo', 'Noto Serif KR', serif;
-  --yh-sans:   'Noto Sans KR', system-ui, sans-serif;
+  --yh-serif: "Nanum Myeongjo", "Noto Serif KR", serif;
+  --yh-sans: "Noto Sans KR", system-ui, sans-serif;
 
   /* Spacing scale */
-  --yh-sp-xs:  0.25rem;
-  --yh-sp-sm:  0.5rem;
-  --yh-sp-md:  0.75rem;
-  --yh-sp-lg:  1rem;
-  --yh-sp-xl:  1.5rem;
+  --yh-sp-xs: 0.25rem;
+  --yh-sp-sm: 0.5rem;
+  --yh-sp-md: 0.75rem;
+  --yh-sp-lg: 1rem;
+  --yh-sp-xl: 1.5rem;
 
   /* Status-badge colour tokens */
-  --yh-badge-rds-bg:      #e8e8e8;
-  --yh-badge-rds-fg:      #555;
+  --yh-badge-rds-bg: #e8e8e8;
+  --yh-badge-rds-fg: #555;
 
-  --yh-badge-send-bg:     #C8102E;   /* *PS  (DPS, BPS …) – transmit/송고 */
-  --yh-badge-send-fg:     #ffffff;
+  --yh-badge-send-bg: #c8102e; /* *PS  (DPS, BPS …) – transmit/송고 */
+  --yh-badge-send-fg: #ffffff;
 
-  --yh-badge-hold-bg:     #d97706;   /* *RH / *DH – hold/보류 */
-  --yh-badge-hold-fg:     #ffffff;
+  --yh-badge-hold-bg: #d97706; /* *RH / *DH – hold/보류 */
+  --yh-badge-hold-fg: #ffffff;
 
-  --yh-badge-kill-bg:     #374151;   /* *RK / *DK – kill */
-  --yh-badge-kill-fg:     #ffffff;
+  --yh-badge-kill-bg: #374151; /* *RK / *DK – kill */
+  --yh-badge-kill-fg: #ffffff;
 
-  --yh-badge-ok-bg:       #15803d;   /* general OK/confirmed */
-  --yh-badge-ok-fg:       #ffffff;
+  --yh-badge-ok-bg: #15803d; /* general OK/confirmed */
+  --yh-badge-ok-fg: #ffffff;
 
   /* Layout */
   --yh-header-height: 48px;
-  --yh-topbar-z:      100;
+  --yh-topbar-z: 100;
+
+  /* Elevation / shadow scale */
+  --yh-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --yh-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --yh-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+
+  /* Border radius scale */
+  --yh-radius-sm: 2px;
+  --yh-radius-md: 4px;
+  --yh-radius-lg: 6px;
+
+  /* Transition */
+  --yh-transition: 0.15s ease;
 }
 
 /* ----------------------------------------------------------
    2. Global resets
    ---------------------------------------------------------- */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -84,7 +106,10 @@ body {
   line-height: 1.5;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--yh-serif);
   margin: 0;
   line-height: 1.3;
@@ -98,7 +123,8 @@ a:hover {
   text-decoration: underline;
 }
 
-ul, ol {
+ul,
+ol {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -109,7 +135,9 @@ button {
   font-family: var(--yh-sans);
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: var(--yh-sans);
   font-size: 0.9rem;
 }
@@ -125,18 +153,19 @@ input, select, textarea {
   align-items: center;
   justify-content: space-between;
   height: var(--yh-header-height);
-  padding: 0 var(--yh-sp-lg);
+  padding: 0 var(--yh-sp-xl);
   /* 연합뉴스 white+blue look (CLAUDE.md): WHITE header with a BLUE bottom border so the
      blue lettering reads clearly. White dominates, blue leads. */
   background: var(--yh-white);
   color: var(--yh-ink);
   border-bottom: 3px solid var(--yh-blue); /* BLUE underline anchors the white header */
+  box-shadow: var(--yh-shadow-sm); /* subtle lift — header visually floats */
 }
 
 /* Brand wordmark area (left side) */
 .yh-brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--yh-sp-sm);
 }
 
@@ -144,12 +173,13 @@ input, select, textarea {
    A thin RED left rule keeps the 연합 brand accent present without coloring the letters. */
 .yh-brand__logo {
   font-family: var(--yh-serif);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--yh-blue);
   border-left: 3px solid var(--yh-red); /* small red accent — 연합 identity */
-  padding: 2px var(--yh-sp-sm);
+  padding: 3px var(--yh-sp-sm);
+  line-height: 1;
 }
 
 /* Subtitle wordmark — also BLUE so the lettering reads as blue on the white header. */
@@ -172,7 +202,7 @@ input, select, textarea {
 
 .yh-user__name {
   font-weight: 600;
-  color: var(--yh-blue);  /* userId reads in brand blue */
+  color: var(--yh-blue); /* userId reads in brand blue */
 }
 
 .yh-user__dept {
@@ -193,7 +223,10 @@ input, select, textarea {
   background: var(--yh-white);
   border: 1px solid var(--yh-blue);
   border-radius: 3px;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .yh-logout-btn:hover {
@@ -223,22 +256,22 @@ input, select, textarea {
 }
 
 .yh-status-bar--connected::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #4ade80;  /* green dot */
+  background: #4ade80; /* green dot */
   margin-right: 3px;
 }
 
 .yh-status-bar--disconnected::before {
-  content: '';
+  content: "";
   display: inline-block;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #fbbf24;  /* amber dot */
+  background: #fbbf24; /* amber dot */
   margin-right: 3px;
 }
 
@@ -249,7 +282,7 @@ input, select, textarea {
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 var(--yh-sp-lg);
+  padding: 0 var(--yh-sp-xl);
   background: var(--yh-white);
   border-bottom: 1px solid var(--yh-gray-line);
 }
@@ -260,7 +293,9 @@ input, select, textarea {
   font-size: 0.85rem;
   color: var(--yh-gray-dark);
   border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .yh-nav__link:hover {
@@ -290,7 +325,9 @@ input, select, textarea {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--yh-gray-mid);
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
   margin-bottom: -1px; /* sit on top of parent border */
 }
 
@@ -305,6 +342,78 @@ input, select, textarea {
 }
 
 /* ----------------------------------------------------------
+   6b. Writer workspace tabs (멀티탭 작성 — WriteWorkspace)
+   ---------------------------------------------------------- */
+.yh-edit-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: var(--yh-sp-sm) var(--yh-sp-md) 0;
+  background: var(--yh-gray-bg);
+  border-bottom: 2px solid var(--yh-blue);
+  overflow-x: auto;
+}
+
+.yh-edit-tab {
+  display: inline-flex;
+  align-items: center;
+  max-width: 240px;
+  background: #fff;
+  color: var(--yh-gray-mid);
+  border: 1px solid var(--yh-gray-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.yh-edit-tab--active {
+  background: var(--yh-blue);
+  color: #fff;
+}
+
+.yh-edit-tab__label {
+  background: none;
+  border: none;
+  padding: var(--yh-sp-sm) var(--yh-sp-sm) var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.85rem;
+  color: inherit;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yh-edit-tab__close {
+  background: none;
+  border: none;
+  padding: 0 var(--yh-sp-sm);
+  font-size: 0.9rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.yh-edit-tab__close:hover {
+  color: var(--yh-blue);
+}
+
+.yh-edit-tab--active .yh-edit-tab__close:hover {
+  color: #fff;
+  opacity: 0.75;
+}
+
+.yh-edit-tabs__add {
+  background: none;
+  border: 1px dashed var(--yh-gray-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  color: var(--yh-blue);
+}
+
+.yh-edit-tabs__add:hover {
+  background: #fff;
+}
+
+/* ----------------------------------------------------------
    7. Buttons
    ---------------------------------------------------------- */
 .yh-btn {
@@ -316,7 +425,9 @@ input, select, textarea {
   font-weight: 500;
   border-radius: 3px;
   border: 1px solid transparent;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 /* Primary: solid blue (송고 — BLUE-LED primary chrome) */
@@ -324,10 +435,16 @@ input, select, textarea {
   background: var(--yh-blue);
   color: var(--yh-white);
   border-color: var(--yh-blue);
+  letter-spacing: 0.02em;
 }
 .yh-btn--primary:hover {
   background: var(--yh-blue-dark);
   border-color: var(--yh-blue-dark);
+  box-shadow: 0 2px 6px rgba(10, 77, 166, 0.3);
+}
+.yh-btn--primary:active {
+  background: var(--yh-blue-dark);
+  transform: translateY(1px);
 }
 
 /* Secondary: outlined */
@@ -352,7 +469,7 @@ input, select, textarea {
 
 /* KILL: darker danger treatment — solid slate, clearly distinct from 보류's amber. */
 .yh-btn--kill {
-  background: var(--yh-badge-kill-bg);  /* #374151 slate */
+  background: var(--yh-badge-kill-bg); /* #374151 slate */
   color: var(--yh-white);
   border-color: var(--yh-badge-kill-bg);
 }
@@ -394,13 +511,15 @@ input, select, textarea {
 .yh-field select,
 .yh-field textarea {
   width: 100%;
-  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  padding: var(--yh-sp-sm) var(--yh-sp-sm);
   border: 1px solid var(--yh-gray-line);
-  border-radius: 2px;
+  border-radius: var(--yh-radius-sm);
   font-size: 0.88rem;
   color: var(--yh-ink);
   background: var(--yh-white);
-  transition: border-color 0.15s;
+  transition:
+    border-color var(--yh-transition),
+    box-shadow var(--yh-transition);
 }
 
 .yh-field input:focus,
@@ -408,6 +527,7 @@ input, select, textarea {
 .yh-field textarea:focus {
   outline: none;
   border-color: var(--yh-blue);
+  box-shadow: 0 0 0 3px rgba(10, 77, 166, 0.12); /* soft blue glow */
 }
 
 /* Standalone label+input rows (legacy inline labels kept for a11y) */
@@ -443,42 +563,171 @@ input, select, textarea {
 }
 
 /* ----------------------------------------------------------
+   8b. Read-only ContentsVO meta (SPEC-NEWS-REVISE-007)
+   Edit-context only display area for the 8 read-only fields. Uses existing tokens only
+   (--yh-blue label, --yh-gray-line separators) — no new design tokens (REQ-NFR §5.1).
+   ---------------------------------------------------------- */
+.yh-readonly-meta {
+  margin: 0 0 var(--yh-sp-md);
+  padding: var(--yh-sp-sm) 0;
+  border-top: 2px solid var(--yh-blue);
+  border-bottom: 1px solid var(--yh-gray-line);
+}
+
+.yh-readonly-meta__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  padding: 2px 0;
+}
+
+.yh-readonly-meta__label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: right;
+  color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
+}
+
+.yh-readonly-meta__value {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--yh-ink);
+  word-break: break-all;
+}
+
+/* ----------------------------------------------------------
    9. Login card
+   Blue+white 연합뉴스 design: deep-blue gradient background,
+   white card with a strong blue brand bar at top, blue text accents.
+   CLAUDE.md: 파란색+흰색 혼합, 글자색(제목/헤드라인) 파란색.
    ---------------------------------------------------------- */
 .yh-login-wrap {
-  min-height: calc(100vh - var(--yh-header-height));
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--yh-gray-bg);
+  /* Blue-led background: deep navy → primary blue gradient */
+  background: linear-gradient(
+    160deg,
+    var(--yh-blue-dark) 0%,
+    var(--yh-blue) 60%,
+    #1a6acf 100%
+  );
+  padding: var(--yh-sp-xl);
 }
 
 .yh-card {
   background: var(--yh-white);
-  border: 1px solid var(--yh-gray-line);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-  padding: var(--yh-sp-xl);
-  width: 320px;
+  border: 1px solid rgba(10, 77, 166, 0.15);
+  /* Thick blue brand bar at top — 연합뉴스 signature chrome */
+  border-top: none;
+  border-radius: var(--yh-radius-lg);
+  box-shadow: var(--yh-shadow-lg), 0 0 0 1px rgba(255,255,255,0.1);
+  padding: 2rem 2rem 1.75rem;
+  width: 380px;
+  max-width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Blue brand bar across the card top — replaces border-top trick */
+.yh-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--yh-blue-dark) 0%, var(--yh-blue) 50%, var(--yh-red) 100%);
+}
+
+/* Subtle blue tint decoration at bottom-right corner */
+.yh-card::after {
+  content: "";
+  position: absolute;
+  bottom: -30px;
+  right: -30px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(10,77,166,0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .yh-card__header {
   text-align: center;
-  margin-bottom: var(--yh-sp-xl);
+  margin-bottom: 1.5rem;
+  padding-bottom: var(--yh-sp-md);
+  border-bottom: 1px solid var(--yh-gray-line);
 }
 
+/* Logo lockup — 연합뉴스 wordmark with red left rule (matches .yh-brand__logo pattern).
+   Typography: Nanum Myeongjo weight 800 — already loaded in index.html (no extra fetch).
+   wght 800 gives the newspaper front-page headline density that wght 700 lacks. */
 .yh-card__logo {
-  font-family: var(--yh-serif);
-  font-size: 1.6rem;
-  font-weight: 700;
+  display: inline-block;
+  font-family: "Nanum Myeongjo", var(--yh-serif);
+  font-size: 1.9rem;
+  font-weight: 800; /* heaviest loaded weight → 신문 1면 타이틀 질감 */
   color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em; /* tighter tracking at display size — 명조 관행 */
+  line-height: 1.15;
+  /* Red left accent rule — 연합뉴스 brand identity (matches TopBar brand logo) */
+  border-left: 4px solid var(--yh-red);
+  padding-left: var(--yh-sp-sm);
 }
 
+/* Subtitle — Noto Serif KR 400: lighter serif contrasts with the heavy logo above,
+   creating editorial hierarchy (headline > deck). Already loaded in index.html.
+   Wide letter-spacing mimics a newspaper secondary-deck caption style. */
 .yh-card__subtitle {
-  font-size: 0.8rem;
-  color: var(--yh-gray-mid);
+  font-family: "Noto Serif KR", var(--yh-serif);
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--yh-blue);
+  opacity: 0.7;
   margin-top: var(--yh-sp-xs);
+  letter-spacing: 0.1em; /* wide tracking for caption / deck feel */
+}
+
+/* Label override for login fields — blue labels per CLAUDE.md 연합뉴스 글자색 규칙.
+   Noto Sans KR 700 with widened tracking gives a print-label quality. */
+.yh-card .yh-field label {
+  font-family: var(--yh-sans); /* Noto Sans KR — already body default */
+  color: var(--yh-blue);
+  font-weight: 700;
+  letter-spacing: 0.08em; /* print-label spacing */
+}
+
+/* Slightly larger input padding inside the login card for better UX */
+.yh-card .yh-field input {
+  padding: var(--yh-sp-sm) var(--yh-sp-md);
+  font-size: 0.9rem;
+}
+
+/* Input placeholder — italic sans gives a print-blank / 공란 feel */
+.yh-card .yh-field input::placeholder {
+  font-style: italic;
+  color: var(--yh-gray-mid);
+  opacity: 0.75;
+}
+
+/* Login submit button — Nanum Myeongjo 700: matches the wordmark family so "로그인"
+   reads as a headline-weight call-to-action rather than a generic UI button.
+   wght 700 (not 800) keeps button text from feeling heavier than the logo above it. */
+.yh-card .yh-btn--primary {
+  font-family: "Nanum Myeongjo", var(--yh-serif);
+  font-weight: 700;
+  height: 2.5rem;
+  font-size: 1rem; /* slightly up from 0.95rem — Myeongjo reads smaller optically */
+  letter-spacing: 0.1em; /* headline spacing on the CTA */
+}
+
+/* Error alert inside the card */
+.yh-card .yh-alert {
+  margin-top: var(--yh-sp-md);
 }
 
 /* ----------------------------------------------------------
@@ -496,7 +745,7 @@ input, select, textarea {
 
 .yh-table th {
   padding: var(--yh-sp-xs) var(--yh-sp-sm);
-  border-bottom: 2px solid var(--yh-blue);   /* BLUE table header underline */
+  border-bottom: 2px solid var(--yh-blue); /* BLUE table header underline */
   text-align: left;
   font-size: 0.78rem;
   font-weight: 700;
@@ -520,19 +769,25 @@ input, select, textarea {
   margin: 0;
   padding: 0;
   list-style: none;
+  border-top: 2px solid var(--yh-blue); /* BLUE-LED header rule above the list */
 }
 
 .yh-article-row {
   display: flex;
   align-items: center;
   gap: var(--yh-sp-sm);
-  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  padding: var(--yh-sp-sm) var(--yh-sp-sm);
   border-bottom: 1px solid var(--yh-gray-line);
   font-size: 0.88rem;
+  transition:
+    background var(--yh-transition),
+    border-left var(--yh-transition);
+  border-left: 3px solid transparent; /* reserve space for hover accent */
 }
 
 .yh-article-row:hover {
   background: var(--yh-blue-light);
+  border-left-color: var(--yh-blue); /* BLUE left accent on hover */
 }
 
 /* Clickable row (opens the detail window). Pointer + clearer hover/focus cue. */
@@ -545,9 +800,41 @@ input, select, textarea {
   outline-offset: -2px;
 }
 
+/* Shared 8-column list layout for ALL four view menus (REQ-FE-VIEW-011 v0.5.0 — 기사상태 추가;
+   originally the 데스크 미송고-only layout, REQ-FE-VIEW-008 v0.3.0):
+   기사아이디 | 제목(flex) | 작성자 | 수정자 | 작성시간 | 수정시간 | 기사상태 | LockYN */
+.yh-desk-header {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4.5rem 4rem;
+  gap: var(--yh-sp-sm);
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  border-bottom: 2px solid var(--yh-blue);
+  color: var(--yh-blue);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.yh-desk-row {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4.5rem 4rem;
+  /* 부서별 송고 DPS 행의 액션 버튼(9번째 자식)이 줄바꿈 없이 같은 줄의 암시적 컬럼에 놓이도록. */
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+}
+
+.yh-desk-row__id,
+.yh-desk-row__status,
+.yh-desk-row__lock {
+  color: var(--yh-gray-dark);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .yh-article-row__title {
   flex: 1;
-  min-width: 0;            /* allow the title to shrink/ellipsize beside the meta columns */
+  min-width: 0; /* allow the title to shrink/ellipsize beside the meta columns */
   font-family: var(--yh-serif);
   color: var(--yh-ink);
   white-space: nowrap;
@@ -577,6 +864,9 @@ input, select, textarea {
   text-align: right;
 }
 
+/* v0.4.0 + SPEC-NEWS-REVISE-007 공존: 우클릭 고침(포털제외)/포털고침(REQ-FE-VIEW-009/010)과 별개로
+   부서별 송고 DPS 행에는 인라인 고침/포털고침 진입점 버튼이 유지된다 (AC-FWD-3). 7컬럼 grid의
+   8번째(암시적) 컬럼에 같은 줄로 배치된다 — .yh-desk-row의 grid-auto-flow/auto-columns 참고. */
 .yh-article-row__actions {
   display: flex;
   gap: var(--yh-sp-xs);
@@ -585,6 +875,8 @@ input, select, textarea {
 
 /* ----------------------------------------------------------
    11. Status badges
+   (REQ-FE-VIEW-011 v0.4.0: 조회 목록이 전 메뉴 7컬럼으로 통일되며 목록 배지는 제거됨.
+    배지 색 토큰(--yh-badge-*)은 .yh-btn--kill 등 버튼 팔레트가 계속 사용한다.)
    ---------------------------------------------------------- */
 .yh-badge {
   display: inline-block;
@@ -707,7 +999,9 @@ input, select, textarea {
    13. ViewPage layout
    ---------------------------------------------------------- */
 .yh-view-wrap {
-  padding: var(--yh-sp-md) var(--yh-sp-lg);
+  padding: var(--yh-sp-md) var(--yh-sp-xl);
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 /* View menus (조회 메뉴 buttons) */
@@ -715,7 +1009,7 @@ input, select, textarea {
   display: flex;
   gap: var(--yh-sp-xs);
   padding: var(--yh-sp-sm) 0;
-  border-bottom: 1px solid var(--yh-gray-line);
+  border-bottom: 2px solid var(--yh-blue); /* BLUE-LED underline for menu section */
   margin-bottom: var(--yh-sp-md);
 }
 
@@ -723,14 +1017,19 @@ input, select, textarea {
   padding: var(--yh-sp-xs) var(--yh-sp-md);
   font-size: 0.82rem;
   border: 1px solid var(--yh-gray-line);
-  border-radius: 2px;
+  border-radius: var(--yh-radius-sm);
   background: var(--yh-white);
   color: var(--yh-gray-dark);
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background var(--yh-transition),
+    color var(--yh-transition),
+    border-color var(--yh-transition);
 }
 
 .yh-view-menu__btn:hover {
-  background: var(--yh-gray-bg);
+  background: var(--yh-blue-light);
+  color: var(--yh-blue);
+  border-color: rgba(10, 77, 166, 0.2);
 }
 
 .yh-view-menu__btn--active {
@@ -738,6 +1037,7 @@ input, select, textarea {
   color: var(--yh-white);
   border-color: var(--yh-blue);
   font-weight: 600;
+  box-shadow: 0 1px 4px rgba(10, 77, 166, 0.25);
 }
 
 /* Department filter row */
@@ -806,6 +1106,16 @@ input, select, textarea {
   white-space: nowrap;
 }
 
+/* Small decorative thumbnail before a media result title (image/video search rows). */
+.yh-result-thumb {
+  width: 56px;
+  height: 40px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+}
+
 /* ----------------------------------------------------------
    15. Utility helpers
    ---------------------------------------------------------- */
@@ -819,8 +1129,13 @@ input, select, textarea {
   padding: var(--yh-sp-md) var(--yh-sp-lg);
 }
 
-.yh-text-red   { color: var(--yh-red); }
-.yh-text-muted { color: var(--yh-gray-mid); font-size: 0.82rem; }
+.yh-text-red {
+  color: var(--yh-red);
+}
+.yh-text-muted {
+  color: var(--yh-gray-mid);
+  font-size: 0.82rem;
+}
 
 /* Tabpanel content area */
 .yh-tabpanel {
@@ -835,32 +1150,45 @@ input, select, textarea {
 .yh-editor-body {
   flex: 1;
   min-height: 50vh;
-  padding: var(--yh-sp-sm);
+  padding: var(--yh-sp-md) var(--yh-sp-sm);
   border: 1px solid var(--yh-gray-line);
-  border-radius: 2px;
+  border-radius: var(--yh-radius-sm);
   font-family: var(--yh-serif);
   font-size: 0.95rem;
-  line-height: 1.7;
+  line-height: 1.8;
   color: var(--yh-ink);
   background: var(--yh-white);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  transition:
+    border-color var(--yh-transition),
+    box-shadow var(--yh-transition);
 }
 
 .yh-editor-body:focus {
   outline: none;
   border-color: var(--yh-blue);
+  box-shadow: 0 0 0 3px rgba(10, 77, 166, 0.1);
 }
 
 /* Role-based body coloring (news.md 기사 에디터): 제목=파란색, 부제목=빨간색, 본문=검정색.
    Applied presentationally (presentation only — the underlying plain text is unchanged). The
    coloring re-runs on compositionend/blur/programmatic-load, NOT on every keystroke (Hangul IME safety). */
-.yh-line--title    { color: var(--yh-blue); }
-.yh-line--subtitle { color: var(--yh-red); }
-.yh-line--body     { color: var(--yh-ink); }
+.yh-line--title {
+  color: var(--yh-blue);
+}
+.yh-line--subtitle {
+  color: var(--yh-red);
+}
+.yh-line--body {
+  color: var(--yh-ink);
+}
 
 /* Alt+Y end marker "(끝)" — 골드색 (news.md 기사 에디터). */
-.yh-end-mark { color: var(--yh-gold); font-weight: 700; }
+.yh-end-mark {
+  color: var(--yh-gold);
+  font-weight: 700;
+}
 
 /* SPEC-NEWS-REVISE-003 — 본문 커서 위치 인라인 임베드를 "기사 본문형 블록"으로 표시한다. 임베드가
    본문 텍스트 흐름 안에서 자기 줄(block)을 차지해 연합뉴스 기사 본문 사진/참조 카드처럼 보인다.
@@ -889,7 +1217,7 @@ input, select, textarea {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--yh-sp-xs);
-  max-width: 360px;      /* 사진/영상 figure 의 편안한 폭 (연합뉴스 본문 사진 ~360px) */
+  max-width: 612px; /* 사진/영상 figure 폭 — 기존 360px 에 1.7배 적용 (360×1.7=612px). 기사 카드는 아래에서 480px 로 별도 유지. */
   padding: var(--yh-sp-sm) var(--yh-sp-md);
   border: 1px solid var(--yh-gray-line);
   border-left: 3px solid var(--yh-red);
@@ -899,7 +1227,8 @@ input, select, textarea {
   font-size: 0.85rem;
 }
 
-/* 기사(article) 참조 카드는 사진 figure 보다 넓은 가로형 참조 카드 — 배지 + 제목이 한 줄. */
+/* 기사(article) 참조 카드는 사진 figure 보다 넓은 가로형 참조 카드 — 배지 + 제목이 한 줄.
+   이미지/영상에 적용된 1.7배(612px)는 기사 카드에 적용하지 않는다 — 480px 폭을 그대로 유지한다. */
 .yh-embed--article {
   flex-direction: row;
   align-items: center;
@@ -908,16 +1237,17 @@ input, select, textarea {
 }
 
 /* news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브 크기는
-   에디터크기가 100%이고 가로*세로=10%*10%이다. max-width로 에디터 너비 대비 10% 제한. */
+   에디터크기가 100%이고 가로*세로=10%*10% 이었으나, 1.7배 적용으로 17%*17% 로 키운다
+   (10×1.7=17). max-width/max-height 로 에디터 크기 대비 17% 제한. */
 .yh-embed--clipboard {
-  max-width: 10%;
-  max-height: 10%;
+  max-width: 17%;
+  max-height: 17%;
 }
 
 .yh-embed__img {
-  width: 100%;           /* fill the figure width */
+  width: 100%; /* fill the figure width */
   max-width: 100%;
-  height: auto;          /* keep aspect ratio */
+  height: auto; /* keep aspect ratio */
   object-fit: cover;
   border-radius: 2px;
   border: 1px solid var(--yh-gray-line);
@@ -1009,12 +1339,12 @@ input, select, textarea {
   margin: 0;
   padding: var(--yh-sp-xs) 0;
   list-style: none;
-  min-width: 10rem;
+  min-width: 11rem;
   background: var(--yh-white);
   border: 1px solid var(--yh-gray-line);
-  border-top: 2px solid var(--yh-blue);   /* BLUE-LED top rule */
-  border-radius: 4px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  border-top: 3px solid var(--yh-blue); /* BLUE-LED top rule */
+  border-radius: var(--yh-radius-md);
+  box-shadow: var(--yh-shadow-lg);
   font-size: 0.85rem;
 }
 
@@ -1040,7 +1370,7 @@ input, select, textarea {
 }
 
 .yh-ctxmenu__item:hover:not(:disabled) {
-  background: var(--yh-blue-light);   /* BLUE-LED hover tint */
+  background: var(--yh-blue-light); /* BLUE-LED hover tint */
 }
 
 .yh-ctxmenu__item:focus-visible {
@@ -1056,6 +1386,6 @@ input, select, textarea {
 
 .yh-ctxmenu__hint {
   flex-shrink: 0;
-  color: var(--yh-red);   /* RED point accent for the (준비중) marker */
+  color: var(--yh-red); /* RED point accent for the (준비중) marker */
   font-size: 0.72rem;
 }

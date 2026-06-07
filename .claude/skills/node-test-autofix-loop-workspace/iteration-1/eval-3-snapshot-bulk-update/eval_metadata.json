@@ -1,0 +1,25 @@
+{
+  "eval_id": 3,
+  "eval_name": "eval-3-snapshot-bulk-update",
+  "prompt": "Jest+RTL 프로젝트에서 의도된 UI 카피 변경으로 스냅샷 3개 깨짐 — Modal 스냅샷에는 aria-label 제거가 섞여 있음, 안전성 판단",
+  "assertions": [
+    {
+      "text": "Flags the Modal diff as containing changes unrelated to the user's stated intent (aria-label removal)"
+    },
+    {
+      "text": "Approves Hero and Card snapshot updates as consistent with the stated UI copy change intent"
+    },
+    {
+      "text": "Stops short of a bulk `jest -u` for all three; either selective update or explicit hand-back on Modal"
+    },
+    {
+      "text": "Identifies the aria-label removal as a potential accessibility regression worth surfacing"
+    },
+    {
+      "text": "Does NOT delete or .skip the Modal test"
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)"
+    }
+  ]
+}

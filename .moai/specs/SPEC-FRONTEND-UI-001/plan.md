@@ -2,6 +2,39 @@
 
 > 본 계획은 WHAT/WHY를 구현으로 옮기기 위한 마일스톤·기술 접근·위험을 정의한다. 구체 컴포넌트명/파일 구조는 Run 단계 소관이다.
 
+> [v0.6.0 개정 — 2026-06-06 사용자 요청] 기사아이디가 생성되지 않은 신규 초안(A-DRAFT) 작성 화면에는
+> KILL 버튼 비표시 — 컨트롤러가 isDraft(A-DRAFT 센티널)를 노출하고 WritePage의 KILL 게이트에
+> `!isDraft` 조건 추가. KILL은 기사아이디가 부여된(편집 컨텍스트) RDS 기사에서만 권한 매트릭스(R/Z)대로
+> 노출. 관련 테스트는 편집 컨텍스트(?id 로드)로 전환. news.md 작성 페이지 버튼 절 + 도메인 SKILL 동기 갱신.
+>
+> [v0.5.0 개정 — 2026-06-06 사용자 요청] (1) 조회 4개 메뉴 공통 목록에 기사상태(status) 컬럼 추가 —
+> 7컬럼 → 8컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN), 상태값은
+> RDS/DPS/RRH/RRK/DDH/DDK 원시 값 표시, (2) 개인별 수정 author 필터를 저장 값과 동일한 표시 이름
+> (user.name) 기준으로 정정 — 종전 userId 매칭은 항상 0건, (3) 기사 생성 시 서버가 세션 사용자의
+> department/departmentCode를 스탬프 + 레거시 행 비파괴 백필(작성자 이름→User.department) —
+> 부서별 작성/송고 조회 매칭 복구, (4) 편집 진입 로드 복구 — articleModel.query에 Article LEFT JOIN
+> (markupVersion 포함) + Contents에 공통정보 8컬럼 영속화(coAuthor/region/attribute/keyword/
+> internalComment/externalComment/attachmentFile/referenceFile) + secondEmbargoAt 매핑, (5) 송고/보류/
+> KILL action 라우트에도 락 게이트 적용(AC-EDIT-LOCK-6) — 타 보유자 live 락 중 lock-required 거부,
+> 편집 컨텍스트 applyAction에 페이지 락 sessionId 동반.
+>
+> [v0.4.0 개정 — 2026-06-06 사용자 요청] (1) 조회 4개 메뉴 전부 기사 목록을 데스크 미송고와 동일한
+> 7컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN)으로 통일 — 상태 배지·인라인 액션
+> 버튼 제거, (2) 부서별 작성 = 부서 Select(분리된 데이터-소스 인터페이스 재사용, 초기값 로그인
+> 사용자 부서 + 자동 조회) + 조회 버튼 재조회, 필터는 `{ department, statusNot: 'DPS,RRH' }` —
+> 백엔드 articleModel.query에 statusNot(NOT IN) 필터 신설 및 누락돼 있던 department 동등 필터 추가,
+> (3) 개인별 수정 = `{ author, status: 'RDS,RRK' }`, (4) DPS 고침/포털고침 게이팅은 우클릭 컨텍스트
+> 메뉴의 고침(포털제외)/포털고침 항목으로 이동 — DPS + D 권한일 때만 활성화, 선택 시 기사작성(편집)
+> 페이지로 이동.
+>
+> [v0.3.0 개정 — 2026-06-06 사용자 요청] (1) 송고/보류/KILL은 `window.confirm` 확인창 선행 + 성공 시
+> 버튼 아래 상태 메시지 미표시(작성 페이지 초기화는 유지), (2) 보류/KILL도 송고와 동일하게 DTO 저장
+> (saveArticle) 후 applyAction — 미저장 초안에 대한 not-found 거부 해소, (3) 데스크 미송고 = status
+> IN (RDS, DDH) + 7컬럼 테이블(기사아이디/제목/작성자/수정자/작성시간/수정시간/LockYN) — 백엔드
+> articleModel.query에 status 다중값(IN) 필터 추가, (4) 에디터 '본문' 라벨 텍스트 제거(aria-label 유지),
+> (5) 문말 trailing '\n'이 pre-wrap에서 줄박스를 만들지 않아 Enter가 두 번 필요해 보이던 렌더 증상을
+> trailing <br> 패딩으로 보정.
+
 ## 기술 접근 (Technical Approach)
 
 - **스택**: React + Vite. MVC 분리 — View(화면/컴포넌트), Model(서버 데이터·앱 상태·인증 사용자), Controller(액션 핸들러·서버 호출·라우팅·상태 전이 조정).

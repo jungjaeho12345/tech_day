@@ -55,12 +55,36 @@ function resolveBaseUrl(baseUrl) {
  * @param {{ baseUrl?: string }} [opts]
  * @returns {import('./contract.js').ArticleModel}
  */
+// sessionStorage key holding the server-issued session id so a browser refresh (F5) can restore the
+// session. sessionStorage (not localStorage) is intentional: it survives a same-tab reload but is
+// cleared when the tab/browser closes, matching the domain rule "브라우저 닫힘 → 세션 종료" (news.md lockYN).
+const SESSION_STORAGE_KEY = 'newsroom.sessionId';
+
+/** Safe sessionStorage access — guarded so the module never throws in non-browser/test contexts. */
+function readStoredSessionId() {
+  try {
+    return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(SESSION_STORAGE_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+function writeStoredSessionId(value) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    if (value) sessionStorage.setItem(SESSION_STORAGE_KEY, value);
+    else sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // storage unavailable (private mode/quota) — degrade to in-memory only; no throw.
+  }
+}
+
 export function createHttpModel({ baseUrl } = {}) {
   const base = resolveBaseUrl(baseUrl);
 
   // Transport state: the server-issued session id, replayed on every request and cleared on logout.
-  // 부팅 시 sessionStorage에서 복원해 새로고침 후에도 보호 라우트 API 호출이 인증된 상태로 이어진다.
-  let sessionId = loadPersistedSessionId();
+  // Seeded from sessionStorage so a page refresh keeps replaying the same id until restoreSession()
+  // confirms it (or the server reports it expired).
+  let sessionId = readStoredSessionId();
 
   /** Build request headers, attaching x-session-id only when a session is active. */
   function headers() {
@@ -125,7 +149,7 @@ export function createHttpModel({ baseUrl } = {}) {
       if (result?.ok) {
         // Capture transport state; DROP sessionId from the returned object to match the contract.
         sessionId = result.sessionId ?? null;
-        persistSessionId(sessionId); // 새로고침 유지를 위해 sessionStorage에도 영속화.
+        writeStoredSessionId(sessionId); // persist so a refresh (F5) can restore the session.
         return { ok: true, user: result.user };
       }
       return { ok: false };
@@ -134,8 +158,26 @@ export function createHttpModel({ baseUrl } = {}) {
     async logout() {
       const result = await sendJson('POST', '/api/logout', {}, { ok: true });
       sessionId = null; // Clear locally regardless of the server response.
-      persistSessionId(null); // sessionStorage의 영속 세션도 제거.
+      writeStoredSessionId(null); // drop the persisted id so a later refresh cannot restore it.
       return { ok: result?.ok ?? true };
+    },
+
+    // Session restore for browser refresh (F5): replay the persisted x-session-id against
+    // GET /api/session. If the server-side session is still live (within the 1h sliding window),
+    // returns the sanitized identity so the App can rehydrate the user WITHOUT a re-login. On a
+    // missing/expired session the stored id is purged so the UI falls back to the login page.
+    async restoreSession() {
+      if (!sessionId) {
+        return { ok: false };
+      }
+      const result = await getJson('/api/session', { ok: false });
+      if (result?.ok) {
+        return { ok: true, user: result.user };
+      }
+      // Server rejected the stored id (expired/unknown) — clear local + persisted transport state.
+      sessionId = null;
+      writeStoredSessionId(null);
+      return { ok: false };
     },
 
     // --- Users (department data-source, DP-F4) --------------------------------
@@ -157,22 +199,28 @@ export function createHttpModel({ baseUrl } = {}) {
     },
 
     // --- Media proxy (DP-F3) -------------------------------------------------
-    async searchMedia(query) {
+    // type-routed: 'video' -> YouTube Data API v3; 'image' -> Google Custom Search (searchType=image).
+    // The server normalizes a missing/unknown type to 'video'; we default to 'video' on the client too.
+    // API keys stay server-side env only and never appear in the client-bound payload.
+    async searchMedia(query, type) {
       // On network failure return the documented safe default so the UI shows the error state.
-      const data = await getJson(`/api/media/search?q=${encodeURIComponent(query ?? '')}`, {
-        items: [],
-        error: true,
-      });
+      const data = await getJson(
+        `/api/media/search?q=${encodeURIComponent(query ?? '')}&type=${encodeURIComponent(type ?? 'video')}`,
+        { items: [], error: true },
+      );
       return data ?? { items: [], error: true };
     },
 
     // --- Lifecycle (DP-F5) ---------------------------------------------------
-    async applyAction(articleId, _role, action) {
-      // The server derives the acting role from the session and ignores any client role; send {action} only.
+    async applyAction(articleId, _role, action, options) {
+      // The server derives the acting role from the session and ignores any client role. In an edit
+      // context the page-scoped lock sessionId rides along (AC-EDIT-LOCK-6) so the server's action
+      // route lock gate can identify the caller as the holder; otherwise the body stays { action }.
+      const body = options?.sessionId ? { action, sessionId: options.sessionId } : { action };
       return sendJson(
         'POST',
         `/api/articles/${encodeURIComponent(articleId)}/action`,
-        { action },
+        body,
         { ok: false, reason: 'network-error' },
       );
     },
@@ -229,6 +277,10 @@ export function createHttpModel({ baseUrl } = {}) {
           // Ignore malformed SSE payloads; the next valid event will refresh the view.
         }
       });
+      // Connection-state wiring (REQ-FE-VIEW-002): surface open/error transitions so the status
+      // bar tracks the real transport. EventSource auto-reconnects after error, firing open again.
+      es.addEventListener('open', () => onChange({ connected: true }));
+      es.addEventListener('error', () => onChange({ connected: false }));
       return {
         unsubscribe() {
           es.close();

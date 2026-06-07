@@ -1,4 +1,6 @@
 // Login page view (REQ-FE-LOGIN-001/005, AC-2.1/2.2/2.3).
+// Design: 연합뉴스 blue+white style — blue gradient background, white card,
+// blue brand wordmark with red left rule, blue field labels. (CLAUDE.md)
 import { useState } from 'react';
 import { useLoginController } from '../controller/useLoginController.js';
 
@@ -15,12 +17,12 @@ export function LoginPage({ onSuccess }) {
   return (
     <main className="yh-login-wrap">
       <div className="yh-card">
-        <div className="yh-card__header">
-          <div className="yh-card__logo">연합뉴스</div>
-          <div className="yh-card__subtitle">기사 제작 시스템</div>
-        </div>
+        <header className="yh-card__header">
+          <h1 className="yh-card__logo">연합뉴스</h1>
+          <p className="yh-card__subtitle">기사 제작 시스템</p>
+        </header>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} noValidate>
           <div className="yh-field">
             <label htmlFor="login-userId">아이디</label>
             <input
@@ -28,6 +30,7 @@ export function LoginPage({ onSuccess }) {
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
               autoComplete="username"
+              placeholder="아이디를 입력하세요"
             />
           </div>
 
@@ -39,15 +42,16 @@ export function LoginPage({ onSuccess }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
+              placeholder="암호를 입력하세요"
             />
           </div>
 
-          <button type="submit" className="yh-btn yh-btn--primary" style={{ width: '100%', marginTop: '0.5rem' }}>
+          <button type="submit" className="yh-btn yh-btn--primary" style={{ width: '100%', marginTop: '0.75rem' }}>
             로그인
           </button>
         </form>
 
-        {error ? <div role="alert" className="yh-alert" style={{ marginTop: '0.75rem' }}>{error}</div> : null}
+        {error ? <div role="alert" className="yh-alert">{error}</div> : null}
       </div>
     </main>
   );

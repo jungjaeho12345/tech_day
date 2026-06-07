@@ -1,0 +1,79 @@
+{
+  "expectations": [
+    {
+      "text": "Identifies composeBody returning {body: ''} as the root cause of AC-EMB-INLINE-1 failure",
+      "passed": true,
+      "evidence": "steps.md line 4: 'AC-EMB-INLINE-1: article.body is '' instead of the composed body. Root cause: composeBody is a stub returning { body: '' }. It must rebuild from state.bodyText.' report.md line 5 repeats this: 'composeBody was a stub left behind by the refactor (return { body: '' })'. Root cause correctly named and tied to AC-EMB-INLINE-1."
+    },
+    {
+      "text": "Fixes source (composeBody or buildArticle) to compose body from bodyText, rather than editing the test",
+      "passed": true,
+      "evidence": "edits.md Edit 2 rewrites composeBody from 'return { body: '' }' to 'function composeBody(state) { return { body: state.bodyText }; }', composing body from state.bodyText. steps.md line 11 and report.md line 12 both explicitly state the test file was NOT touched ('No changes to web/src/view/articleDetail.test.js'). Source fixed, test preserved."
+    },
+    {
+      "text": "Addresses the second failure (caret advancement) by bumping caret by embed token length in insertEmbedAtCaret",
+      "passed": true,
+      "evidence": "edits.md Edit 1 adds 'const token = `[EMBED:${embed.id}]`;' and returns 'caret: caret + token.length' in insertEmbedAtCaret, replacing the original 'NOTE: did not bump caret'. report.md line 7 confirms: 'Now computes token = [EMBED:${embed.id}] once and returns caret: caret + token.length.' Caret advanced by exact token length."
+    },
+    {
+      "text": "Plans to run full suite as the final iteration before declaring green",
+      "passed": false,
+      "evidence": "The task explicitly says '변경 파일 우선 실행 후 전체 마무리' (run changed file first, THEN finish with full suite). But steps.md line 13 plans only a single-file run: 'Re-run npx vitest run web/src/view/articleDetail.test.js and confirm 10/10 pass', then line 15: 'If green, stop. No other files in scope.' report.md line 16 likewise only references the single-file run. There is no plan to run the full suite as a final iteration; the executor deliberately scopes to the one file and stops, omitting the required '전체 마무리' full-suite step."
+    },
+    {
+      "text": "Does NOT modify package.json or vitest config to silence failures",
+      "passed": true,
+      "evidence": "edits.md lists only one file changed: 'web/src/view/articleDetail.js' (2 functions). report.md line 21: 'No changes outside the two refactor-touched files.' No edit to package.json, vitest.config, or any config to silence/skip tests anywhere in the three output files."
+    },
+    {
+      "text": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+      "passed": false,
+      "evidence": "report.md sections are: 'Failures diagnosed', 'Edits', 'Expected result', 'Risk / scope notes'. None of the prescribed sections (Result / Iterations / Files edited / Tests still failing / Next move) are present. There is no 'Iterations' section, no explicit 'Tests still failing' section, and no 'Next move' section. The report does not follow the prescribed shape."
+    }
+  ],
+  "summary": {
+    "passed": 4,
+    "failed": 2,
+    "total": 6,
+    "pass_rate": 0.6667
+  },
+  "claims": [
+    {
+      "claim": "Both failing tests are caused by stale leftovers from the refactor (composeBody stub returning empty body; insertEmbedAtCaret with a NOTE admitting it skips caret bump)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "edits.md 'Old' blocks show 'return { body: '' }' with comment 'TODO(refactor): rebuild from bodyText, embeds were yanked out of here' and 'NOTE: did not bump caret'. Both are genuine refactor artifacts in articleDetail.js, accurately diagnosed."
+    },
+    {
+      "claim": "The full test file passes 10/10 after the fix",
+      "type": "factual",
+      "verified": false,
+      "evidence": "steps.md line 13 and report.md line 16 state an EXPECTED result of '10/10 pass' but no actual test-run output is captured anywhere in the outputs. report.md heads the section 'Expected result', confirming the run was not demonstrably executed/verified — it is a prediction, not evidence."
+    },
+    {
+      "claim": "The executor kept changes minimal and within scope, touching only the two refactor-affected functions",
+      "type": "process",
+      "verified": true,
+      "evidence": "edits.md shows exactly two edits, both in web/src/view/articleDetail.js. report.md 'Risk / scope notes' justifies the minimal composeBody fix under scope discipline and notes a follow-up SPEC would be needed for richer embed composition. Scope discipline observed."
+    },
+    {
+      "claim": "The minimal composeBody fix (body = state.bodyText) is correct because embed markers are already inline in bodyText after insertion",
+      "type": "quality",
+      "verified": true,
+      "evidence": "steps.md line 9 reasons that insertEmbedAtCaret splices '[EMBED:id]' directly into bodyText, so composeBody only needs to return bodyText; the inline markers are already present. This is internally consistent with Edit 1's splicing logic and a defensible minimal fix."
+    }
+  ],
+  "eval_feedback": {
+    "overall": "The assertion set is mostly solid and well-targeted at the source-fix-not-test-edit discipline, with good negative checks. Two gaps weaken it: the report-shape assertion and the full-suite assertion both happen to fail here for the right reasons, but neither assertion verifies that the run was actually executed.",
+    "suggestions": [
+      {
+        "assertion": "Plans to run full suite as the final iteration before declaring green",
+        "reason": "This asserts only on PLANNING ('plans to run'), so an output that merely mentions running the full suite in prose — without ever showing real run output — could pass. Combined with the absence of any assertion requiring actual captured test output, a clearly-wrong output that fabricates '10/10 pass' as an 'Expected result' (exactly what this baseline did) is not penalized for the missing evidence. Consider an assertion like 'Provides actual test-run output (not just predicted/expected results) for both the changed-file run and the full-suite run.'"
+      },
+      {
+        "assertion": "Final report follows the prescribed shape (Result/Iterations/Files edited/Tests still failing/Next move)",
+        "reason": "The prescribed section names are an artifact of the with_skill template; a high-quality without_skill report that conveys all the same information under different headings (as this one arguably does) is failed purely on heading nomenclature. This is fine as a skill-adherence signal but does not measure correctness quality — flagging it so graders do not conflate shape-compliance with task success."
+      }
+    ]
+  }
+}
