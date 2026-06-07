@@ -248,3 +248,61 @@ describe('embedOrdinalAtInsertOffset (caret-after-insert target index)', () => {
     expect(ord).toBe(ordinalOfNew(content));
   });
 });
+
+// SPEC-NEWS-REVISE-001 — insertEmbedAtTextOffset 직접 단위 테스트 (PR #1 리뷰 권장)
+describe('insertEmbedAtTextOffset (직접 단위 테스트)', () => {
+  const EMBED = { type: 'image', source: 'youtube', title: '테스트', url: 'https://img/t' };
+
+  it('caretOffset=null → appendEmbed와 동일하게 끝에 추가된다', () => {
+    const base = contentFromText('hello');
+    const result = insertEmbedAtTextOffset(base, EMBED, null);
+    expect(result.blocks).toEqual(appendEmbed(base, EMBED).blocks);
+    expect(result.blocks[result.blocks.length - 1].type).toBe('embed');
+  });
+
+  it('caretOffset=undefined → appendEmbed와 동일하게 끝에 추가된다', () => {
+    const base = contentFromText('hello');
+    const result = insertEmbedAtTextOffset(base, EMBED, undefined);
+    expect(result.blocks).toEqual(appendEmbed(base, EMBED).blocks);
+  });
+
+  it('caretOffset=0 → 첫 텍스트 블록 앞에 embed가 삽입된다', () => {
+    const base = contentFromText('abc');
+    const result = insertEmbedAtTextOffset(base, EMBED, 0);
+    expect(result.blocks[0].type).toBe('embed');
+    expect(result.blocks[1]).toEqual({ type: 'text', text: 'abc' });
+  });
+
+  it('caretOffset >= 텍스트 길이 → appendEmbed와 동일하게 끝에 추가된다', () => {
+    const base = contentFromText('abc');
+    // exactly at length
+    const r1 = insertEmbedAtTextOffset(base, EMBED, 3);
+    expect(r1.blocks).toEqual(appendEmbed(base, EMBED).blocks);
+    // beyond length
+    const r2 = insertEmbedAtTextOffset(base, EMBED, 999);
+    expect(r2.blocks).toEqual(appendEmbed(base, EMBED).blocks);
+  });
+
+  it('블록 내부 split — caretOffset이 텍스트 중간을 가리키면 텍스트가 둘로 분할된다', () => {
+    const base = contentFromText('abcdef');
+    const result = insertEmbedAtTextOffset(base, EMBED, 3);
+    expect(result.blocks).toEqual([
+      { type: 'text', text: 'abc' },
+      { type: 'embed', embed: { ...EMBED } },
+      { type: 'text', text: 'def' },
+    ]);
+  });
+
+  it('기존 embed 블록이 있을 때 새 embed 삽입 후 기존 embed 순서가 보존된다', () => {
+    const EXISTING = { type: 'video', source: 'youtube', title: '기존영상', url: 'https://v/e' };
+    // [text 'abcdef'][embed EXISTING] — EXISTING appended at text-end
+    let base = contentFromText('abcdef');
+    base = appendEmbed(base, EXISTING);
+    // Insert EMBED at offset 3 (inside 'abcdef')
+    const result = insertEmbedAtTextOffset(base, EMBED, 3);
+    const embeds = result.blocks.filter((b) => b.type === 'embed');
+    expect(embeds).toHaveLength(2);
+    expect(embeds[0].embed.title).toBe('테스트');  // 새 embed가 앞
+    expect(embeds[1].embed.title).toBe('기존영상'); // 기존 embed는 뒤로 밀린다
+  });
+});
