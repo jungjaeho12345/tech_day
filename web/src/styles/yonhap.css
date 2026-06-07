@@ -1,7 +1,7 @@
 /* ============================================================
-   yonhap.css  –  연합뉴스 visual design system  (v2.0)
+   yonhap.css visual design system  (v2.0)
    Single-file stylesheet: tokens → resets → layout → components
-   Design direction: 연합뉴스 스타일 — blue+white, blue text accents,
+   Design direction: 스타일 — blue+white, blue text accents,
    white backgrounds, blue chrome leadership, red brand accent.
    ============================================================ */
 
@@ -10,12 +10,12 @@
    ---------------------------------------------------------- */
 :root {
   /* Brand colours.
-     Design direction (CLAUDE.md / news.md): 연합뉴스 style — white+blue, BLUE-LED, RED as point accent.
-     Header is WHITE with a BLUE border and BLUE 연합 lettering (CLAUDE.md: 연합뉴스 글자색은 파란색).
+     Design direction (CLAUDE.md / news.md): style — white+blue, BLUE-LED, RED as point accent.
+     Header is WHITE with a BLUE border and BLUE 연합 lettering (CLAUDE.md: 글자색은 파란색).
      BLUE leads the UI chrome (header border/wordmark, primary buttons, active tabs/nav, links, focus,
      table underline); RED stays as the 연합 brand accent (logo rule, alert border, "send" status badge).
      White backgrounds dominate. */
-  --yh-blue: #0a4da6; /* primary chrome — 연합뉴스-compatible deep blue */
+  --yh-blue: #0a4da6; /* primary chrome — -compatible deep blue */
   --yh-blue-dark: #083d84; /* hover/active emphasis */
   --yh-blue-light: rgba(
     10,
@@ -154,7 +154,7 @@ textarea {
   justify-content: space-between;
   height: var(--yh-header-height);
   padding: 0 var(--yh-sp-xl);
-  /* 연합뉴스 white+blue look (CLAUDE.md): WHITE header with a BLUE bottom border so the
+  /* white+blue look (CLAUDE.md): WHITE header with a BLUE bottom border so the
      blue lettering reads clearly. White dominates, blue leads. */
   background: var(--yh-white);
   color: var(--yh-ink);
@@ -169,7 +169,7 @@ textarea {
   gap: var(--yh-sp-sm);
 }
 
-/* Brand wordmark "연합" — BLUE lettering (CLAUDE.md: 연합뉴스 글자색은 파란색).
+/* Brand wordmark "연합" — BLUE lettering (CLAUDE.md: 글자색은 파란색).
    A thin RED left rule keeps the 연합 brand accent present without coloring the letters. */
 .yh-brand__logo {
   font-family: var(--yh-serif);
@@ -587,7 +587,7 @@ textarea {
   font-size: 0.78rem;
   font-weight: 600;
   text-align: right;
-  color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
+  color: var(--yh-blue); /* 글자색 파란색 (CLAUDE.md) */
 }
 
 .yh-readonly-meta__value {
@@ -599,7 +599,7 @@ textarea {
 
 /* ----------------------------------------------------------
    9. Login card
-   Blue+white 연합뉴스 design: deep-blue gradient background,
+   Blue+white design: deep-blue gradient background,
    white card with a strong blue brand bar at top, blue text accents.
    CLAUDE.md: 파란색+흰색 혼합, 글자색(제목/헤드라인) 파란색.
    ---------------------------------------------------------- */
@@ -621,7 +621,7 @@ textarea {
 .yh-card {
   background: var(--yh-white);
   border: 1px solid rgba(10, 77, 166, 0.15);
-  /* Thick blue brand bar at top — 연합뉴스 signature chrome */
+  /* Thick blue brand bar at top — signature chrome */
   border-top: none;
   border-radius: var(--yh-radius-lg);
   box-shadow: var(--yh-shadow-lg), 0 0 0 1px rgba(255,255,255,0.1);
@@ -663,7 +663,7 @@ textarea {
   border-bottom: 1px solid var(--yh-gray-line);
 }
 
-/* Logo lockup — 연합뉴스 wordmark with red left rule (matches .yh-brand__logo pattern).
+/* Logo lockup — wordmark with red left rule (matches .yh-brand__logo pattern).
    Typography: Nanum Myeongjo weight 800 — already loaded in index.html (no extra fetch).
    wght 800 gives the newspaper front-page headline density that wght 700 lacks. */
 .yh-card__logo {
@@ -671,10 +671,10 @@ textarea {
   font-family: "Nanum Myeongjo", var(--yh-serif);
   font-size: 1.9rem;
   font-weight: 800; /* heaviest loaded weight → 신문 1면 타이틀 질감 */
-  color: var(--yh-blue); /* 연합뉴스 글자색 파란색 (CLAUDE.md) */
+  color: var(--yh-blue); /* 글자색 파란색 (CLAUDE.md) */
   letter-spacing: -0.04em; /* tighter tracking at display size — 명조 관행 */
   line-height: 1.15;
-  /* Red left accent rule — 연합뉴스 brand identity (matches TopBar brand logo) */
+  /* Red left accent rule — brand identity (matches TopBar brand logo) */
   border-left: 4px solid var(--yh-red);
   padding-left: var(--yh-sp-sm);
 }
@@ -692,7 +692,7 @@ textarea {
   letter-spacing: 0.1em; /* wide tracking for caption / deck feel */
 }
 
-/* Label override for login fields — blue labels per CLAUDE.md 연합뉴스 글자색 규칙.
+/* Label override for login fields — blue labels per CLAUDE.md 글자색 규칙.
    Noto Sans KR 700 with widened tracking gives a print-label quality. */
 .yh-card .yh-field label {
   font-family: var(--yh-sans); /* Noto Sans KR — already body default */
@@ -817,9 +817,6 @@ textarea {
 .yh-desk-row {
   display: grid;
   grid-template-columns: 11rem minmax(0, 1fr) 6rem 6rem 8.5rem 8.5rem 4.5rem 4rem;
-  /* 부서별 송고 DPS 행의 액션 버튼(9번째 자식)이 줄바꿈 없이 같은 줄의 암시적 컬럼에 놓이도록. */
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
 }
 
 .yh-desk-row__id,
@@ -862,15 +859,6 @@ textarea {
   font-size: 0.78rem;
   white-space: nowrap;
   text-align: right;
-}
-
-/* v0.4.0 + SPEC-NEWS-REVISE-007 공존: 우클릭 고침(포털제외)/포털고침(REQ-FE-VIEW-009/010)과 별개로
-   부서별 송고 DPS 행에는 인라인 고침/포털고침 진입점 버튼이 유지된다 (AC-FWD-3). 7컬럼 grid의
-   8번째(암시적) 컬럼에 같은 줄로 배치된다 — .yh-desk-row의 grid-auto-flow/auto-columns 참고. */
-.yh-article-row__actions {
-  display: flex;
-  gap: var(--yh-sp-xs);
-  flex-shrink: 0;
 }
 
 /* ----------------------------------------------------------
@@ -1064,6 +1052,91 @@ textarea {
   color: var(--yh-ink);
 }
 
+/* Department multi-select checkbox dropdown (부서별 작성/송고 — ViewPage DeptMultiSelect).
+   Trigger mirrors the .yh-dept-filter select look; the popup menu follows the design tokens
+   (white panel, 1px --yh-gray-line border, soft blue focus, blue hover) per design.md. */
+.yh-multi-select {
+  position: relative;
+  display: inline-block;
+}
+
+.yh-multi-select__trigger {
+  min-width: 10rem;
+  padding: 2px var(--yh-sp-sm);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  font-size: 0.85rem;
+  background: var(--yh-white);
+  color: var(--yh-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Caret affordance so the button reads as a dropdown, not a plain button. */
+.yh-multi-select__trigger::after {
+  content: '▾';
+  float: right;
+  color: var(--yh-gray-mid);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.yh-multi-select__trigger:focus {
+  border-color: var(--yh-blue);
+  box-shadow: 0 0 0 3px rgba(10, 77, 166, 0.12);
+  outline: none;
+}
+
+.yh-multi-select__trigger[aria-expanded='true'] {
+  border-color: var(--yh-blue);
+}
+
+.yh-multi-select__menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--yh-sp-xs) 0;
+  list-style: none;
+  background: var(--yh-white);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: 2px;
+  box-shadow: 0 4px 12px rgba(8, 48, 107, 0.15);
+}
+
+.yh-multi-select__item label {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-sm);
+  padding: 3px var(--yh-sp-md);
+  font-size: 0.85rem;
+  color: var(--yh-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.yh-multi-select__item label:hover {
+  background: rgba(10, 77, 166, 0.06);
+  color: var(--yh-blue);
+}
+
+.yh-multi-select__item input[type='checkbox'] {
+  accent-color: var(--yh-blue);
+  margin: 0;
+}
+
+/* '전체' row reads as a header-ish action: separated by the standard 1px gray rule. */
+.yh-multi-select__item:first-child label {
+  font-weight: 600;
+  border-bottom: 1px solid var(--yh-gray-line);
+  margin-bottom: 2px;
+  padding-bottom: 5px;
+}
+
 /* ----------------------------------------------------------
    14. Search result lists (WritePage media/article panels)
    ---------------------------------------------------------- */
@@ -1191,7 +1264,7 @@ textarea {
 }
 
 /* SPEC-NEWS-REVISE-003 — 본문 커서 위치 인라인 임베드를 "기사 본문형 블록"으로 표시한다. 임베드가
-   본문 텍스트 흐름 안에서 자기 줄(block)을 차지해 연합뉴스 기사 본문 사진/참조 카드처럼 보인다.
+   본문 텍스트 흐름 안에서 자기 줄(block)을 차지해 기사 본문 사진/참조 카드처럼 보인다.
    래퍼 색은 디자인 토큰(파랑/회색)만 사용 (AC-EMB-INLINE-3 잠금 — #C8102E 금지). */
 .yh-embed-inline {
   display: block;
@@ -1207,7 +1280,7 @@ textarea {
   margin-top: var(--yh-sp-sm);
 }
 
-/* SPEC-NEWS-REVISE-003 — 기사 본문형 임베드 카드. 작은 inline 칩이 아니라 연합뉴스 기사 본문
+/* SPEC-NEWS-REVISE-003 — 기사 본문형 임베드 카드. 작은 inline 칩이 아니라 기사 본문
    사진/참조처럼 자연스러운 figure 로 보인다. 흰 배경(자연스러운 본문 사진 느낌) + 회색 외곽선,
    카드 좌측의 빨강 액센트는 SPEC-NEWS-REVISE-002 D-4 결정 잠금이라 유지한다.
    position:relative 는 우상단 × 삭제 어포던스를 절대배치하기 위함. */

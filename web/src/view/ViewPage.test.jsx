@@ -156,14 +156,16 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'econ art' }]);
     renderView(createFakeModel({ queryUsers, queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 송고' }));
-    // Multi-select populated (distinct) from the separated data-source.
+    // Multi-select populated (distinct) from the separated data-source, defaulting to 전체.
     expect(screen.getByText('부서')).toBeInTheDocument();
     const multiSelect = screen.getByTestId('dept-multi-select');
+    await within(multiSelect).findByText('전체');
     await user.click(within(multiSelect).getByRole('button'));
     expect(screen.getByTestId('dept-checkbox-Economy')).toBeInTheDocument();
-    // Before pressing 조회, no department articles are queried.
-    expect(queryArticles).not.toHaveBeenCalledWith(expect.objectContaining({ sender: expect.anything() }));
-    await user.click(screen.getByTestId('dept-checkbox-Economy'));
+    // Before pressing 조회, no department articles are queried (deferred 계약 유지).
+    expect(queryArticles).not.toHaveBeenCalledWith(expect.objectContaining({ department: expect.anything() }));
+    // 전체 기본값에서 Politics 를 해제해 Economy 단독 조회로 좁힌다.
+    await user.click(screen.getByTestId('dept-checkbox-Politics'));
     // Close dropdown by clicking trigger again.
     await user.click(within(multiSelect).getByRole('button'));
     await user.click(screen.getByRole('button', { name: '조회' }));
@@ -173,16 +175,15 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     expect(call).toEqual({ department: 'Economy', status: 'DPS' });
   });
 
-  it('AC-7.2b: 부서별 송고 — multi-select 전체 선택 + 다중 부서 조회', async () => {
+  it('AC-7.2b: 부서별 송고 — 전체가 기본 선택이며 조회 시 다중 부서 쿼리', async () => {
     const user = userEvent.setup();
     const queryUsers = vi.fn().mockResolvedValue([{ department: 'Politics' }, { department: 'Economy' }]);
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'multi art' }]);
     renderView(createFakeModel({ queryUsers, queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 송고' }));
+    // 2026-06-08 지시: 부서별 송고 진입 시 셀렉트 기본값은 전체 — 체크 없이 바로 조회 가능.
     const multiSelect = screen.getByTestId('dept-multi-select');
-    await user.click(within(multiSelect).getByRole('button'));
-    // Click 전체 checkbox to select all departments.
-    await user.click(screen.getByTestId('dept-checkbox-all'));
+    await within(multiSelect).findByText('전체');
     await user.click(screen.getByRole('button', { name: '조회' }));
     expect(await screen.findByText('multi art')).toBeInTheDocument();
     // Query should have comma-separated departments (order by descending: Politics > Economy).

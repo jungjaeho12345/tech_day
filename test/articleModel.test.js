@@ -108,3 +108,28 @@ test('query with empty filter returns all rows (no regression)', () => {
   const rows = model.query({});
   assert.equal(rows.length, 2);
 });
+
+// --- 레거시 컬럼 케이스 회귀: Contents.LockYN(대문자) DB에서도 query/findById 가 lockYN 키를 보장 ---
+// 실제 운영 news.db 는 이전 브랜치가 만든 `LockYN`/`LockedAt`(대문자) 컬럼을 갖고 있어, SELECT * 의
+// 결과 키가 LockYN 이 되고 프론트(article.lockYN)와 applyAction 잠금 가드(current.lockYN)가 모두
+// undefined 를 읽는 버그가 있었다. AS 별칭 정규화가 이를 막는다 (2026-06-08 수정).
+test('legacy LockYN-cased Contents column: query()/findById() still expose row.lockYN', () => {
+  const db = new DatabaseSync(':memory:');
+  // 레거시 news.db 형상 재현: LockYN/LockedAt 가 대문자로 선언된 Contents.
+  db.exec(`CREATE TABLE Contents (
+    articleId VARCHAR PRIMARY KEY, title VARCHAR, content TEXT, author VARCHAR, modifier VARCHAR,
+    sender VARCHAR, department VARCHAR, departmentCode VARCHAR, createdAt VARCHAR, editedAt VARCHAR,
+    sentAt VARCHAR, distributedAt VARCHAR, embargoAt VARCHAR, secondEmbargoAt VARCHAR,
+    status VARCHAR NOT NULL, LockYN VARCHAR NOT NULL DEFAULT 'N', LockedAt VARCHAR
+  )`);
+  db.exec(`CREATE TABLE Article (
+    articleId VARCHAR PRIMARY KEY, title VARCHAR, content TEXT, markupVersion TEXT, modifier VARCHAR
+  )`);
+  createSchema(db); // idempotent — 대소문자 무시 가드로 중복 ALTER 없이 통과해야 한다
+  const model = createArticleModel(db);
+  db.prepare("INSERT INTO Contents (articleId, status, LockYN) VALUES ('A-LCK', 'RDS', 'Y')").run();
+
+  const [row] = model.query({ articleId: 'A-LCK' });
+  assert.equal(row.lockYN, 'Y');
+  assert.equal(model.findById('A-LCK').lockYN, 'Y');
+});

@@ -51,7 +51,12 @@ export function createArticleModel(db) {
     },
 
     findById(articleId) {
-      return db.prepare('SELECT * FROM Contents WHERE articleId = ?').get(articleId);
+      // lockYN/lockedAt 명시 별칭: 레거시 news.db 는 컬럼명이 `LockYN`/`LockedAt`(대문자)라서
+      // SELECT * 결과 키가 LockYN 이 되고, 호출부(applyAction 잠금 가드)의 row.lockYN 이
+      // undefined 가 된다. AS 별칭은 신규/레거시 DB 모두에서 키를 lockYN/lockedAt 으로 통일한다.
+      return db.prepare(
+        'SELECT *, lockYN AS lockYN, lockedAt AS lockedAt FROM Contents WHERE articleId = ?',
+      ).get(articleId);
     },
 
     /**
@@ -103,8 +108,10 @@ export function createArticleModel(db) {
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+      // c.lockYN AS lockYN: 레거시 news.db 의 `LockYN`(대문자) 컬럼 케이스를 정규화 — findById 참고.
+      // 별칭이 없으면 목록의 LockYN 컬럼이 항상 'N' 으로 보이는 버그가 된다 (article.lockYN === undefined).
       return db.prepare(
-        `SELECT c.*, a.markupVersion AS markupVersion
+        `SELECT c.*, c.lockYN AS lockYN, c.lockedAt AS lockedAt, a.markupVersion AS markupVersion
            FROM Contents c
            LEFT JOIN Article a ON a.articleId = c.articleId${where}`,
       ).all(...values);

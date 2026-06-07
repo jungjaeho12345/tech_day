@@ -194,14 +194,15 @@ describe('ViewPage 데스크 미송고 — 7컬럼 전용 행 (REQ-FE-VIEW-008 v
 
 // SPEC-NEWS-REVISE-007 — 부서별 송고 진입점 와이어링 (REQ-FWD-ENTRYPOINTS / REQ-REVISE-SEMANTICS).
 // 부서별 송고 메뉴는 DPS 기사만 조회한다 (news.md). 이 describe는 부서별 송고로 메뉴를 전환한 뒤
-// 우클릭 컨텍스트 메뉴(편집/고침/포털고침)와 DPS 행 버튼(고침/포털고침)의 포워딩을 검증한다.
+// 우클릭 컨텍스트 메뉴(편집/고침/포털고침)의 포워딩을 검증한다. (2026-06-08 지시: DPS 행 인라인
+// 고침/포털고침 버튼은 제거 — 진입점은 우클릭 메뉴만 남는다.)
 describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)', () => {
   const D_USER = { userId: 'd1', name: 'Desk', role: 'D', department: 'Politics' };
   const R_USER = { userId: 'r1', name: 'Rep', role: 'R', department: 'Politics' };
   const Z_USER = { userId: 'z1', name: 'Adm', role: 'Z', department: 'Politics' };
 
-  // Switch to 부서별 송고, pick a department, press 조회 so the DPS rows load. The fake model returns
-  // the same rows regardless of the filter, so any department selection surfaces the seeded row.
+  // Switch to 부서별 송고 and press 조회 so the DPS rows load. The department multi-select now
+  // defaults to 전체(all departments selected), so no checkbox interaction is needed before 조회.
   async function gotoSongoMenu({ user = D_USER, rows } = {}) {
     const u = userEvent.setup();
     const model = createFakeModel({
@@ -211,10 +212,9 @@ describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)'
     const navigate = vi.fn();
     renderView({ model, user, navigate });
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    // Open multi-select dropdown and select Politics.
+    // Default 전체 selection — the trigger shows 전체 once the departments load.
     const multiSelect = screen.getByTestId('dept-multi-select');
-    await u.click(within(multiSelect).getByRole('button'));
-    await u.click(screen.getByTestId('dept-checkbox-Politics'));
+    await within(multiSelect).findByText('전체');
     await u.click(screen.getByRole('button', { name: '조회' }));
     return { u, navigate };
   }
@@ -279,44 +279,14 @@ describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)'
     expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
   });
 
-  it('AC-FWD-3: DPS 행의 고침 버튼 클릭 시 포워딩하며 행 클릭(상세보기)을 동시 발생시키지 않는다', async () => {
-    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
-    try {
-      const gochimBtn = await screen.findByRole('button', { name: '고침' });
-      await u.click(gochimBtn);
-      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
-      // 행 클릭(상세보기 새창)은 발생하지 않는다 (stopPropagation 유지).
-      expect(openSpy).not.toHaveBeenCalled();
-    } finally {
-      openSpy.mockRestore();
-    }
+  it('2026-06-08 지시: DPS 행에 인라인 고침/포털고침 버튼이 렌더되지 않는다', async () => {
+    await gotoSongoMenu({ rows: [dpsRow] });
+    await screen.findByText('songo row');
+    expect(screen.queryByRole('button', { name: '고침' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '포털고침' })).not.toBeInTheDocument();
   });
 
-  it('AC-FWD-3 (포털고침 버튼): DPS 행의 포털고침 버튼 클릭 시 포워딩 + 전파 차단', async () => {
-    const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
-    try {
-      const portalBtn = await screen.findByRole('button', { name: '포털고침' });
-      await u.click(portalBtn);
-      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
-      expect(openSpy).not.toHaveBeenCalled();
-    } finally {
-      openSpy.mockRestore();
-    }
-  });
-
-  it('AC-FWD-3 (게이팅): D 권한이 아니면 행 버튼은 비활성으로 남고 포워딩하지 않는다', async () => {
-    const { u, navigate } = await gotoSongoMenu({ user: R_USER, rows: [dpsRow] });
-    const gochimBtn = await screen.findByRole('button', { name: '고침' });
-    const portalBtn = screen.getByRole('button', { name: '포털고침' });
-    expect(gochimBtn).toBeDisabled();
-    expect(portalBtn).toBeDisabled();
-    await u.click(gochimBtn).catch(() => {});
-    expect(navigate).not.toHaveBeenCalled();
-  });
-
-  it('AC-FWD-4: 5 진입점(우클릭 편집/고침/포털고침 + 행 고침/포털고침)이 동일 id 로 동일 경로 포워딩', async () => {
+  it('AC-FWD-4: 3 진입점(우클릭 편집/고침(포털제외)/포털고침)이 동일 id 로 동일 경로 포워딩', async () => {
     // Each leg renders a fresh ViewPage; cleanup() between legs prevents duplicate DOM (multiple menus).
     // (a) 우클릭 편집
     {
@@ -339,20 +309,6 @@ describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)'
       const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
       const menu = await openMenuOnRow('songo row');
       await u.click(within(menu).getByRole('menuitem', { name: /포털고침/ }));
-      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
-      cleanup();
-    }
-    // (d) 행 고침 버튼
-    {
-      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
-      await u.click(await screen.findByRole('button', { name: '고침' }));
-      expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
-      cleanup();
-    }
-    // (e) 행 포털고침 버튼
-    {
-      const { u, navigate } = await gotoSongoMenu({ rows: [dpsRow] });
-      await u.click(await screen.findByRole('button', { name: '포털고침' }));
       expect(navigate).toHaveBeenCalledWith('write', { id: 'AKR20260606XYZ' });
     }
   });

@@ -120,27 +120,17 @@ function RealtimeStatus({ connected }) {
 
 // One article rendered as a dense newspaper-index row (news.md 디자인: "기사 목록은 신문 인덱스처럼
 // 한 줄에 조밀하게 표시"). REQ-FE-VIEW-011 v0.5.0: ALL four menus share the same eight-column base —
-// 기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN. 부서별 송고는 DPS 기사에 고침/포털고침
-// 버튼을 추가한다 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS AC-FWD-3).
-// Props: article, role, menu, navigate, onContextMenu — 모두 ViewPage에서 전달됨.
-function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
-  // Click anywhere on the row (but not the action buttons) opens the detail window.
+// 기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN. (2026-06-08 지시: 부서별 송고 DPS 행의
+// 인라인 고침/포털고침 버튼은 제거 — 고침 진입은 우클릭 컨텍스트 메뉴로만 한다.)
+// Props: article, onContextMenu — ViewPage에서 전달됨.
+function ArticleRow({ article, onContextMenu }) {
+  // Click anywhere on the row opens the detail window.
   const openDetail = () => openArticleDetail(article);
   const onKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       openDetail();
     }
-  };
-
-  // SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS (AC-FWD-3): 부서별 송고 DPS 행의 인라인 고침/포털고침 버튼.
-  // Role D + DPS: 활성 + 포워딩. 그 외 권한: disabled (AC-FWD-3 게이팅).
-  // stopPropagation으로 행 클릭(상세보기)이 동시 발생하지 않도록 차단.
-  const showDpsButtons = menu === '부서별 송고' && article.status === 'DPS';
-  const canDpsEdit = role === 'D';
-  const handleDpsEdit = (e) => {
-    e.stopPropagation();
-    if (canDpsEdit && navigate) navigate(ROUTES.WRITE, { id: article.articleId });
   };
 
   return (
@@ -160,12 +150,6 @@ function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
       <span className="yh-article-row__time" data-testid="article-edited-time">{formatCreatedAt(article.editedAt)}</span>
       <span className="yh-desk-row__status" data-testid="article-status">{article.status ?? ''}</span>
       <span className="yh-desk-row__lock" data-testid="article-lockyn">{article.lockYN ?? 'N'}</span>
-      {showDpsButtons ? (
-        <span className="yh-article-row__actions">
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>고침</button>
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>포털고침</button>
-        </span>
-      ) : null}
     </li>
   );
 }
@@ -272,6 +256,15 @@ export function ViewPage({ user, nav }) {
     setSelectedDepts(ctrl.menu === '부서별 작성' && user.department ? [user.department] : []);
   }, [ctrl.menu, user.department]);
 
+  // 부서별 송고 기본값 "전체": 부서 목록(비동기 로드)이 도착했고 선택이 아직 초기 상태([])일 때만
+  // 전체 선택을 시드한다. 사용자가 이미 손댄 선택은 덮어쓰지 않으며(함수형 업데이트 + 빈 배열 가드),
+  // 쿼리는 여전히 조회 버튼으로만 실행된다 — deferred 계약(SPEC-NEWS-REVISE-007/EC-4) 유지.
+  // ctrl.departments 는 메뉴 진입 시 1회 setDepartments 로 고정되므로 이 effect 는 로드 후 1회만 돈다.
+  useEffect(() => {
+    if (ctrl.menu !== '부서별 송고' || ctrl.departments.length === 0) return;
+    setSelectedDepts((prev) => (prev.length === 0 ? [...ctrl.departments] : prev));
+  }, [ctrl.menu, ctrl.departments]);
+
   // Clamp the page if the list shrinks below the current offset (e.g. a realtime update
   // removes rows) so we never land on an empty page.
   useEffect(() => {
@@ -333,9 +326,6 @@ export function ViewPage({ user, nav }) {
             <ArticleRow
               key={a.articleId}
               article={a}
-              role={user.role}
-              menu={ctrl.menu}
-              navigate={navigate}
               onContextMenu={openContextMenu}
             />
           ))}
