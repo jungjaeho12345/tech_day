@@ -20,12 +20,12 @@ export function escapeHtml(value) {
 }
 
 // 공통정보 (common-info) fields per news.md "# 상세보기" enumeration, in display order.
-// `description` is the form-only "내용" field (distinct from the article body which is shown
-// at the bottom). `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
+// `content` is the form's "내용" field saved by WritePage (COMMON_FIELDS key: content).
+// `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
 const COMMON_INFO_FIELDS = Object.freeze([
   ['author', '작성자'],
   ['coAuthor', '공동작성'],
-  ['description', '내용'],
+  ['content', '내용'],
   ['region', '지역'],
   ['attribute', '속성'],
   ['keyword', '키워드'],
