@@ -9,7 +9,7 @@ priority: high
 issue_number: null
 ---
 
-# SPEC-DB-FOUNDATION-001 — 기사 제작 시스템 DB 기반 계층
+# SPEC-DB-FOUNDATION-001 — 기사 작성기 DB 기반 계층
 
 ## HISTORY
 
@@ -21,7 +21,7 @@ issue_number: null
 
 ## 개요 (Overview)
 
-기사 제작 시스템(기사 작성기)의 **데이터 저장 기반 계층**을 정의한다. SQLite 단일 파일 DB 위에
+기사 작성기(기사 작성기)의 **데이터 저장 기반 계층**을 정의한다. SQLite 단일 파일 DB 위에
 `Article`, `Contents`, `User` 3개 테이블 스키마, 기사 아이디 생성 규칙, 그리고
 "DB 내용은 삭제하지 않는다"(소프트 삭제)는 프로젝트 HARD 규칙을 스키마 차원에서 보장한다.
 

@@ -55,7 +55,7 @@ tech_day/
 │   ├── userService.test.js
 │   ├── mediaSearch.test.js
 │   └── controllers.test.js
-├── news.md                     # 제작 시스템 기술 명세서 (기준 문서)
+├── news.md                     # 기사 작성기 기술 명세서 (기준 문서)
 ├── ArticleVO.md                # Article 테이블 필드 명세
 ├── ContentsVO.md               # Contents 테이블 필드 명세
 ├── UserVO.md                   # User 테이블 필드 명세

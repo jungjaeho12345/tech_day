@@ -1,8 +1,8 @@
-# 기사 제작 시스템 (Article Production System)
+# 기사 작성기 Prototype (Article Production System)
 
 언론사용 기사 제작 CMS. 기자·데스크·관리자가 기사를 작성·수정·송고·조회하고 기사 생애주기(상태값)를 관리한다.
 
-> **범위 안내** — 전체 제품은 제작 / 수집 / 배부 3개 시스템으로 구성된다. **현재 구현은 제작 시스템만** 포함한다. 수집·배부는 미구현(향후 예정).
+> **범위 안내** — 전체 제품은 제작 / 수집 / 배부 3개 시스템으로 구성된다. **현재 구현은 기사 작성기만** 포함한다. 수집·배부는 미구현(향후 예정).
 
 ## 아키텍처 — 3계층 구조
 
@@ -54,7 +54,7 @@ tech_day/
 │   ├── userService.test.js
 │   ├── mediaSearch.test.js
 │   └── controllers.test.js
-├── news.md                    # 제작 시스템 기술 명세서 (기준 문서)
+├── news.md                    # 기사 작성기 기술 명세서 (기준 문서)
 ├── ArticleVO.md               # Article 테이블 필드 명세
 ├── ContentsVO.md              # Contents 테이블 필드 명세
 ├── UserVO.md                  # User 테이블 필드 명세

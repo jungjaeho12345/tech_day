@@ -1,6 +1,6 @@
 # Codemaps — Overview
 
-기사 제작 시스템 구현 완료 현황. SPEC-DB-FOUNDATION-001 → SPEC-BACKEND-CORE-001 → SPEC-FRONTEND-UI-001 순서로 3계층 구현 완료. SPEC-NEWS-REVISE-001(2026-06-03)로 Z권한 lifecycle 전이, M3 인라인 임베드, IME 합성 가드 보강.
+기사 작성기 구현 완료 현황. SPEC-DB-FOUNDATION-001 → SPEC-BACKEND-CORE-001 → SPEC-FRONTEND-UI-001 순서로 3계층 구현 완료. SPEC-NEWS-REVISE-001(2026-06-03)로 Z권한 lifecycle 전이, M3 인라인 임베드, IME 합성 가드 보강.
 
 ## 시스템 경계 (구현 완료)
 

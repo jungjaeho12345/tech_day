@@ -63,7 +63,7 @@ function buildCommonInfoRows(article) {
 /**
  * Build a full standalone HTML document for the article-detail popup window.
  * Layout: 상단 공통정보(12 필드, 가로 나열) → 하단 통합 "기사" 영역(제목 → 본문 함께).
- * 연합뉴스 블루/화이트 톤 (CLAUDE.md 디자인 규칙: 파란색과 흰색, 글자색은 파란색).
+ * 블루/화이트 톤 (CLAUDE.md 디자인 규칙: 파란색과 흰색, 글자색은 파란색).
  * @param {Record<string, unknown>} article
  * @returns {string}
  */

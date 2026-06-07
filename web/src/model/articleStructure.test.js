@@ -7,7 +7,7 @@ import { parseArticleStructure } from './articleStructure.js';
 describe('parseArticleStructure (REQ-EDIT-PARSE)', () => {
   it('AC-1: splits title/subtitle/body at the first blank line (후보 A)', () => {
     const input = [
-      '연합뉴스 속보 제목입니다',
+      '속보 제목입니다',
       '부제목 첫째 줄',
       '부제목 둘째 줄',
       '',
@@ -16,7 +16,7 @@ describe('parseArticleStructure (REQ-EDIT-PARSE)', () => {
     ].join('\n');
     const result = parseArticleStructure(input);
     expect(result).toEqual({
-      title: '연합뉴스 속보 제목입니다',
+      title: '속보 제목입니다',
       subtitle: '부제목 첫째 줄\n부제목 둘째 줄',
       body: '본문 첫 문단입니다.\n본문 둘째 문단입니다.',
     });

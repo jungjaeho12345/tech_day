@@ -156,14 +156,15 @@ export function createApp({ controllers, sessionService }) {
       return res.json(gate);
     }
     // Transition is driven by the SESSION role, never by any client-supplied body.role.
-    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): pass the caller's lock identity — the page-scoped sessionId
-    // from the body (or x-page-session-id header) + the session-derived userId — so a transition on
-    // an article live-locked by ANOTHER holder is rejected ({ok:false, reason:'lock-required'}).
-    // Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): the lock holder identity is the LOGIN session id (sessionIdOf),
+    // matching the lock/unlock/PUT routes (신설계: holder = 로그인 세션 id, page-scoped UUID 폐기).
+    // The edit lock is acquired under this same login session id (POST /lock uses sid), so the
+    // action guard must compare against sid — NOT the client body's page-scoped sessionId, which is a
+    // DIFFERENT value and would spuriously reject a legitimate hold/send/kill on a locked article with
+    // {ok:false, reason:'lock-required'}. Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
     const result = controllers.article.applyAction(req.params.id, session.role, action, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId,
     });
     if (result.ok) {
       bus.emit('change', { type: 'status', articleId: req.params.id, status: result.status });

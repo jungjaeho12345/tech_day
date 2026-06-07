@@ -199,7 +199,7 @@ test('AC-2: re-running schema creation preserves existing data', () => {
 test('AC-3: Korean string round-trips intact through Contents', () => {
   const db = freshDb();
   createSchema(db);
-  const koreanTitle = '속보: 기사 제작 시스템';
+  const koreanTitle = '속보: 기사 작성기';
   db.prepare('INSERT INTO Contents (articleId, title) VALUES (?, ?)')
     .run('AKR202605270000000002', koreanTitle);
   const row = db.prepare('SELECT title FROM Contents WHERE articleId = ?')

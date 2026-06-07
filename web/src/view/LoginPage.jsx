@@ -1,5 +1,5 @@
 // Login page view (REQ-FE-LOGIN-001/005, AC-2.1/2.2/2.3).
-// Design: 연합뉴스 blue+white style — blue gradient background, white card,
+// Design: blue+white style — blue gradient background, white card,
 // blue brand wordmark with red left rule, blue field labels. (CLAUDE.md)
 import { useState } from 'react';
 import { useLoginController } from '../controller/useLoginController.js';
@@ -18,8 +18,8 @@ export function LoginPage({ onSuccess }) {
     <main className="yh-login-wrap">
       <div className="yh-card">
         <header className="yh-card__header">
-          <h1 className="yh-card__logo">연합뉴스</h1>
-          <p className="yh-card__subtitle">기사 제작 시스템</p>
+          <h1 className="yh-card__logo"></h1>
+          <p className="yh-card__subtitle">기사 작성기</p>
         </header>
 
         <form onSubmit={handleSubmit} noValidate>

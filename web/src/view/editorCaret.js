@@ -102,6 +102,57 @@ export function getBodyTextFromDom(root) {
   return out;
 }
 
+// Recover a minimal embed descriptor from a painted embed span (fallback when no model lookup is given).
+function embedDescriptorFromSpan(span) {
+  const testid = span.getAttribute('data-testid') || '';
+  const type = testid === 'embed-video' ? 'video' : testid === 'embed-article' ? 'article' : 'image';
+  return { type };
+}
+
+/**
+ * Read the editor `root` into an ORDERED content document ({blocks}) that mirrors the true DOM
+ * interleave of text runs and inline embed spans ([data-embed-index]). Walks the body's direct
+ * descendants in document order: every embed span becomes an {type:'embed', embed} block carrying the
+ * embed descriptor recovered via `embedFor` (or reconstructed from data-testid), and contiguous body
+ * text (text nodes / colored line spans OUTSIDE any embed) accumulates into {type:'text', text} blocks.
+ *
+ * Bug 1 fix: the previous repaint path (contentWithText / setBodyText) always laid out
+ * `[...textBlocks, ...embeds]`, dropping the real ordering — so text typed AFTER a trailing embed was
+ * rebuilt BEFORE it, and pressing Enter re-rendered the embed BELOW the text (the image "jumped" under
+ * the typed line). Reading the live DOM order preserves where each embed actually sits.
+ *
+ * @param {HTMLElement} root editor body
+ * @param {(index:number, span:HTMLElement)=>object} [embedFor] embed descriptor lookup by ordinal
+ * @returns {{ blocks: Array<object> }}
+ */
+export function readOrderedContentFromDom(root, embedFor) {
+  if (!root) return { blocks: [] };
+  const blocks = [];
+  let textRun = '';
+  const flushText = () => {
+    if (textRun !== '') {
+      blocks.push({ type: 'text', text: textRun });
+      textRun = '';
+    }
+  };
+  for (const child of root.childNodes) {
+    if (child.nodeType === 1 && child.hasAttribute?.('data-embed-index')) {
+      flushText();
+      const index = Number(child.getAttribute('data-embed-index'));
+      const embed = (typeof embedFor === 'function' ? embedFor(index, child) : null)
+        ?? embedDescriptorFromSpan(child);
+      blocks.push({ type: 'embed', embed });
+    } else if (child.nodeType === 3) {
+      textRun += child.textContent;
+    } else if (child.nodeType === 1 && child.tagName !== 'BR') {
+      // A colored line span contributes its text; <br> padding contributes nothing.
+      textRun += child.textContent;
+    }
+  }
+  flushText();
+  return { blocks };
+}
+
 /**
  * SPEC-NEWS-REVISE-003 — caret-adjacent embed deletion (Backspace).
  * Given the editor `root`, inspect the current collapsed selection and decide whether the position

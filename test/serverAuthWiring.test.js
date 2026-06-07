@@ -511,15 +511,19 @@ test('AC-EDIT-LOCK-6: 타 보유자가 락 중인 기사의 POST action은 lock-
   );
 });
 
-test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 body.sessionId로 식별되어 통과한다', async () => {
+test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 로그인 세션 id로 식별되어 통과한다', async () => {
   seedUser('d-act-holder', 'D');
   const sessionId = loginSessionId('d-act-holder');
   const { articleId } = controllers.article.create({ title: 'holder-action' });
-  // 보유자 = 세션 사용자 본인 + 페이지 단위 sessionId 'P-hold' (클라이언트가 body로 회신).
-  const held = controllers.article.acquireEditLock(articleId, { userId: 'd-act-holder', sessionId: 'P-hold' });
+  // SPEC-EDIT-LOCK-001 신설계: 잠금 holder = 로그인 세션 id. 실제 편집 흐름과 동일하게 POST /lock 이
+  // 사용하는 식별자(userId=세션 사용자, sessionId=로그인 세션 id)로 잠금을 획득한다 — page-scoped UUID 폐기.
+  const session = sessions.validateSession(sessionId);
+  const held = controllers.article.acquireEditLock(articleId, { userId: session.userId, sessionId });
   assert.equal(held.ok, true);
 
-  const result = await postAction(articleId, { sessionId, body: { action: 'send', sessionId: 'P-hold' } });
+  // 클라이언트는 body 에 page-scoped UUID 를 sessionId 로 실어 보내지만(holder 와 다른 값), action 라우트는
+  // 로그인 세션 id(x-session-id)로 holder 를 식별하므로 보유자 본인의 action 은 통과한다 (Bug 2 회귀 가드).
+  const result = await postAction(articleId, { sessionId, body: { action: 'send', sessionId: 'P-hold-differs' } });
   assert.equal(result.ok, true);
   assert.equal(result.status, 'DPS', 'RDS|D|send → DPS (보유자 본인은 차단되지 않는다)');
 });

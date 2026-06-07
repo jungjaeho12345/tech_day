@@ -86,6 +86,39 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
       content = { blocks: [...contentFromText(value).blocks, ...embeds] };
     },
     /**
+     * Bug 1 fix — accept a pre-ORDERED content document (text + embeds interleaved exactly as the
+     * editor DOM holds them) so a trailing embed stays ABOVE text typed after it, and that order
+     * round-trips through markupVersion (save → reload keeps the embed above the text). Unlike
+     * setBodyText (which rebuilt `[...text, ...embeds]` and dropped interleave), this preserves the
+     * caller-supplied block order verbatim, defensively copying embed descriptors.
+     * @param {{blocks: Array<object>}} ordered
+     */
+    setOrderedContent(ordered) {
+      const blocks = (ordered?.blocks ?? []).map((b) =>
+        b.type === 'embed'
+          ? { type: 'embed', embed: { ...b.embed } }
+          : { type: 'text', text: typeof b.text === 'string' ? b.text : '' });
+      // SPEC-NEWS-REVISE — keep the "(끝)" end marker as a DISTINGUISHED FINAL text block (mirrors
+      // setBodyText). When the LAST text block ends with exactly "(끝)", peel the marker into its own
+      // trailing block so block order stays `[...content, "(끝)"]` and the gold coloring / 송고 guard /
+      // markup round-trip behave identically to the flat-text path. Embeds keep their interleaved spots.
+      let lastTextIdx = -1;
+      for (let i = blocks.length - 1; i >= 0; i -= 1) {
+        if (blocks[i].type === 'text') { lastTextIdx = i; break; }
+      }
+      if (lastTextIdx !== -1) {
+        const last = blocks[lastTextIdx];
+        if (last.text.endsWith(END_MARKER_BLOCK) && last.text !== END_MARKER_BLOCK) {
+          const base = last.text.slice(0, last.text.length - END_MARKER_BLOCK.length);
+          const replacement = [];
+          if (base !== '') replacement.push({ type: 'text', text: base });
+          replacement.push({ type: 'text', text: END_MARKER_BLOCK });
+          blocks.splice(lastTextIdx, 1, ...replacement);
+        }
+      }
+      content = { blocks };
+    },
+    /**
      * Insert the gold "(끝)" marker as the FINAL block, AFTER all embeds (news.md 기사 에디터 Alt+Y).
      * SPEC-NEWS-REVISE: the marker now renders after the entire content (본문 텍스트 → embeds → "(끝)"),
      * not before trailing embeds. It is the distinguished final text block, so block order becomes

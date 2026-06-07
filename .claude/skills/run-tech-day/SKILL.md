@@ -100,7 +100,7 @@ Verified output (exit 0):
 ```
 
 Screenshots land in **`.claude/skills/run-tech-day/screenshots/`** (gitignored):
-- `login.png` — 연합뉴스 red bar, blue title, 아이디/암호 form.
+- `login.png` — red bar, blue title, 아이디/암호 form.
 - `write.png` — authenticated write page: `desk1 · 정치부 · (D)` top-right, 송고/보류 buttons,
   공통정보/이미지/영상/글기사 tabs, editor + metadata at 60:40.
 - `view.png` — 기사 조회 list: 데스크 미송고 tab active, the two RDS articles with status badges,
@@ -134,7 +134,7 @@ Verify they are up (read-only — does not mutate `news.db`):
 ```bash
 curl -s http://127.0.0.1:3001/api/health                           # {"ok":true}
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5173/    # 200
-curl -s http://localhost:5173/ | grep -o '<title>[^<]*</title>'    # <title>기사 제작 시스템 – 연합뉴스</title>
+curl -s http://localhost:5173/ | grep -o '<title>[^<]*</title>'    # <title>기사 작성기</title>
 ```
 
 Then open **http://localhost:5173** in a browser. The server honors a `PORT` env var

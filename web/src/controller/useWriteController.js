@@ -293,9 +293,30 @@ export function useWriteController(user, options = {}) {
     return undefined;
   }, [editArticleId, session, releaseHeldLock]);
 
-  // Set the plain body text (typed input). Embeds already inserted are preserved (REQ-EDIT-ADP-003).
-  const setBodyMarkup = useCallback((next) => {
-    adapter.setBodyText(next);
+  // Set the body from typed input. Embeds already inserted are preserved (REQ-EDIT-ADP-003).
+  //
+  // Bug 1 fix — OPTIONAL 2nd arg `orderedContent`: a pre-ordered {blocks} snapshot read from the live
+  // editor DOM. When present it is applied verbatim (adapter.setOrderedContent) so the true interleave
+  // of text and inline embeds is preserved in the model AND in markupVersion. Without it, the flat-text
+  // path (adapter.setBodyText) runs exactly as before — this keeps every existing single-arg caller
+  // (Alt+Y/reset/edit-load/IME paths that pass only text) behaving identically (backward-compatible).
+  // The flat path rebuilt `[...text, ...embeds]`, which reordered a trailing embed BELOW text typed
+  // after it; the ordered path keeps the embed where the user placed it (visible AND persisted order).
+  const setBodyMarkup = useCallback((next, orderedContent) => {
+    if (orderedContent) {
+      adapter.setOrderedContent(orderedContent);
+    } else {
+      adapter.setBodyText(next);
+    }
+    setContent(adapter.getContent());
+  }, [adapter]);
+
+  // Bug 1 fix — set the editor content from a pre-ORDERED block list (read from the live DOM) so the
+  // true interleave of text and inline embeds is preserved in the model (and thus in markupVersion).
+  // setBodyText placed all text before all embeds, so a trailing embed was reordered BELOW text typed
+  // after it; this keeps the embed where the user actually placed it (visible AND persisted order).
+  const setBodyContent = useCallback((ordered) => {
+    adapter.setOrderedContent(ordered);
     setContent(adapter.getContent());
   }, [adapter]);
 
@@ -412,6 +433,15 @@ export function useWriteController(user, options = {}) {
           id = saved.articleId;
           setArticleId(id);
         }
+      }
+      // 최초 송고 = RDS (2026-06-07 결정): 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이
+      // 없이 RDS 그대로 저장만 한다 — 데스크 미송고 목록에 올라 데스크 검수를 기다린다. 생애주기
+      // 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고에만 적용된다. 보류/KILL 은
+      // 신규에서도 종전대로 전이를 일으킨다 (R→RRH/RRK, D→DDH/DDK).
+      if (action === 'send' && !isEditContext) {
+        setLifecycleStatus('RDS');
+        resetDraft();
+        return;
       }
       // AC-EDIT-LOCK-6 — 편집 컨텍스트에선 페이지 락 sessionId를 4번째 인자로 함께 보내 서버 action
       // 라우트의 락 게이트가 호출자를 락 보유자 본인으로 식별하게 한다. 신규 초안은 락이 없으므로

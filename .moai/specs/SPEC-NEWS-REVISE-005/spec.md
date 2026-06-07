@@ -35,7 +35,7 @@ related_specs:
 | 라이프사이클 | spec-anchored (구현과 함께 유지) |
 | 관련 SPEC | SPEC-NEWS-REVISE-002, SPEC-NEWS-REVISE-003, SPEC-NEWS-REVISE-004 |
 | 우선순위 | High |
-| 변경 유형 | Brownfield Δ-only (제작 시스템 한정) |
+| 변경 유형 | Brownfield Δ-only (기사 작성기 한정) |
 
 ---
 
@@ -99,7 +99,7 @@ if (action === 'send' && !hasEndMarker(adapter.getBodyText())) {
 - 가드 외 신규 production 변경 — `useWriteController.js` 의 가드 8줄(이미 작성) 외 추가 로직 없음.
 - 신규 CSS 토큰/스타일 추가 (가드는 표준 `window.alert`).
 - DB 스키마/컬럼 변경, ContentsVO 변경.
-- 수집(collect)·배부(distribute) 시스템 작업 (현재 구현 범위는 제작 시스템만).
+- 수집(collect)·배부(distribute) 시스템 작업 (현재 구현 범위는 기사 작성기만).
 - ALERT 문구 국제화(i18n) 또는 커스텀 모달 UI 로의 교체.
 
 ---

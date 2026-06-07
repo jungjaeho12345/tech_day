@@ -1,5 +1,5 @@
 // @MX:NOTE: [AUTO] Inline embed renderer (REQ-EDIT-EMBED-002/003/004/006) — visual image / video card /
-// article card, styled with 연합뉴스 tokens. Defensive: missing thumbnailUrl falls back to url (EC-5).
+// article card, styled with tokens. Defensive: missing thumbnailUrl falls back to url (EC-5).
 //
 // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — `onDelete` prop opt-in: when supplied, the embed renders a
 // hover/focus 시 노출되는 × 어포던스 button (`aria-label="임베드 삭제"`, keyboard focusable). The button

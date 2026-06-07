@@ -8,8 +8,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { buildColorSegments } from './editorColoring.js';
-import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, getBodyTextFromDom, findEmbedIndexBeforeCaret } from './editorCaret.js';
-import { embedOrdinalAtInsertOffset } from '../model/editorContent.js';
+import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, getBodyTextFromDom, findEmbedIndexBeforeCaret, readOrderedContentFromDom } from './editorCaret.js';
+import { embedOrdinalAtInsertOffset, insertNewlineIntoContent } from '../model/editorContent.js';
 import { insertNewlineAt } from './editorNewline.js';
 import { deleteCurrentLine } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
@@ -398,6 +398,19 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     return { blocks };
   }, []);
 
+  // Bug 1 fix — read the editor's live DOM into an ORDERED content document so the true interleave of
+  // text and inline embeds is preserved through a repaint. Embed descriptors are recovered from the
+  // model (contentRef) by their data-embed-index ordinal; a fallback minimal descriptor is used if an
+  // ordinal is missing. Unlike contentWithText (which placed all text before all embeds), this keeps a
+  // trailing embed ABOVE text typed after it — so pressing Enter never hoists the embed below the text.
+  const orderedContentFromDom = useCallback((el) => {
+    const embedBlocks = (contentRef.current?.blocks ?? []).filter((b) => b.type === 'embed');
+    return readOrderedContentFromDom(el, (ordinal) => {
+      const block = embedBlocks[ordinal];
+      return block ? { ...block.embed } : null;
+    });
+  }, []);
+
   // news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브를 본문에 임베딩한다. (10%x10% size
   // comes from the existing .yh-embed CSS.) An image item -> read as a data URL and embed as an inline image;
   // a YouTube URL in the pasted text -> embed as an inline video. Otherwise let normal plain-text paste proceed
@@ -473,12 +486,15 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const offset = getCaretCharOffset(el);
     const next = insertNewlineAt(bodyText, offset);
     const caret = (offset == null ? bodyText.length : Math.min(offset, bodyText.length)) + 1;
-    // Paint + place the caret immediately (no flicker). Pass a content snapshot so inline embeds are
-    // preserved through the repaint.
-    paintNow(el, contentWithText(next));
+    // Bug 1 fix — splice the newline into the DOM-ORDERED content so a trailing embed stays ABOVE the
+    // text typed after it (the old contentWithText put all text before all embeds, hoisting the image
+    // below the typed line). insertNewlineIntoContent keeps every embed at its interleaved position.
+    const nextContent = insertNewlineIntoContent(orderedContentFromDom(el), offset);
+    paintNow(el, nextContent);
     setCaretCharOffset(el, caret);
-    onChangeText(next);
-  }, [bodyText, onChangeText, contentWithText, paintNow]);
+    // Push the ORDERED content (2nd arg) so the model/markup keeps the embed above the typed line.
+    onChangeText(next, nextContent);
+  }, [bodyText, onChangeText, orderedContentFromDom, paintNow]);
 
   // SPEC-NEWS-REVISE-001 — Korean IME 1-press Enter fix (stale-closure 회피). compositionEnd 시점에는
   // 직전 onChangeText(textContent) 호출이 비동기 state update라 `bodyText` 클로저가 아직 IME-commit
@@ -489,10 +505,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const offset = getCaretCharOffset(el);
     const next = insertNewlineAt(text, offset);
     const caret = (offset == null ? text.length : Math.min(offset, text.length)) + 1;
-    paintNow(el, contentWithText(next));
+    // Bug 1 fix (same ordering preservation as insertNewline, for the IME-commit Enter path).
+    const nextContent = insertNewlineIntoContent(orderedContentFromDom(el), offset);
+    paintNow(el, nextContent);
     setCaretCharOffset(el, caret);
-    onChangeText(next);
-  }, [onChangeText, contentWithText, paintNow]);
+    onChangeText(next, nextContent);
+  }, [onChangeText, orderedContentFromDom, paintNow]);
 
   // Intercept Enter / Shift+Enter on keydown and splice a model '\n' ourselves. We use keydown (one path,
   // not also beforeinput) because it fires reliably in the target browser AND is testable.
@@ -623,9 +641,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           // 파괴해 입력 1글자가 지연된 듯 보이는 증상이 발생한다. 합성 결과는 compositionEnd에서
           // 한 번에 flush한다.
           if (composingRef.current) return;
-          onChangeText(getBodyTextFromDom(e.currentTarget));
+          // Bug 1 fix — push the DOM-ORDERED content so text typed AFTER a trailing embed keeps the
+          // embed above it in the model/markup (not just visually). Flat text alone reordered them.
+          const el = e.currentTarget;
+          onChangeText(getBodyTextFromDom(el), orderedContentFromDom(el));
           if (onCaretChange) {
-            const off = getCaretCharOffset(e.currentTarget);
+            const off = getCaretCharOffset(el);
             if (off != null) onCaretChange(off);
           }
         }}
@@ -683,7 +704,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             // rAF 미지원 환경(구형 jsdom 등) — 마이크로태스크로 폴백.
             Promise.resolve().then(() => { justComposedRef.current = false; });
           }
-          onChangeText(getBodyTextFromDom(e.currentTarget));
+          // Bug 1 fix — preserve text/embed interleave on IME commit too (ordered DOM snapshot).
+          onChangeText(getBodyTextFromDom(e.currentTarget), orderedContentFromDom(e.currentTarget));
           // If the composition was committed by Enter, also break the line here so the user does not
           // need to press Enter a second time (Korean IME 1-press Enter fix). insertNewlineFromDom의
           // paintEditor는 합성이 막 끝난(=새 합성이 아직 시작되지 않은) 안전한 순간에만 수행된다.

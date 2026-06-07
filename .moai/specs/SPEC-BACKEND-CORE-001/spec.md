@@ -9,7 +9,7 @@ priority: high
 issue_number: null
 ---
 
-# SPEC-BACKEND-CORE-001 — 기사 제작 시스템 백엔드 애플리케이션 계층
+# SPEC-BACKEND-CORE-001 — 기사 작성기 백엔드 애플리케이션 계층
 
 ## HISTORY
 
@@ -21,7 +21,7 @@ issue_number: null
 
 ## 개요 (Overview)
 
-기사 제작 시스템(기사 작성기)의 **백엔드 애플리케이션 계층**을 정의한다. NodeJS + MVC 패턴 위에서
+기사 작성기(기사 작성기)의 **백엔드 애플리케이션 계층**을 정의한다. NodeJS + MVC 패턴 위에서
 기사 CRUD 함수, 사용자 CRUD + 로그인 인증, 기사 ID 생성 함수, 기사 생애주기 상태머신(RDS/DPS/...),
 권한(R/D/Z) 기반 인가를 비즈니스 로직 차원에서 정의한다.
 

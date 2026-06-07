@@ -88,7 +88,7 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     expect(saveArticle.mock.calls[0][1].title).toBe('DB 제목');
   });
 
-  it('DP-F5 invariant: send persists DTO then submits action only (no client state computation)', async () => {
+  it('DP-F5 invariant: 신규 송고는 DTO 저장만 — applyAction 미호출, RDS 유지 (최초 송고 = RDS)', async () => {
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
@@ -96,8 +96,9 @@ describe('useWriteController editor integration (AC-4, REQ-EDIT-EMBED)', () => {
     await act(async () => { await result.current.send(); });
     expect(saveArticle).toHaveBeenCalled();
     expect(saveArticle.mock.calls[0][1].markupVersion).toContain('hello body');
-    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
-    expect(result.current.lifecycleStatus).toBe('DPS');
+    // 2026-06-07 결정: 작성 페이지 신규 기사(A-DRAFT) 송고는 권한 무관 RDS 저장 — 전이 없음.
+    expect(applyAction).not.toHaveBeenCalled();
+    expect(result.current.lifecycleStatus).toBe('RDS');
   });
 
   it('DP-F5 invariant: kill submits the kill action only and shows returned state', async () => {
@@ -350,7 +351,7 @@ describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', (
     expect(result.current.bodyText).toContain('마커 없는 본문');
   });
 
-  it('AC-SEND-GUARD-3: 본문 (끝) 존재 송고 → ALERT 없이 saveArticle → applyAction 정상 진행', async () => {
+  it('AC-SEND-GUARD-3: 본문 (끝) 존재 송고 → ALERT 없이 saveArticle 정상 진행 (신규 송고 = RDS, applyAction 미호출)', async () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -359,11 +360,11 @@ describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', (
     await act(async () => { await result.current.send(); });
     // (끝) ALERT 가 발생하지 않는다.
     expect(alertSpy).not.toHaveBeenCalled();
-    // 기존 송고 경로(Insert 분기 → saveArticle → applyAction)가 정상 진행된다.
+    // 송고 경로(Insert 분기 → saveArticle)가 정상 진행된다. 2026-06-07 결정: 신규 송고는 RDS 저장만.
     expect(saveArticle).toHaveBeenCalledTimes(1);
     expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
-    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
-    expect(result.current.lifecycleStatus).toBe('DPS');
+    expect(applyAction).not.toHaveBeenCalled();
+    expect(result.current.lifecycleStatus).toBe('RDS');
   });
 
   it('AC-SEND-GUARD-4: 보류(hold)는 (끝) 없이도 비차단 진행 (제목만 요구)', async () => {
@@ -414,7 +415,9 @@ describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', (
     await act(async () => { await result.current.send(); });
     expect(alertSpy).not.toHaveBeenCalled();
     expect(saveArticle).toHaveBeenCalledTimes(1);
-    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
+    // 2026-06-07 결정: 신규 송고는 RDS 저장만 — applyAction 미호출.
+    expect(applyAction).not.toHaveBeenCalled();
+    expect(result.current.lifecycleStatus).toBe('RDS');
   });
 
   it('EC-2: 본문 중간에만 (끝) 이 있고 끝이 아니면 차단 (끝 마커가 아님)', async () => {
@@ -532,15 +535,15 @@ describe('news.md 96~99/141~148행 — 보류/송고 저장+전이 정합 (BUG-H
     expect(result.current.actionError).toBeNull();
   });
 
-  // BUG-SEND-ROLE: D 권한 신규 송고 → lifecycleStatus 'DPS'.
-  it('BUG-SEND-ROLE: role D 신규 송고 → lifecycleStatus "DPS" (fakeModel 권한별 분기 + lifecycle.js 정합)', async () => {
+  // 2026-06-07 결정 (최초 송고 = RDS): D 권한도 신규 기사 송고는 RDS 저장 — 전이 없음.
+  // D 송고 → DPS 전이는 기존 기사(편집 컨텍스트)의 송고에만 적용된다 (lifecycle.js 표는 그대로 유효).
+  it('BUG-SEND-ROLE: role D 신규 송고 → lifecycleStatus "RDS" (최초 송고 = RDS, 전이는 편집 컨텍스트 한정)', async () => {
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-D-NEW' });
     const { result } = renderCtrl(createFakeModel({ saveArticle }));
     act(() => result.current.setBodyMarkup('D 기사 제목\n본문(끝)'));
     await act(async () => { await result.current.send(); });
 
-    // D 권한 송고는 DPS 전이 (news.md 141행: 권한 D + RDS + 송고 → DPS).
-    expect(result.current.lifecycleStatus).toBe('DPS');
+    expect(result.current.lifecycleStatus).toBe('RDS');
     expect(result.current.actionError).toBeNull();
   });
 });

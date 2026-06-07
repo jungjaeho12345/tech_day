@@ -1,4 +1,4 @@
-# 뉴스 제작 시스템 — 송고 상태 전이 및 list.do 메뉴 필터
+# 기사 작성기 — 송고 상태 전이 및 list.do 메뉴 필터
 
 출처: `D:\agents\tech_day\news.md` (source-of-truth) + 스킬 `moai-domain-news-editor/SKILL.md`
 

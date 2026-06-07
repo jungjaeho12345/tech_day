@@ -84,7 +84,7 @@ SPEC-NEWS-REVISE-004(evaluator GAN 라운드 1 PASS 0.838) 와 SPEC-NEWS-REVISE-
 - 송고 `(끝)` 가드 / 제목 가드 / Alt+Y 동작의 *동작* 변경 (005/002 그대로; 본 SPEC 은 Named AC 격상만)
 - SPEC-NEWS-REVISE-001/002/003/004/005 의 `spec.md` / `plan.md` / `acceptance.md` 수정
 - 새 디자인 토큰 정의 또는 CSS 변수 추가
-- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 제작 시스템만")
+- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 기사 작성기만")
 - 새 `.claude/agents` 또는 `.claude/skills` 정의
 
 ---
@@ -298,7 +298,7 @@ SPEC-NEWS-REVISE-004(evaluator GAN 라운드 1 PASS 0.838) 와 SPEC-NEWS-REVISE-
 - SPEC-NEWS-REVISE-001/002/003/004/005 의 `spec.md` / `plan.md` / `acceptance.md` 수정.
 - 새 디자인 토큰 정의 또는 CSS 변수 추가.
 - 동결 예외를 이용한 라우팅/DTO/생애주기/권한 단언 기대값 변경 (예외 범위를 입력 파생 기대값으로 한정).
-- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 제작 시스템만").
+- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 기사 작성기만").
 - 새 `.claude/agents` 또는 `.claude/skills` 정의.
 - AskUserQuestion 호출 (subagent boundary).
 

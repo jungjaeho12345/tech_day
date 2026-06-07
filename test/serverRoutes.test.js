@@ -185,6 +185,42 @@ test('UNLOCK: a session whose role is not R/D/Z is forbidden (403)', async () =>
   assert.equal(body.reason, 'forbidden');
 });
 
+// --- Bug 2 regression: 보류(hold) on a lock-held article must NOT be rejected ---------------
+// SPEC-EDIT-LOCK-001 신설계: 잠금 holder = 로그인 세션 id (POST /lock 이 sid 로 획득). 따라서
+// POST /:id/action 의 잠금 게이트도 sid(로그인 세션 id)로 보유자를 식별해야 한다. 종전에는 클라이언트
+// body 의 page-scoped sessionId(UUID)를 사용해, 같은 로그인 세션이 정당하게 잠근 기사에 대한 보류가
+// {ok:false, reason:'lock-required'} 로 거부됐다 (UI: "전송이 거부되었습니다 (lock-required)").
+test('ACTION: 보류(hold) on a lock-held article by the lock-holding login session succeeds (Bug 2 regression)', async () => {
+  seedUser('hold-holder', 'R');
+  const sessionId = loginSessionId('hold-holder');
+  const { articleId } = controllers.article.create({ title: 'hold-locked' }); // RDS, lockYN='N'
+  // 편집 진입: 같은 로그인 세션으로 잠금 획득 (실제 편집 흐름).
+  const lockRes = await postLock(articleId, { sessionId });
+  assert.equal(lockRes.status, 200, 'lock must succeed before the action');
+  // 클라이언트(useWriteController)는 body 에 page-scoped UUID 를 sessionId 로 실어 보낸다 — 잠금 holder(sid)
+  // 와는 다른 값이다. 서버 action 라우트가 sid 로 holder 를 식별하므로 보류는 통과해야 한다.
+  const acted = await postAction(articleId, {
+    sessionId,
+    body: { action: 'hold', sessionId: 'page-scoped-uuid-differs-from-sid' },
+  });
+  assert.equal(acted.ok, true, 'hold on the holder\'s own locked article must succeed (not lock-required)');
+  assert.equal(acted.status, 'RRH', 'R + RDS + hold transitions to RRH');
+});
+
+test('ACTION: a hold by a NON-holder login session on a locked article is still rejected (lock-required)', async () => {
+  seedUser('hold-owner', 'R');
+  seedUser('hold-intruder', 'R');
+  const ownerSid = loginSessionId('hold-owner');
+  const intruderSid = loginSessionId('hold-intruder');
+  const { articleId } = controllers.article.create({ title: 'hold-foreign-lock' });
+  const lockRes = await postLock(articleId, { sessionId: ownerSid });
+  assert.equal(lockRes.status, 200);
+  const acted = await postAction(articleId, { sessionId: intruderSid, body: { action: 'hold' } });
+  assert.equal(acted.ok, false);
+  assert.equal(acted.reason, 'lock-required');
+  assert.equal(db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status, 'RDS');
+});
+
 test('UNLOCK: an unauthenticated unlock request is rejected (401)', async () => {
   const { articleId } = controllers.article.create({ title: 'unlock-no-session' });
   const { status, body } = await postUnlock(articleId);

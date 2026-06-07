@@ -80,7 +80,7 @@
 | `clipboardEmbed.js` | 클립보드 이미지를 붙여넣을 때 10%×10% 크기로 임베드. |
 | `articleDetail.js` | 상세보기 HTML 생성(`buildArticleDetailHtml`). 제목 블록과 본문 블록을 분리된 `<section aria-label>` 두 개로 렌더링하며, 사이에 `--yh-gray-line` 기반 1px 구분선을 적용한다(SPEC-NEWS-REVISE-001 AC-DTL-1·2). |
 
-### 디자인 토큰 (연합뉴스 스타일)
+### 디자인 토큰 (스타일)
 
 SPEC-NEWS-REVISE-001 §5.1에 따라 본 SPEC은 신규 CSS 변수를 도입하지 않는다. 기존에 정의된 토큰만 사용한다.
 

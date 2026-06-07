@@ -1,7 +1,7 @@
 {
   "name": "article-production-system",
   "version": "0.1.0",
-  "description": "기사 제작 시스템 - DB foundation layer (SPEC-DB-FOUNDATION-001)",
+  "description": "기사 작성기 - DB foundation layer (SPEC-DB-FOUNDATION-001)",
   "type": "module",
   "private": true,
   "engines": {

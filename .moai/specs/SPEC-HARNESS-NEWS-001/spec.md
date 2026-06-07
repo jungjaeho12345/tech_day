@@ -15,7 +15,7 @@ related_specs:
   - SPEC-AUTH-001
 ---
 
-# SPEC-HARNESS-NEWS-001 — 뉴스 제작 시스템 하네스 (slash /news + skills 2종 + evaluator 계약)
+# SPEC-HARNESS-NEWS-001 — 기사 작성기 하네스 (slash /news + skills 2종 + evaluator 계약)
 
 ## HISTORY
 
@@ -28,7 +28,7 @@ related_specs:
 | 항목 | 값 |
 |------|---|
 | SPEC ID | SPEC-HARNESS-NEWS-001 |
-| 제목 | 뉴스 제작 시스템 하네스 (slash `/news` + skills 2종 + evaluator 계약) |
+| 제목 | 기사 작성기 하네스 (slash `/news` + skills 2종 + evaluator 계약) |
 | 상태 | Plan |
 | 생성일 | 2026-06-03 |
 | 라이프사이클 | spec-anchored (하네스가 진화하는 만큼 함께 갱신) |
@@ -42,12 +42,12 @@ related_specs:
 
 ## 1. 목적 (Goal)
 
-뉴스 제작 시스템(`news.md` source-of-truth)을 대상으로, **사람 개입 없이 SPEC → 구현 → 평가 → 반복 → Slack 보고**의 닫힌 루프를 구동하는 *하네스 엔지니어링*을 정식 명세화한다.
+기사 작성기(`news.md` source-of-truth)을 대상으로, **사람 개입 없이 SPEC → 구현 → 평가 → 반복 → Slack 보고**의 닫힌 루프를 구동하는 *하네스 엔지니어링*을 정식 명세화한다.
 
 본 SPEC이 도입하는 것:
 
 1. **슬래시 명령 표면 `/news`** — `/news produce`, `/news plan`, `/news verify` 3종 하위 명령. 각 `.md`는 thin command 패턴(under 20 LOC, frontmatter + 단일 `Use Skill(...)` 라인) 강제.
-2. **스킬 `moai-domain-news-editor`** — 도메인 지식(기사 생애주기 RDS/DPS/RRH/RRK/DDH/DDK · R/D/Z 권한 · 12 공통정보 필드 · 에디터 단축키 Alt+Y/Ctrl+D · 인라인 임베딩 의미 · 연합뉴스 디자인 토큰)을 모든 도메인 에이전트가 동일하게 참조할 수 있도록 캡슐화.
+2. **스킬 `moai-domain-news-editor`** — 도메인 지식(기사 생애주기 RDS/DPS/RRH/RRK/DDH/DDK · R/D/Z 권한 · 12 공통정보 필드 · 에디터 단축키 Alt+Y/Ctrl+D · 인라인 임베딩 의미 · 디자인 토큰)을 모든 도메인 에이전트가 동일하게 참조할 수 있도록 캡슐화.
 3. **스킬 `moai-workflow-news-production`** — 오케스트레이션(`/news`의 Intent Router, 단계별 위임 순서, GAN 루프 종료 조건, Slack 보고)을 캡슐화.
 4. **evaluator-active PASS 계약** — Jest 통과 + 대상 SPEC의 AC 충족 + lint/build 무경고 (must-pass, design constitution Section 12 Mechanism 3 차용 — 합산 평균 금지).
 5. **Slack tech-day 보고** — `/news produce` 파이프라인이 PASS/FAIL/timeout 모두에서 채널 `C0B69CG59UM`로 결과 메시지 전송.
@@ -151,8 +151,8 @@ related_specs:
 
 #### EARS 문장
 
-- **[Ubiquitous]** THE 시스템 SHALL `.claude/skills/moai-domain-news-editor/SKILL.md`에 다음 도메인 지식 표를 모두 포함한다: 기사 생애주기 매트릭스(권한 R/D × 액션 송고/보류/KILL × 초기 상태 RDS → 결과 상태 RDS/RRH/RRK/DPS/DDH/DDK), 권한 R/D/Z 의미와 작성 페이지 상단 버튼 가시성 규칙, 상세보기 새창 12 공통정보 필드 목록, 에디터 단축키(Alt+Y `(끝)` 골드색, Ctrl+D 라인 삭제, IME 합성 처리 원칙), 인라인 임베딩 의미(본문 커서 위치 삽입 + `markupVersion` round-trip 보존), 연합뉴스 디자인 토큰(`--yh-blue` `#0A4DA6`, `--yh-blue-deep` `#08306B`, `--yh-gray-line` `#DDE3EC`, `--yh-serif` Nanum Myeongjo / Noto Serif KR, `--yh-sans` Noto Sans KR).
-- **[Ubiquitous]** THE 시스템 SHALL 스킬 YAML frontmatter에 다음을 포함한다: `name: moai-domain-news-editor`, `description:` (folded scalar `>` 형식, 한 줄 요약), `allowed-tools: Read, Grep, Glob, Bash` (CSV string), `metadata: { version, category: "domain", status: "active", updated, tags }`, `triggers: { keywords: [news, 기사, writer.do, list.do, 에디터, 임베드, RDS, DPS, Alt+Y, Ctrl+D, 연합뉴스], agents: [manager-spec, expert-frontend, evaluator-active], phases: [plan, run] }`.
+- **[Ubiquitous]** THE 시스템 SHALL `.claude/skills/moai-domain-news-editor/SKILL.md`에 다음 도메인 지식 표를 모두 포함한다: 기사 생애주기 매트릭스(권한 R/D × 액션 송고/보류/KILL × 초기 상태 RDS → 결과 상태 RDS/RRH/RRK/DPS/DDH/DDK), 권한 R/D/Z 의미와 작성 페이지 상단 버튼 가시성 규칙, 상세보기 새창 12 공통정보 필드 목록, 에디터 단축키(Alt+Y `(끝)` 골드색, Ctrl+D 라인 삭제, IME 합성 처리 원칙), 인라인 임베딩 의미(본문 커서 위치 삽입 + `markupVersion` round-trip 보존), 디자인 토큰(`--yh-blue` `#0A4DA6`, `--yh-blue-deep` `#08306B`, `--yh-gray-line` `#DDE3EC`, `--yh-serif` Nanum Myeongjo / Noto Serif KR, `--yh-sans` Noto Sans KR).
+- **[Ubiquitous]** THE 시스템 SHALL 스킬 YAML frontmatter에 다음을 포함한다: `name: moai-domain-news-editor`, `description:` (folded scalar `>` 형식, 한 줄 요약), `allowed-tools: Read, Grep, Glob, Bash` (CSV string), `metadata: { version, category: "domain", status: "active", updated, tags }`, `triggers: { keywords: [news, 기사, writer.do, list.do, 에디터, 임베드, RDS, DPS, Alt+Y, Ctrl+D], agents: [manager-spec, expert-frontend, evaluator-active], phases: [plan, run] }`.
 - **[Ubiquitous]** THE 시스템 SHALL 본 스킬을 `manager-spec`, `expert-frontend`, `evaluator-active`가 동일하게 `Skill("moai-domain-news-editor")`로 로드 가능하도록 단일 진입점(SKILL.md)으로 노출한다.
 - **[Unwanted]** THE 시스템 SHALL NOT 본 스킬 본문에 오케스트레이션 로직(Intent Router, agent 호출 순서, GAN 루프 종료 조건)을 포함시키지 아니한다 — 그것은 `moai-workflow-news-production` 스킬의 책임이다.
 - **[State-Driven]** WHILE `news.md`가 갱신되면, THE 시스템 SHALL 본 도메인 스킬도 동기 갱신되어야 함을 명시적 의존성으로 선언한다 (SKILL.md `## HISTORY` 또는 `## Source of Truth` 섹션에 "Source: D:\agents\tech_day\news.md, version pinned at last sync"형식 표기).
@@ -162,7 +162,7 @@ related_specs:
 - **AC-DOMAIN-1 (파일 존재 + frontmatter)**
   - Given: 도메인 스킬 도입이 완료된 상태
   - When: `D:\agents\tech_day\.claude\skills\moai-domain-news-editor\SKILL.md` 파일을 읽는다
-  - Then: 파일이 존재하고 YAML frontmatter가 파싱 가능하며, `name: moai-domain-news-editor`, `allowed-tools: Read, Grep, Glob, Bash`, `metadata.category: "domain"`, `triggers.keywords`에 최소 `news`, `RDS`, `Alt+Y`, `Ctrl+D`, `연합뉴스` 포함.
+  - Then: 파일이 존재하고 YAML frontmatter가 파싱 가능하며, `name: moai-domain-news-editor`, `allowed-tools: Read, Grep, Glob, Bash`, `metadata.category: "domain"`, `triggers.keywords`에 최소 `news`, `RDS`, `Alt+Y`, `Ctrl+D`, `` 포함.
 
 - **AC-DOMAIN-2 (생애주기 매트릭스)**
   - Given: SKILL.md 본문
@@ -354,7 +354,7 @@ related_specs:
 - 본 SPEC 3 파일(spec.md / plan.md / acceptance.md), 후속 스킬 SKILL.md, 명령 .md 파일 모두 UTF-8 (CLAUDE.md HARD).
 - prose는 한국어. 코드/심볼/SPEC ID/슬래시 명령은 영문.
 
-### 5.4 디자인 토큰 (연합뉴스 스타일)
+### 5.4 디자인 토큰 (스타일)
 
 - 본 SPEC은 신규 CSS 변수를 도입하지 않는다. 기존 `--yh-blue` `#0A4DA6`, `--yh-blue-deep` `#08306B`, `--yh-gray-line` `#DDE3EC` 그대로 사용 (CLAUDE.md "파란색과 흰색" + `articleDetail.js` 현 구현 정합).
 - 도메인 스킬은 이 토큰을 참조 가능하도록 명시한다.

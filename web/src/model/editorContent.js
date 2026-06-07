@@ -187,6 +187,53 @@ export function embedOrdinalAtInsertOffset(content, caretOffset) {
   return ordinal;
 }
 
+/**
+ * Bug 1 fix — splice a single '\n' into an ORDERED content document at body-text `offset`, preserving
+ * the exact interleave of text and embed blocks. Embeds contribute 0 body-text chars, so they are
+ * treated as zero-width anchors: the newline lands inside the text block that spans `offset`, and every
+ * embed keeps its position relative to the surrounding text. This replaces the old `[...text, ...embeds]`
+ * rebuild (which dropped ordering and dropped a trailing embed BELOW text typed after it).
+ *
+ * Boundary rule: when `offset` falls exactly at the seam between a text block and a following embed, the
+ * '\n' is appended to the END of the preceding text run (the caret sat after that text, before the embed),
+ * so the embed stays after the newline — never hoisted above it. When `offset` is 0 or precedes all text,
+ * the '\n' opens a new leading text block before any embed.
+ *
+ * @param {{blocks: Array<object>}} content ordered content (e.g. read from the live DOM)
+ * @param {number|null|undefined} offset body-text character offset of the caret
+ * @returns {{blocks: Array<object>}} new content with a '\n' spliced at the caret
+ */
+export function insertNewlineIntoContent(content, offset) {
+  const blocks = (content?.blocks ?? []).map((b) =>
+    b.type === 'embed' ? { type: 'embed', embed: { ...b.embed } } : { type: 'text', text: b.text });
+  const totalText = blocks.filter((b) => b.type === 'text').reduce((n, b) => n + b.text.length, 0);
+  const at = offset == null ? totalText : Math.max(0, Math.min(offset, totalText));
+
+  let consumed = 0;
+  let lastTextBlock = null;
+  for (const b of blocks) {
+    if (b.type !== 'text') continue;
+    const len = b.text.length;
+    // The caret lands inside this text block (or at its end when it is the run containing `at`).
+    if (at <= consumed + len) {
+      const local = at - consumed;
+      b.text = `${b.text.slice(0, local)}\n${b.text.slice(local)}`;
+      return { blocks };
+    }
+    consumed += len;
+    lastTextBlock = b;
+  }
+  // `at` is past all text (e.g. caret after a trailing embed with no following text run). Append the
+  // newline to the last text block if one exists; otherwise add a trailing text block so the new line
+  // sits AFTER the existing blocks (the embed is NOT moved above it).
+  if (lastTextBlock) {
+    lastTextBlock.text += '\n';
+  } else {
+    blocks.push({ type: 'text', text: '\n' });
+  }
+  return { blocks };
+}
+
 /** Concatenate the text blocks back into the editor body text (embeds contribute no text). */
 export function contentToText(content) {
   return (content?.blocks ?? [])

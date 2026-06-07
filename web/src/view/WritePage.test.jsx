@@ -260,8 +260,8 @@ describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
     expect(saveArticle).toHaveBeenCalled();
     const dto = saveArticle.mock.calls[0][1];
     expect(dto).toMatchObject({ markupVersion: expect.stringContaining('hello body'), author: 'Desk' });
-    // Action sent as send; client did NOT compute next state.
-    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
+    // 2026-06-07 결정 (최초 송고 = RDS): 신규 기사 송고는 RDS 저장만 — applyAction 미호출.
+    expect(applyAction).not.toHaveBeenCalled();
     // v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — 페이지 초기화(리셋)로 성공을 확인.
     await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
     expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
@@ -322,12 +322,13 @@ describe('WritePage send/hold (REQ-FE-WRITE-012..014) [DP-F5]', () => {
   });
 
   it('EC-5: backend rejects transition -> no state change shown, rejection notified', async () => {
+    // 신규 송고는 applyAction 을 부르지 않으므로(최초 송고 = RDS), 거부 경로는 보류로 검증한다.
     const user = userEvent.setup();
     const applyAction = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-transition' });
     renderWrite(createFakeModel({ applyAction }));
     // Provide a title so the title-check passes and the request reaches the (rejecting) backend.
     await user.type(screen.getByTestId('editor-body'), '거부 제목(끝)');
-    await user.click(screen.getByRole('button', { name: '송고' }));
+    await user.click(screen.getByRole('button', { name: '보류' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/거부|invalid/i);
     expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
   });
@@ -365,7 +366,8 @@ describe('WritePage 송고/보류 title requirement (news.md: 제목이 없으�
     await user.type(screen.getByTestId('editor-body'), '있는 제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
     expect(saveArticle).toHaveBeenCalled();
-    expect(applyAction).toHaveBeenCalledWith('A-9', 'D', 'send');
+    // 2026-06-07 결정 (최초 송고 = RDS): 신규 송고는 저장만 — applyAction 미호출.
+    expect(applyAction).not.toHaveBeenCalled();
     // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋(에디터 초기화)으로 성공을 확인.
     await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
     expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
@@ -463,6 +465,120 @@ describe('WritePage Backspace-after-embed deletes one embed (SPEC-NEWS-REVISE-00
     // The embed is gone (removal path ran exactly once via the controller).
     expect(within(body).queryByTestId('embed-image')).not.toBeInTheDocument();
     expect(body.querySelector('[data-embed-index]')).toBeNull();
+  });
+});
+
+// Bug 1 regression: 이미지 임베드 뒤에 텍스트를 입력하고 Enter 를 누르면 입력한 텍스트/새 줄이 이미지
+// 위로 올라가 버린다 (text/newline jumps ABOVE the trailing embed). 근본 원인: setBodyText/contentWithText
+// 가 항상 [...textBlocks, ...embeds] 로 재배치해 임베드가 뒤(trailing)일 때 인터리브 순서를 잃는다.
+// Enter 의 paint(contentWithText)가 텍스트를 임베드 앞으로 옮겨 이미지가 텍스트 아래로 내려간다.
+describe('WritePage Enter after a trailing embed keeps the embed ABOVE the text (Bug 1)', () => {
+  async function insertImageEmbed(user) {
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x', thumbnailUrl: 'https://thumb/x' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'flood');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 YT clip' }));
+  }
+
+  // Place a collapsed caret at the start of `node` (offset chars in).
+  function placeCaret(node, offset) {
+    const sel = document.getSelection();
+    const range = document.createRange();
+    range.setStart(node, offset);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  // Return the document-order index of the (first) embed span and of the first non-embed text among
+  // the editor body's nodes, walking the flattened node list. Used to assert the embed precedes the text.
+  function embedComesBeforeText(body) {
+    const embed = body.querySelector('[data-embed-index]');
+    const text = getBodyTextFromDom(body);
+    // Find the DOM node carrying the typed text and compare document position with the embed.
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    let textNode = null;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      // skip text inside embed spans (they carry the embed's own labels)
+      let inEmbed = false;
+      let p = n.parentNode;
+      while (p && p !== body) {
+        if (p.nodeType === 1 && p.hasAttribute?.('data-embed-index')) { inEmbed = true; break; }
+        p = p.parentNode;
+      }
+      if (!inEmbed && n.textContent.length > 0) { textNode = n; break; }
+    }
+    expect(embed, 'embed span must still exist').not.toBeNull();
+    expect(textNode, `a typed-text node must exist (body text=${JSON.stringify(text)})`).not.toBeNull();
+    // bitmask 4 = textNode FOLLOWS embed in document order (embed is above/before the text).
+    return (embed.compareDocumentPosition(textNode) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }
+
+  it('typing after a trailing image embed then Enter keeps the image ABOVE the typed text', async () => {
+    const user = userEvent.setup();
+    await insertImageEmbed(user);
+
+    const body = screen.getByTestId('editor-body');
+    const embedSpan = body.querySelector('[data-embed-index]');
+    expect(embedSpan).not.toBeNull();
+
+    // Simulate the user typing "본문" right AFTER the embed (the embed is trailing; the caret was
+    // anchored just behind it). Append a text node after the embed and fire input like the browser would.
+    const typed = document.createTextNode('본문');
+    embedSpan.after(typed);
+    placeCaret(typed, typed.textContent.length); // caret at end of "본문"
+    fireEvent.input(body, { data: '본문' });
+
+    // Sanity: the text is present and currently sits AFTER the embed (embed above text).
+    expect(getBodyTextFromDom(body)).toBe('본문');
+    expect(embedComesBeforeText(body)).toBe(true);
+
+    // Press Enter. The model-authoritative newline splice repaints — the embed MUST remain above the text.
+    fireEvent.keyDown(body, { key: 'Enter' });
+
+    // Body text gains the trailing '\n' (caret was at end of "본문").
+    expect(getBodyTextFromDom(body)).toBe('본문\n');
+    // REGRESSION ASSERTION: the image stays ABOVE the text — it must NOT drop below the typed line.
+    expect(embedComesBeforeText(body)).toBe(true);
+  });
+
+  it('persists the embed ABOVE the typed text in markupVersion (save/reload order)', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT clip', url: 'https://youtu.be/x', thumbnailUrl: 'https://thumb/x' }],
+      error: false,
+    });
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'RRH' });
+    renderWrite(createFakeModel({ searchMedia, saveArticle, applyAction }), REPORTER);
+    // Embed an image first (trailing), then type a title-bearing body + "(끝)" AFTER it.
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'flood');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 YT clip' }));
+
+    const body = screen.getByTestId('editor-body');
+    const embedSpan = body.querySelector('[data-embed-index]');
+    const typed = document.createTextNode('제목본문(끝)');
+    embedSpan.after(typed);
+    placeCaret(typed, typed.textContent.length);
+    fireEvent.input(body, { data: '제목본문(끝)' });
+
+    // 송고 to capture markupVersion (title present + "(끝)" guard passes).
+    await user.click(screen.getByRole('button', { name: '송고' }));
+    expect(saveArticle).toHaveBeenCalled();
+    const blocks = JSON.parse(saveArticle.mock.calls[0][1].markupVersion).blocks;
+    // The embed block MUST come before the text block (image above text) in the persisted markup.
+    const embedIdx = blocks.findIndex((b) => b.type === 'embed');
+    const textIdx = blocks.findIndex((b) => b.type === 'text');
+    expect(embedIdx).toBeGreaterThanOrEqual(0);
+    expect(textIdx).toBeGreaterThanOrEqual(0);
+    expect(embedIdx).toBeLessThan(textIdx);
   });
 });
 
@@ -650,15 +766,16 @@ describe('WritePage action-button visibility (news.md 기사 작성 페이지 �
   // 성공 mock으로 자연스럽게 진화시킬 수 있다.
   // SPEC-NEWS-REVISE-001 D-6: Z권한 송고/보류 click -> applyAction('Z', send|hold) dispatch +
   // 백엔드 success 응답 (DPS/DDH) 반영. visibility AC-Z-1과는 별개로 click->backend 경로를 잠근다.
-  it('AC-Z (regression): role Z 송고 click -> applyAction(Z, send), success resets the page', async () => {
+  it('AC-Z (regression): role Z 송고 click -> 신규 송고는 RDS 저장만(applyAction 미호출), success resets the page', async () => {
     const user = userEvent.setup();
-    // D-6: lifecycle.js Z|send -> DPS (D-mirror)
+    // 2026-06-07 결정 (최초 송고 = RDS): Z 권한도 신규 기사 송고는 전이 없이 RDS 저장.
+    // Z|send -> DPS (D-mirror)는 편집 컨텍스트의 송고에만 적용된다.
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
     renderWrite(createFakeModel({ applyAction }), EDITOR_Z);
     // send/hold는 제목(에디터 첫 라인)이 비어있으면 client-side에서 차단되므로 제목 입력 필요.
     await user.type(screen.getByTestId('editor-body'), 'Z테스트제목(끝)');
     await user.click(screen.getByRole('button', { name: '송고' }));
-    expect(applyAction).toHaveBeenCalledWith(expect.any(String), 'Z', 'send');
+    expect(applyAction).not.toHaveBeenCalled();
     // v0.3.0: 성공 시 상태 메시지 미표시 — 리셋으로 성공 확인.
     await waitFor(() => expect(screen.getByTestId('editor-body')).toHaveTextContent(''));
     expect(screen.queryByTestId('lifecycle-status')).not.toBeInTheDocument();
@@ -755,6 +872,7 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
   });
 
   it('EC-RESET-3: a rejected action does NOT reset the page', async () => {
+    // 신규 송고는 applyAction 을 부르지 않으므로(최초 송고 = RDS), 거부 경로는 보류로 검증한다.
     const user = userEvent.setup();
     const applyAction = vi.fn().mockResolvedValue({ ok: false, reason: 'invalid-transition' });
     renderWrite(createFakeModel({ applyAction }));
@@ -764,7 +882,7 @@ describe('WritePage reset after successful action (news.md: 기사 작성페이�
     const authorInput = within(screen.getByTestId('panel-공통정보')).getByLabelText('작성자');
     await user.clear(authorInput);
     await user.type(authorInput, '편집됨');
-    await user.click(screen.getByRole('button', { name: '송고' }));
+    await user.click(screen.getByRole('button', { name: '보류' }));
     await screen.findByRole('alert');
     // Input preserved because the action was rejected.
     expect(within(screen.getByTestId('panel-공통정보')).getByLabelText('작성자')).toHaveValue('편집됨');

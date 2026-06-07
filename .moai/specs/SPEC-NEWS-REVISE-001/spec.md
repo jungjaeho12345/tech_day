@@ -261,13 +261,13 @@ related_specs:
 
 ## 5. 비기능 요건 (Non-Functional Requirements)
 
-### 5.1 디자인 토큰 (연합뉴스 스타일)
+### 5.1 디자인 토큰 (스타일)
 
 - 본 SPEC은 신규 CSS 변수를 도입하지 않는다. 기존 토큰(`--yh-blue` `#0A4DA6`, `--yh-blue-deep` `#08306B`, `--yh-gray-line` `#DDE3EC`, `--yh-serif` Nanum Myeongjo / Noto Serif KR, `--yh-sans` Noto Sans KR)을 그대로 사용한다.
 - 상세보기 분리 구분선은 `--yh-gray-line` 또는 동등한 1px `#DDD` 계열을 사용한다.
 - 송고/보류/KILL 버튼은 기존 `yh-btn--primary` / `yh-btn--hold` / `yh-btn--kill` 클래스를 유지한다 (Z권한이라고 다른 색을 쓰지 않는다).
 
-> Note: CLAUDE.md 디자인 규칙은 "파란색과 흰색"으로 명시되어 있고 `articleDetail.js`의 색 변수도 파란색 계열(`#0A4DA6`)이다. 사용자 지시문의 "연합뉴스 #C8102E (레드)"는 `news.md`의 명시와는 일치하지만 현재 상세보기 구현은 블루로 통일되어 있다. **본 SPEC은 현 구현의 블루 토큰을 유지**하며, 레드 적용 여부는 Pending Decisions 항목 참조.
+> Note: CLAUDE.md 디자인 규칙은 "파란색과 흰색"으로 명시되어 있고 `articleDetail.js`의 색 변수도 파란색 계열(`#0A4DA6`)이다. 사용자 지시문의 "#C8102E (레드)"는 `news.md`의 명시와는 일치하지만 현재 상세보기 구현은 블루로 통일되어 있다. **본 SPEC은 현 구현의 블루 토큰을 유지**하며, 레드 적용 여부는 Pending Decisions 항목 참조.
 
 ### 5.2 접근성 (Accessibility)
 
