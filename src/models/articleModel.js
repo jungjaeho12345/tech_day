@@ -66,8 +66,17 @@ export function createArticleModel(db) {
       const values = [];
       for (const [key, column] of Object.entries(QUERY_FILTERS)) {
         if (filters[key] !== undefined && filters[key] !== null) {
-          clauses.push(`c.${column} = ?`);
-          values.push(filters[key]);
+          // department filter — comma-separated multi-value supported (e.g. 'Politics,Economy').
+          if (key === 'department') {
+            const depts = String(filters[key]).split(',').filter(Boolean);
+            if (depts.length > 0) {
+              clauses.push(`c.${column} IN (${depts.map(() => '?').join(',')})`);
+              values.push(...depts);
+            }
+          } else {
+            clauses.push(`c.${column} = ?`);
+            values.push(filters[key]);
+          }
         }
       }
       // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).

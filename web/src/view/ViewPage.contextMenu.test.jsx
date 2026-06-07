@@ -211,8 +211,10 @@ describe('SPEC-NEWS-REVISE-007 부서별 송고 진입점 (REQ-FWD-ENTRYPOINTS)'
     const navigate = vi.fn();
     renderView({ model, user, navigate });
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    const select = await screen.findByLabelText('부서');
-    await u.selectOptions(select, 'Politics');
+    // Open multi-select dropdown and select Politics.
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await u.click(within(multiSelect).getByRole('button'));
+    await u.click(screen.getByTestId('dept-checkbox-Politics'));
     await u.click(screen.getByRole('button', { name: '조회' }));
     return { u, navigate };
   }
