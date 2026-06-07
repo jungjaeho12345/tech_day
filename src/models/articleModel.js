@@ -82,10 +82,15 @@ export function createArticleModel(db) {
       // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).
       // Previously status was silently ignored (not in QUERY_FILTERS), so menu filters returned all rows.
       if (filters.status !== undefined && filters.status !== null && filters.status !== '') {
-        const statuses = String(filters.status).split(',').filter(Boolean);
+        const statuses = Array.isArray(filters.status)
+          ? filters.status.filter(Boolean)
+          : String(filters.status).split(',').filter(Boolean);
         if (statuses.length > 0) {
           clauses.push(`c.status IN (${statuses.map(() => '?').join(',')})`);
           values.push(...statuses);
+        } else if (Array.isArray(filters.status)) {
+          // 명시적 빈 배열은 "아무 상태도 매칭하지 않음" — 전체 반환이 아니라 0건이어야 안전하다.
+          clauses.push('1 = 0');
         }
       }
       // statusNot filter — comma-separated exclusion (e.g. 'DPS,RRH' from 부서별 작성).

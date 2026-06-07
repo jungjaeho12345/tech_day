@@ -260,9 +260,10 @@ export function createApp({ controllers, sessionService }) {
     // 이 플래그가 있으면 acquire 가 아니라 release 로 처리한다 — 종전에는 무시되어 언로드 해제가
     // 사실상 잠금 재획득이 되는 버그였다 (브라우저 닫힘 후에도 stale 타임아웃까지 lock 잔존).
     if (req.body && req.body.release === true) {
+      // holder = 로그인 세션 id (acquire 경로와 동일) — body의 page session id가 아니다.
       const released = controllers.article.releaseEditLock(req.params.id, {
         userId: session.userId,
-        sessionId: pageSessionId,
+        sessionId: sid,
       });
       if (released.ok) {
         bus.emit('change', { type: 'unlock', articleId: req.params.id });
