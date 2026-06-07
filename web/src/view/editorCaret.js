@@ -260,7 +260,19 @@ export function setCaretAfterEmbed(root, embedIndex) {
   const span = root.querySelector(`[data-embed-index="${embedIndex}"]`);
   if (!span || !root.contains(span)) return;
   const range = doc.createRange();
-  range.setStartAfter(span);
+  // Prefer anchoring the caret at the START of the editable text node that immediately follows the embed.
+  // A range positioned merely *after* a contenteditable=false span that has no editable node following it
+  // is NOT a valid caret home in Chrome: execCommand/typing at that point is dropped and the visible caret
+  // relocates to document start (the 첫 줄 점프 / first-line-jump regression). paintEditor now guarantees a
+  // trailing editable text node after a trailing embed, so this branch lands the caret in a typeable spot.
+  // The injected text node is EMPTY (0 chars), so char-offset math stays byte-stable.
+  const next = span.nextSibling;
+  if (next && next.nodeType === 3) {
+    range.setStart(next, 0);
+  } else {
+    // No following text node (e.g. embed before another element): keep the boundary-after-span position.
+    range.setStartAfter(span);
+  }
   range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);

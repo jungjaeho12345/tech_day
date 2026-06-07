@@ -121,8 +121,11 @@ function ensureUserActiveColumn(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function ensureContentsLockYNColumn(db) {
+  // Legacy production DBs (pre SPEC-NEWS-REVISE-002) created this column as `LockYN`.
+  // SQLite identifiers are case-insensitive, so ALTER ADD `lockYN` would fail with
+  // "duplicate column name" — treat the legacy spelling as present too.
   const hasLockYN = db.prepare("PRAGMA table_info('Contents')").all()
-    .some((col) => col.name === 'lockYN');
+    .some((col) => col.name === 'lockYN' || col.name === 'LockYN');
   if (!hasLockYN) {
     db.exec("ALTER TABLE Contents ADD COLUMN lockYN VARCHAR NOT NULL DEFAULT 'N'");
   }
@@ -135,16 +138,18 @@ function ensureContentsLockYNColumn(db) {
  * @param {import('node:sqlite').DatabaseSync} db
  */
 function ensureContentsLockerColumns(db) {
+  // SQLite column names are case-insensitive: compare lowercased so pre-existing
+  // columns like `LockedAt` are detected and not re-added.
   const existing = new Set(
-    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name),
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name.toLowerCase()),
   );
-  if (!existing.has('lockerUserId')) {
+  if (!existing.has('lockeruserid')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockerUserId VARCHAR');
   }
-  if (!existing.has('lockerSessionId')) {
+  if (!existing.has('lockersessionid')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockerSessionId VARCHAR');
   }
-  if (!existing.has('lockedAt')) {
+  if (!existing.has('lockedat')) {
     db.exec('ALTER TABLE Contents ADD COLUMN lockedAt VARCHAR');
   }
 }

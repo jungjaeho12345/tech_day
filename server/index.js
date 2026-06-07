@@ -205,16 +205,10 @@ export function createApp({ controllers, sessionService }) {
   }
   app.post('/api/articles', saveArticle);
 
-  // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (R-CRIT-2 해소) — PUT /api/articles/:id routes
-  // through articleService.update (D2-7 = A partial update), NOT through articleService.create. The
-  // previous wiring `app.put('/api/articles/:id', saveArticle)` silently invoked .create on every PUT,
-  // which generated a NEW articleId and never updated the original row (REQ-CRIT regression).
-  //
-  // Lock holder is validated BEFORE the update (NFR-SEC + AC-EDIT-LOCK-6). The lock sessionId arrives
-  // in the request body so the same page-scoped UUID used at acquireEditLock is replayed here. When
-  // body.sessionId is missing we attempt the update under the assertLockHolder gate using a synthetic
-  // 'transport' sessionId — assertLockHolder will reject because the locker session won't match, which
-  // is the correct behaviour (lock-required) for clients that lost the page sessionId.
+  // SPEC-EDIT-LOCK-001 PUT /api/articles/:id — partial update (D2-7 = A). 신설계: holder = 로그인 세션 id.
+  // NEWS-REVISE-002 R-CRIT-2 회귀 가드: articleService.update (부분 update) 경로 유지 — .create 호출 금지.
+  // Lock guard: caller의 x-session-id 가 잠금 보유자인지 assertLockHolder 로 확인한다(AC-EDIT-LOCK-6).
+  // @MX:NOTE: [AUTO] page-scoped UUID 의존 제거 — holder 식별은 sessionIdOf(req) 단일 출처(SPEC-EDIT-LOCK-001).
   app.put('/api/articles/:id', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
@@ -225,38 +219,41 @@ export function createApp({ controllers, sessionService }) {
       return res.json({ ok: false, reason: 'forbidden' });
     }
     const articleId = req.params.id;
-    // Lock guard — the caller MUST hold the page edit lock (AC-EDIT-LOCK-6). The page-scoped sessionId
-    // is supplied either in the body or as an x-page-session-id header so beforeunload (sendBeacon with
-    // a JSON body) and normal PUT (header) both work.
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    // Lock guard — 로그인 세션 id 가 잠금 보유자여야 한다 (AC-EDIT-LOCK-6 신설계).
     const holder = controllers.article.assertLockHolder(articleId, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (!holder.ok) {
       return res.json({ ok: false, reason: holder.reason ?? 'lock-required' });
     }
-    // D2-7 = A partial update — strip the transport-only `sessionId` from the persisted fields.
-    const { sessionId: _sessionId, ...fields } = (req.body ?? {});
-    const result = controllers.article.update(articleId, fields);
+    // D2-7 = A partial update.
+    const result = controllers.article.update(articleId, req.body ?? {});
     if (result.ok) {
       bus.emit('change', { type: 'update', articleId });
     }
     return res.json(result);
   });
 
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire/release endpoints (NFR-SEC: userId derived from the
-  // server session, never the request body). The page-scoped sessionId arrives from the client (UUID
-  // per editor mount) so the lock distinguishes same-user-different-page attempts (D2-5 = A strict).
+  // SPEC-EDIT-LOCK-001 — POST /api/articles/:id/lock (신설계: holder = 로그인 세션 id 단위).
+  // 처리 순서: 401 (미인증) → 403 (R/D/Z 아닌 역할) → 404 (기사 없음) → 획득 시도.
+  // 성공: 200 {ok:true, article:{...LockYN:'Y', LockedBySessionId:sid}}
+  // 비보유·비스테일: 409 {ok:false, reason:'locked'} — lockedBy 미노출(보안 NFR-SEC)
+  // @MX:NOTE: [AUTO] holder = sessionIdOf(req); userId는 서비스 계층 식별용, HTTP 응답에 노출 안 함.
   app.post('/api/articles/:id/lock', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
     if (session === undefined) {
-      return res.json({ ok: false, reason: 'unauthenticated' });
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
-    if (!pageSessionId) {
-      return res.json({ ok: false, reason: 'invalid-args' });
+    if (!['R', 'D', 'Z'].includes(session.role)) {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
+    }
+    const articleId = req.params.id;
+    // 404 체크: 기사 존재 여부를 획득 시도 전에 확인.
+    const [existing] = controllers.article.query({ articleId });
+    if (existing === undefined) {
+      return res.status(404).json({ ok: false, reason: 'not-found' });
     }
     // sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 메서드를 지정할 수 없어
     // 클라이언트(useWriteController.beaconRelease)가 POST 본문에 release:true 를 실어 보낸다.
@@ -274,7 +271,7 @@ export function createApp({ controllers, sessionService }) {
     }
     const result = controllers.article.acquireEditLock(req.params.id, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (result.ok) {
       // LockYN is a displayed list column — notify subscribers so open views refresh live.
@@ -282,19 +279,28 @@ export function createApp({ controllers, sessionService }) {
     }
     return res.json(result);
   });
-  app.delete('/api/articles/:id/lock', (req, res) => {
+
+  // SPEC-EDIT-LOCK-001 — POST /api/articles/:id/unlock (신규 라우트; DELETE /lock 대체).
+  // 처리 순서: 401 → 403 → 404 → 해제 시도.
+  // 보유자 해제: {ok:true, released:true}; 비보유자: {ok:true, released:false} (no-op, 409 아님).
+  // @MX:NOTE: [AUTO] 비보유자 해제는 no-op + released:false (AC-RLE-2); 보유자만 실제 해제 (AC-RLE-1).
+  app.post('/api/articles/:id/unlock', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
     if (session === undefined) {
-      return res.json({ ok: false, reason: 'unauthenticated' });
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
-    if (!pageSessionId) {
-      return res.json({ ok: false, reason: 'invalid-args' });
+    if (!['R', 'D', 'Z'].includes(session.role)) {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
     }
-    const result = controllers.article.releaseEditLock(req.params.id, {
+    const articleId = req.params.id;
+    const [existing] = controllers.article.query({ articleId });
+    if (existing === undefined) {
+      return res.status(404).json({ ok: false, reason: 'not-found' });
+    }
+    const result = controllers.article.releaseEditLock(articleId, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (result.ok) {
       bus.emit('change', { type: 'unlock', articleId: req.params.id });

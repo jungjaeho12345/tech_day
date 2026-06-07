@@ -470,3 +470,77 @@ describe('SPEC-NEWS-REVISE-005 REQ-SEND-END-MARKER-GUARD (AC-SEND-GUARD-1~6)', (
     expect(applyAction).not.toHaveBeenCalled();
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 버그 회귀 테스트: 보류 신규 기사 저장 + 송고 권한별 상태값 정합
+// ──────────────────────────────────────────────────────────────────────────────
+describe('news.md 96~99/141~148행 — 보류/송고 저장+전이 정합 (BUG-HOLD-DRAFT / BUG-SEND-ROLE)', () => {
+  // BUG-HOLD-DRAFT: 신규 기사(A-DRAFT) 보류 시 saveArticle 이 먼저 호출되고,
+  // 반환된 articleId 로 applyAction 이 호출되어야 한다 (not-found 오류 방지).
+  it('BUG-HOLD-DRAFT: 신규 A-DRAFT 보류 → saveArticle("A-DRAFT") 1회 후 반환 id로 applyAction 호출, lifecycleStatus "DDH" 세팅, not-found 오류 미발생', async () => {
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW-H' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDH' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    // 제목을 채워야 보류 제목 가드를 통과한다.
+    act(() => result.current.setBodyMarkup('보류 제목\n본문 내용'));
+    await act(async () => { await result.current.hold(); });
+
+    // saveArticle 이 A-DRAFT sentinel 로 정확히 1회 호출된다.
+    expect(saveArticle).toHaveBeenCalledTimes(1);
+    expect(saveArticle.mock.calls[0][0]).toBe('A-DRAFT');
+
+    // applyAction 은 saveArticle 이 반환한 새 id('A-NEW-H') 로 호출된다 — A-DRAFT 아님.
+    expect(applyAction).toHaveBeenCalledTimes(1);
+    expect(applyAction).toHaveBeenCalledWith('A-NEW-H', 'D', 'hold');
+
+    // 전이 성공: lifecycleStatus 가 서버 반환값 'DDH' 로 세팅된다.
+    expect(result.current.lifecycleStatus).toBe('DDH');
+
+    // not-found 오류가 발생하지 않는다.
+    expect(result.current.actionError).toBeNull();
+  });
+
+  // BUG-HOLD-DRAFT 보조: KILL 은 여전히 saveArticle 없이 applyAction 만 호출 (기존 AC-WLC-3 회귀 확인).
+  it('BUG-HOLD-DRAFT 보조: 신규 A-DRAFT KILL → saveArticle 미호출, applyAction("A-DRAFT") 1회', async () => {
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-NEW-K' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DDK' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle, applyAction }));
+    await act(async () => { await result.current.kill(); });
+
+    // KILL 은 saveArticle 을 호출하지 않는다 (news.md 기존 정책 유지).
+    expect(saveArticle).not.toHaveBeenCalled();
+
+    // applyAction 은 A-DRAFT sentinel 그대로 호출된다.
+    expect(applyAction).toHaveBeenCalledTimes(1);
+    expect(applyAction.mock.calls[0][0]).toBe('A-DRAFT');
+    expect(applyAction.mock.calls[0][2]).toBe('kill');
+  });
+
+  // BUG-SEND-ROLE: 송고 권한별 상태값 — R 권한 신규 송고 → lifecycleStatus 'RDS'.
+  it('BUG-SEND-ROLE: role R 신규 송고 → lifecycleStatus "RDS" (fakeModel 권한별 분기 + lifecycle.js 정합)', async () => {
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-R-NEW' });
+    const reporter = { userId: 'r1', name: 'Reporter', role: 'R', department: 'Politics' };
+    const wrapper = ({ children }) => (
+      <ModelContext.Provider value={createFakeModel({ saveArticle })}>{children}</ModelContext.Provider>
+    );
+    const { result } = renderHook(() => useWriteController(reporter), { wrapper });
+    act(() => result.current.setBodyMarkup('R 기사 제목\n본문(끝)'));
+    await act(async () => { await result.current.send(); });
+
+    // R 권한 송고는 RDS 전이 (news.md 141행: 권한 R + RDS + 송고 → RDS).
+    expect(result.current.lifecycleStatus).toBe('RDS');
+    expect(result.current.actionError).toBeNull();
+  });
+
+  // BUG-SEND-ROLE: D 권한 신규 송고 → lifecycleStatus 'DPS'.
+  it('BUG-SEND-ROLE: role D 신규 송고 → lifecycleStatus "DPS" (fakeModel 권한별 분기 + lifecycle.js 정합)', async () => {
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-D-NEW' });
+    const { result } = renderCtrl(createFakeModel({ saveArticle }));
+    act(() => result.current.setBodyMarkup('D 기사 제목\n본문(끝)'));
+    await act(async () => { await result.current.send(); });
+
+    // D 권한 송고는 DPS 전이 (news.md 141행: 권한 D + RDS + 송고 → DPS).
+    expect(result.current.lifecycleStatus).toBe('DPS');
+    expect(result.current.actionError).toBeNull();
+  });
+});

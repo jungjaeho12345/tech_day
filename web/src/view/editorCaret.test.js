@@ -210,6 +210,19 @@ describe('setCaretAfterEmbed (caret after a just-inserted inline embed)', () => 
     expect(findEmbedIndexBeforeCaret(root)).toBe(1);
   });
 
+  // SPEC-NEWS-REVISE-001 (첫 줄 점프 회귀) — when an editable text node immediately follows the embed,
+  // anchor the caret at the START of that text node (a valid typeable position) rather than at the bare
+  // boundary after the contenteditable=false span (which Chrome relocates to document start).
+  it('anchors the caret at the start of the following text node when one exists (typeable position)', () => {
+    const { root, afterNode } = buildEditor({ embedIndex: 0, after: 'post' });
+    setCaretAfterEmbed(root, 0);
+    const range = document.getSelection().getRangeAt(0);
+    expect(range.startContainer).toBe(afterNode);
+    expect(range.startOffset).toBe(0);
+    // Still reported as adjacent to embed#0 (the caret sits right behind it).
+    expect(findEmbedIndexBeforeCaret(root)).toBe(0);
+  });
+
   it('selects the embed by its data-embed-index ordinal (not DOM position) among multiple embeds', () => {
     const root = document.createElement('div');
     const e0 = document.createElement('span');

@@ -294,6 +294,20 @@ function paintEditor(el, content, onRemoveEmbed) {
     frag.appendChild(buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed));
     nextEmbedIdx += 1;
   }
+  // SPEC-NEWS-REVISE-001 (첫 줄 점프 fix): when the editor ends with a contenteditable=false embed span,
+  // Chrome has NO editable caret position after it — a selection placed there is silently relocated and the
+  // next typed character lands at document start (the first-line-jump regression). An empty trailing text
+  // node is not enough (Chrome ignores a caret inside an empty text node adjacent to a non-editable span).
+  // A trailing <br> gives contentEditable a real final editable line, so a caret anchored just before it is
+  // a valid, typeable position right behind the embed. The <br> is the standard "filler" browsers themselves
+  // insert at the end of an editable block; it contributes 0 characters to textContent, so bodyText and all
+  // char-offset math (getBodyTextFromDom / setCaretCharOffset, which only walk text nodes) stay byte-stable.
+  if (frag.lastChild && frag.lastChild.nodeType === 1
+      && frag.lastChild.hasAttribute?.('data-embed-index')) {
+    const filler = doc.createElement('br');
+    filler.setAttribute('data-embed-trailing-br', '');
+    frag.appendChild(filler);
+  }
   el.replaceChildren(frag);
 }
 
