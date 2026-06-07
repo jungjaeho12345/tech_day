@@ -1,9 +1,8 @@
 // Article-write page (REQ-FE-WRITE-001..015). Left editor region + right metadata region with
 // four tabs and 송고/보류/KILL above the tabs. The editor is behind the adapter (DP-F1); search and
 // send/hold/kill go through the controllers (DP-F3/DP-F5). A successful action resets the page.
-// The action buttons are role+status gated (news.md 기사 작성 페이지 내 버튼): 송고/보류 for role R|D|Z and
-// KILL for role R|Z, both only while the editing article's status is RDS. v0.6.0: KILL additionally
-// requires a generated articleId (edit context) — an id-less draft (A-DRAFT) never shows KILL.
+// The action buttons are role+status gated (news.md 기사 작성 페이지 내 버튼): 송고/보류 for role R|D and
+// KILL for role R, both only while the editing article's status is RDS.
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
@@ -21,31 +20,6 @@ const COMMON_FIELDS = [
   ['attribute', '속성'], ['keyword', '키워드'], ['internalComment', '내부코멘트'],
   ['externalComment', '외부코멘트'], ['attachmentFile', '첨부파일'], ['referenceFile', '자료파일'],
 ];
-
-// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields shown in the edit context
-// (기사아이디·수정자·송고자·부서·부서코드·작성시간·편집시간·송고시간). Ordered label/value pairs.
-const READONLY_META_FIELDS = [
-  ['articleId', '기사아이디'], ['modifier', '수정자'], ['sender', '송고자'],
-  ['department', '부서'], ['departmentCode', '부서코드'], ['createdAt', '작성시간'],
-  ['editedAt', '편집시간'], ['sentAt', '송고시간'],
-];
-
-// @MX:NOTE: [AUTO] Read-only ContentsVO display area (SPEC-NEWS-REVISE-007 AC-MAP-2/4). Rendered ONLY
-// when meta is non-null (edit context); a blank-new page passes null and renders nothing (AC-MAP-3).
-// Values are display-only <span>s (never inputs) so the 8 fields cannot be edited; a missing field is
-// already coerced to '' by the controller, so no 'undefined'/'null' text ever appears.
-function ReadonlyMetaPanel({ meta }) {
-  return (
-    <dl data-testid="readonly-meta" className="yh-readonly-meta" aria-label="기사 정보">
-      {READONLY_META_FIELDS.map(([key, label]) => (
-        <div key={key} className="yh-readonly-meta__row">
-          <dt className="yh-readonly-meta__label">{label}</dt>
-          <dd className="yh-readonly-meta__value" data-testid={`readonly-${key}`}>{meta[key]}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 function CommonInfoPanel({ common, updateCommon }) {
   return (
@@ -72,8 +46,7 @@ function CommonInfoPanel({ common, updateCommon }) {
 
 // '이미지' tab embeds images; '영상' tab embeds video references (REQ-EDIT-EMBED-002/003).
 function MediaPanel({ tabName, embedType, onEmbed }) {
-  // type-routed search: embedType ('image'|'video') selects the provider (image=Google, video=YouTube).
-  const { results, state, search } = useMediaSearch(embedType);
+  const { results, state, search } = useMediaSearch();
   const [query, setQuery] = useState('');
   return (
     <div data-testid={`panel-${tabName}`} role="tabpanel" className="yh-tabpanel">
@@ -87,7 +60,6 @@ function MediaPanel({ tabName, embedType, onEmbed }) {
       <ul className="yh-result-list">
         {results.map((r) => (
           <li key={r.url} className="yh-result-row">
-            {r.thumbnailUrl ? <img className="yh-result-thumb" src={r.thumbnailUrl} alt="" /> : null}
             <span>{r.title}</span>
             <button
               type="button"
@@ -319,15 +291,8 @@ function paintEditor(el, content, onRemoveEmbed) {
   // Trailing embeds beyond end of text (e.g. legacy append at end with empty body).
   while (nextEmbedIdx < embedAtPos.length) {
     const { embed, index } = embedAtPos[nextEmbedIdx];
-    frag.appendChild(buildEmbedInlineSpan(doc, embed, index));
+    frag.appendChild(buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed));
     nextEmbedIdx += 1;
-  }
-  // Trailing-newline render padding (v0.3.0 Enter-2회 증상 보정): in a pre-wrap contentEditable a
-  // document-final '\n' does NOT create a visible line box, so Enter at the end of the body LOOKED
-  // like a no-op until pressed twice. A trailing <br> renders that last empty line; <br> contributes
-  // nothing to textContent, so bodyText/caret math is unaffected.
-  if (bodyText.endsWith('\n')) {
-    frag.appendChild(doc.createElement('br'));
   }
   el.replaceChildren(frag);
 }
@@ -594,7 +559,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
 
   return (
     <>
-      {/* news.md v0.3.0: 에디터 본문 영역 위에 '본문' 라벨 텍스트는 표시하지 않는다 (aria-label 유지). */}
+      <label htmlFor="editor-body">본문</label>
       <div
         id="editor-body"
         data-testid="editor-body"
@@ -748,22 +713,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   );
 }
 
-export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded }) {
+export function WritePage({ user }) {
   // news.md 데스크 미송고 편집: writer.do?id=<articleId> loads that article for editing.
-  // 멀티탭 — 워크스페이스(WriteWorkspace)는 탭 모델의 editArticleId 를 prop 으로 명시한다 (null = 새 기사
-  // 탭; URL 의 ?id= 는 활성 탭만 반영하므로 비활성 탭이 읽으면 안 된다). prop 이 주어지지 않은 단독
-  // 사용(기존 단일 페이지/테스트)은 종전대로 URL 에서 한 번 읽는다 (the page remounts on navigation).
-  const urlArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
-  const editArticleId = editArticleIdProp === undefined ? urlArticleId : (editArticleIdProp || undefined);
-  const ctrl = useWriteController(user, { editArticleId, draftKey });
+  // Read the id once from the URL (the page remounts on navigation, so a per-render read is fine).
+  const editArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
+  const ctrl = useWriteController(user, { editArticleId });
   const [activeTab, setActiveTab] = useState('공통정보');
-  // 멀티탭 — 편집 컨텍스트 탭에서 송고/보류/KILL 이 성공하면 컨트롤러가 빈 초안으로 리셋된다
-  // (isDraft=true + lifecycleStatus 확정). 워크스페이스에 알려 탭을 '새 기사' 탭으로 전환시킨다
-  // (라벨 갱신 + editArticleId 해제 → 잠금 해제 + 초안 보존 활성화). lifecycleStatus 가드가 있어
-  // 편집 row 로드 전의 일시적 isDraft(A-DRAFT 초기값)에는 절대 발화하지 않는다.
-  useEffect(() => {
-    if (editArticleId && ctrl.isDraft && ctrl.lifecycleStatus != null) onEditContextEnded?.();
-  }, [editArticleId, ctrl.isDraft, ctrl.lifecycleStatus, onEditContextEnded]);
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
   // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
   const alertedRef = useRef(false);
@@ -823,35 +778,27 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
         {/* 송고 / 보류 / KILL action buttons at the top (news.md 기사 작성 페이지 내 버튼).
             Visibility is gated by role + the editing article's status:
             - 송고/보류: role R, D, or Z AND status RDS
-            - KILL:    role R or Z      AND status RDS AND 기사아이디 생성됨 (!ctrl.isDraft, v0.6.0)
+            - KILL:    role R or Z      AND status RDS
             SPEC-NEWS-REVISE-001 / REQ-AUTH-Z-BUTTONS (D-1 잠금): Z권한도 R/D와 동일한 RDS gate를
-            적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다.
-            v0.6.0: 기사아이디가 생성되지 않은 신규 초안(A-DRAFT)에서는 KILL을 표시하지 않는다 —
-            존재하지 않는 기사는 KILL 대상이 아니며, 초안 KILL은 기사를 만들었다 바로 죽이는 동작이 된다. */}
-        {/* REQ-FE-WRITE-012/013 v0.3.0: 송고/보류/KILL은 확인창(window.confirm)을 선행하고,
-            확인했을 때만 진행한다. 취소 시 저장/액션 모두 미발생 (AC-5.4). */}
+            적용해 송고/보류/KILL을 노출한다. status가 RDS가 아니면 어느 권한도 노출하지 않는다. */}
         <div className="yh-meta-actions">
           {(user.role === 'R' || user.role === 'D' || user.role === 'Z') && isRds ? (
             <>
-              <button type="button" className="yh-btn yh-btn--primary"
-                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
-              <button type="button" className="yh-btn yh-btn--hold"
-                onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
+              <button type="button" className="yh-btn yh-btn--primary" onClick={ctrl.send}>송고</button>
+              <button type="button" className="yh-btn yh-btn--hold" onClick={ctrl.hold}>보류</button>
             </>
           ) : null}
-          {(user.role === 'R' || user.role === 'Z') && isRds && !ctrl.isDraft ? (
-            <button type="button" className="yh-btn yh-btn--kill"
-              onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+          {(user.role === 'R' || user.role === 'Z') && isRds ? (
+            <button type="button" className="yh-btn yh-btn--kill" onClick={ctrl.kill}>KILL</button>
           ) : null}
         </div>
 
-        {/* REQ-FE-WRITE-014 v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — lifecycleStatus
-            표시 블록 제거. 거부/오류(actionError)는 종전대로 노출한다. */}
+        {ctrl.lifecycleStatus ? (
+          <div data-testid="lifecycle-status" className="yh-lifecycle-status">
+            상태: {ctrl.lifecycleStatus}
+          </div>
+        ) : null}
         {ctrl.actionError ? <div role="alert" className="yh-alert">{ctrl.actionError}</div> : null}
-
-        {/* SPEC-NEWS-REVISE-007 REQ-VO-MAPPING (AC-MAP-2/3): read-only ContentsVO 8 fields, shown only in
-            an edit context (ctrl.readonlyMeta non-null). A blank-new draft renders nothing here. */}
-        {ctrl.readonlyMeta ? <ReadonlyMetaPanel meta={ctrl.readonlyMeta} /> : null}
 
         {/* Tab strip */}
         <div role="tablist" className="yh-tabs">
