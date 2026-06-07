@@ -12,36 +12,6 @@ import { assertModel } from './contract.js';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:3001';
 
-// 세션 영속화 키 — sessionStorage 충돌 방지를 위해 'tech_day.' prefix를 쓴다.
-// 새로고침(F5)에는 세션 유지, 탭을 닫으면 만료되도록 sessionStorage를 선택했다.
-const SESSION_ID_KEY = 'tech_day.sessionId';
-
-// SSR/비브라우저/jsdom-없음 안전 가드: sessionStorage가 없으면 메모리에만 보관한다.
-function hasSessionStorage() {
-  return typeof sessionStorage !== 'undefined' && sessionStorage !== null;
-}
-
-/** sessionStorage에서 영속된 세션 id를 복원한다(없거나 접근 실패 시 null). */
-function loadPersistedSessionId() {
-  if (!hasSessionStorage()) return null;
-  try {
-    return sessionStorage.getItem(SESSION_ID_KEY) || null;
-  } catch {
-    return null;
-  }
-}
-
-/** 세션 id를 sessionStorage에 저장(null이면 제거). 접근 실패는 무시(메모리만). */
-function persistSessionId(id) {
-  if (!hasSessionStorage()) return;
-  try {
-    if (id) sessionStorage.setItem(SESSION_ID_KEY, id);
-    else sessionStorage.removeItem(SESSION_ID_KEY);
-  } catch {
-    /* private mode 등 접근 실패 — 메모리 보관으로 degrade */
-  }
-}
-
 /** Resolve the API base URL: explicit opt > Vite env > hardcoded default. */
 function resolveBaseUrl(baseUrl) {
   if (baseUrl) return baseUrl;
@@ -58,7 +28,8 @@ function resolveBaseUrl(baseUrl) {
 // sessionStorage key holding the server-issued session id so a browser refresh (F5) can restore the
 // session. sessionStorage (not localStorage) is intentional: it survives a same-tab reload but is
 // cleared when the tab/browser closes, matching the domain rule "브라우저 닫힘 → 세션 종료" (news.md lockYN).
-const SESSION_STORAGE_KEY = 'newsroom.sessionId';
+// 'tech_day.' prefix — App.jsx 의 USER_KEY('tech_day.user')와 같은 네임스페이스를 쓴다 (정합성 검사 공유).
+const SESSION_STORAGE_KEY = 'tech_day.sessionId';
 
 /** Safe sessionStorage access — guarded so the module never throws in non-browser/test contexts. */
 function readStoredSessionId() {

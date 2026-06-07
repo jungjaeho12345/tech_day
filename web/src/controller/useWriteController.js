@@ -50,6 +50,16 @@ function clearStoredDraft(key = DRAFT_STORAGE_KEY) {
 // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금 충돌 시 사용자에게 노출되는 문자열 메시지(lockError 는 문자열|null).
 const LOCK_CONFLICT_MESSAGE = '다른 사용자가 편집 중입니다.';
 
+// Page-scoped sessionId generator (D2-5 = A strict): one UUID per editor mount so two tabs of the
+// same user collide on the lock. Falls back to a Math.random pair when crypto.randomUUID is
+// unavailable (jsdom/older Node).
+function generatePageSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const EMPTY_COMMON = Object.freeze({
   author: '', coAuthor: '', content: '', region: '', attribute: '', keyword: '',
   internalComment: '', externalComment: '', attachmentFile: '', referenceFile: '',
@@ -136,6 +146,8 @@ function draftHasContent(markup, common, authorDefault) {
 export function useWriteController(user, options = {}) {
   const { editArticleId, draftKey = DRAFT_STORAGE_KEY } = options;
   const model = useModel();
+  // SPEC-EDIT-LOCK-001 — 차단 진입 시 목록 복귀(navigate)와 logout 해제 콜백 등록에 쓰인다.
+  const session = useSession();
   const authorDefault = user.name ?? '';
   // SPEC-NEWS-REVISE: rehydrate a previously-typed NEW draft (작성 → 조회 전환 → 복귀) from sessionStorage.
   // Only in the blank-new context (no editArticleId) — an edit context loads fresh from the server and
@@ -179,6 +191,21 @@ export function useWriteController(user, options = {}) {
   if (pageSessionIdRef.current == null) {
     pageSessionIdRef.current = generatePageSessionId();
   }
+  // SPEC-EDIT-LOCK-001 — true while THIS mount holds the server lock. Cleared on release and on a
+  // successful action (server auto-releases) so unmount/beforeunload never double-unlocks.
+  const acquiredLockRef = useRef(false);
+  // 보유 잠금 해제 (단일 경로): unmount, beforeunload, logout 콜백이 모두 이 함수를 거친다.
+  // 미보유 상태(차단 진입, 액션 후 auto-release)에서는 no-op — unlockArticle 을 호출하지 않는다.
+  const releaseHeldLock = useCallback(() => {
+    if (!acquiredLockRef.current || !editArticleId) return;
+    acquiredLockRef.current = false;
+    try {
+      // Best-effort: unload/unmount 경로는 절대 throw 하면 안 된다 (httpModel 은 keepalive 로 전송).
+      model.unlockArticle?.(editArticleId)?.catch?.(() => {});
+    } catch {
+      // Ignore — release is best effort.
+    }
+  }, [model, editArticleId]);
 
   // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lock-before-load: editArticleId 가 있으면 마운트 시 먼저
   // lockArticle(id) 로 잠금을 획득하고, 성공한 경우에만 queryArticles 로 기사를 로드한다. 409(locked) 등
@@ -374,7 +401,10 @@ export function useWriteController(user, options = {}) {
       // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
       // route's lock guard (assertLockHolder) accepts the request. The DTO field is stripped by
       // server/index.js before the partial update is applied (it is transport-only metadata).
-      {
+      // v0.6.0 — 신규 초안(A-DRAFT) KILL 은 저장(기사 생성)을 건너뛴다: 존재하지 않는 기사는 KILL
+      // 대상이 아니며, 저장하면 "기사를 만들었다 바로 죽이는" 동작이 된다. WritePage 도 같은 이유로
+      // 초안에서 KILL 버튼을 숨기지만(!isDraft 게이트), 컨트롤러 정책으로도 이중 방어한다.
+      if (action !== 'kill' || isEditContext) {
         const dto = assembleDto();
         const payload = isEditContext ? { ...dto, sessionId: pageSessionIdRef.current } : dto;
         const saved = await model.saveArticle(articleId, payload);

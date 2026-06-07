@@ -72,7 +72,10 @@ function persistUser(authUser) {
 
 export function App({ model }) {
   assertModel(model);
-  const [user, setUser] = useState(null);
+  // 부트 시 sessionStorage에서 신원을 동기 복원한다(새로고침 유지). 불완전 세션(user/sessionId 중
+  // 하나만 존재)은 restoreSession()이 양쪽을 정리하고 null을 반환해 로그인으로 폴백된다.
+  // model.restoreSession(서버 확인)은 아래 effect가 비동기로 이어서 수행한다.
+  const [user, setUser] = useState(() => restoreSession());
   // Gate the auth-guard URL reset until the one-shot session restore (F5) settles, so a refresh of a
   // protected .do path is not bounced to /login.do before the restored session rehydrates the user.
   // When the Model has no restoreSession (fakes/tests), there is nothing to wait for — settle immediately
