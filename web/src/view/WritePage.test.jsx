@@ -1510,6 +1510,28 @@ describe('WritePage inline embed delete (AC-EMB-DEL-1/2/4)', () => {
     // embed는 여전히 0개.
     expect(within(editorRegion).queryByTestId('embed-image')).not.toBeInTheDocument();
   });
+
+  it('AC-EMB-DEL-TRAIL: trailing embed (at end of empty body) also renders × button', async () => {
+    const user = userEvent.setup();
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'trail-img', url: 'https://yt/t', thumbnailUrl: 'https://th/t' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    // Insert embed into an empty body (no preceding text) -> it becomes a trailing embed.
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'q');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 trail-img' }));
+
+    const editorRegion = screen.getByTestId('editor-region');
+    // Trailing embed must have the × affordance.
+    const delBtn = within(editorRegion).getByRole('button', { name: '임베드 삭제' });
+    expect(delBtn).toBeInTheDocument();
+    // Clicking × removes the embed.
+    await user.click(delBtn);
+    expect(within(editorRegion).queryByTestId('embed-image')).not.toBeInTheDocument();
+  });
 });
 
 // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — lockError UI (AC-EDIT-LOCK-2, NFR-A11Y).
