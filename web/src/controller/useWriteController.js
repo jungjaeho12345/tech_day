@@ -7,7 +7,8 @@
 // After a SUCCESSFUL action the write page is reset to a fresh draft (news.md: 기사 작성페이지는 초기화 된다),
 // while the backend-returned status confirmation remains visible.
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useModel } from '../app/context.js';
+import { useModel, useSession } from '../app/context.js';
+import { ROUTES } from '../app/routing.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
 
@@ -46,15 +47,8 @@ function clearStoredDraft(key = DRAFT_STORAGE_KEY) {
   }
 }
 
-// SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — page-scoped sessionId generator (D2-5 = A strict).
-// One UUID per editor mount so two tabs of the same user collide on the lock (different sessionIds).
-// Falls back to a Math.random pair when crypto.randomUUID is unavailable (jsdom/older Node).
-function generatePageSessionId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
+// SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금 충돌 시 사용자에게 노출되는 문자열 메시지(lockError 는 문자열|null).
+const LOCK_CONFLICT_MESSAGE = '다른 사용자가 편집 중입니다.';
 
 const EMPTY_COMMON = Object.freeze({
   author: '', coAuthor: '', content: '', region: '', attribute: '', keyword: '',
@@ -173,9 +167,8 @@ export function useWriteController(user, options = {}) {
   const [status, setStatus] = useState(() => initialDraft?.status ?? 'RDS');
   const [lifecycleStatus, setLifecycleStatus] = useState(null);
   const [actionError, setActionError] = useState(null);
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — frontend lock integration. lockError holds the conflict
-  // reason ('locked' / 'unauthenticated' / 'network-error') so WritePage can show ALERT + banner +
-  // disable the editor body (AC-EDIT-LOCK-2 / NFR-A11Y).
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lockError 는 문자열(또는 null). 충돌(409) 시 LOCK_CONFLICT_MESSAGE
+  // 를 담아 WritePage 가 ALERT + 배너 + 에디터 비활성을 그릴 수 있게 한다 (NFR-A11Y).
   const [lockError, setLockError] = useState(null);
   // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields, populated only in an edit
   // context (editArticleId present). Null in a blank-new context so WritePage renders no read-only area
@@ -187,13 +180,33 @@ export function useWriteController(user, options = {}) {
     pageSessionIdRef.current = generatePageSessionId();
   }
 
-  // Edit-load (news.md 데스크 미송고 편집): when an editArticleId is supplied, fetch the row and load it
-  // into the editor + common fields, and adopt its articleId so the next save PUTs (updates) the row.
-  // Blank-new behavior is unchanged when editArticleId is absent.
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lock-before-load: editArticleId 가 있으면 마운트 시 먼저
+  // lockArticle(id) 로 잠금을 획득하고, 성공한 경우에만 queryArticles 로 기사를 로드한다. 409(locked) 등
+  // 실패 시 lockError 를 세팅하고 로드를 차단한 뒤 session.navigate(ROUTES.VIEW) 로 목록에 복귀한다.
+  // 신규 초안(editArticleId 없음)은 잠금/로드를 모두 건너뛴다 (blank-new 동작 보존).
   useEffect(() => {
-    if (!editArticleId) return;
+    if (!editArticleId) return undefined;
     let cancelled = false;
+
     (async () => {
+      // 1) 잠금 획득 (lock-before-load).
+      let lockResult;
+      try {
+        lockResult = await model.lockArticle(editArticleId);
+      } catch {
+        lockResult = { ok: false, reason: 'network-error' };
+      }
+      if (cancelled) return;
+      if (!lockResult?.ok) {
+        // 차단: 잠금 미획득 → 에디터 read-only + 목록 복귀. queryArticles 는 호출하지 않는다.
+        setLockError(LOCK_CONFLICT_MESSAGE);
+        session?.navigate?.(ROUTES.VIEW);
+        return;
+      }
+      acquiredLockRef.current = true;
+      setLockError(null);
+
+      // 2) 잠금 성공 후에만 기사 로드.
       const [row] = await model.queryArticles({ articleId: editArticleId });
       if (cancelled || !row) return;
       adapter.setMarkup(row.markupVersion ?? '');
@@ -207,8 +220,9 @@ export function useWriteController(user, options = {}) {
       // Adopt the loaded row's status so the action buttons gate on the real article state.
       if (row.status != null) setStatus(row.status);
     })();
+
     return () => { cancelled = true; };
-  }, [editArticleId, model, adapter]);
+  }, [editArticleId, model, adapter, session]);
 
   // SPEC-NEWS-REVISE — persist the in-progress NEW draft so leaving for 조회(list.do) and returning
   // (WritePage remount) keeps the editor body, title, and 공통정보. Runs only in the blank-new context
@@ -236,61 +250,21 @@ export function useWriteController(user, options = {}) {
   // over fetch because it survives the unload event without blocking it).
   useEffect(() => {
     if (!editArticleId) return undefined;
-    let cancelled = false;
-    const sessionId = pageSessionIdRef.current;
-
-    (async () => {
-      try {
-        const result = await model.acquireEditLock(editArticleId, { sessionId });
-        if (cancelled) return;
-        if (!result?.ok) {
-          setLockError({ reason: result?.reason ?? 'locked' });
-        } else {
-          setLockError(null);
-        }
-      } catch {
-        if (!cancelled) setLockError({ reason: 'network-error' });
-      }
-    })();
-
-    // sendBeacon release — used by both unload channels and the cleanup path so the server frees the
-    // lock even if the user closes the tab without an explicit logout.
-    const beaconRelease = () => {
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          // Backend endpoint accepts the page sessionId in the body for sendBeacon compatibility
-          // (sendBeacon cannot specify HTTP method = DELETE; the server reads sessionId from the
-          // JSON payload and treats POST-to-lock-release as equivalent to DELETE for unload paths).
-          const payload = JSON.stringify({ sessionId, articleId: editArticleId, release: true });
-          const blob = new Blob([payload], { type: 'application/json' });
-          navigator.sendBeacon(`/api/articles/${encodeURIComponent(editArticleId)}/lock`, blob);
-        }
-      } catch {
-        // Ignore — unload paths must never throw.
-      }
-    };
-
-    const onBeforeUnload = () => { beaconRelease(); };
-    const onVisibilityChange = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        beaconRelease();
-      }
-    };
+    const onBeforeUnload = () => { releaseHeldLock(); };
     window.addEventListener('beforeunload', onBeforeUnload);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
     return () => {
-      cancelled = true;
       window.removeEventListener('beforeunload', onBeforeUnload);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      // Best-effort async release on React unmount (page navigation, hot reload).
-      try {
-        model.releaseEditLock?.(editArticleId, { sessionId }).catch(() => {});
-      } catch {
-        // Ignore — release is best effort.
-      }
+      // React unmount(페이지 이동/핫리로드)에서도 보유 잠금을 해제한다.
+      releaseHeldLock();
     };
-  }, [editArticleId, model]);
+  }, [editArticleId, releaseHeldLock]);
+
+  // logout 경로 — App.handleLogout 이 세션 클리어 전에 호출할 해제 콜백을 등록한다(release-before-clear-session).
+  useEffect(() => {
+    if (!editArticleId) return undefined;
+    session?.registerEditLockRelease?.(() => { releaseHeldLock(); });
+    return undefined;
+  }, [editArticleId, session, releaseHeldLock]);
 
   // Set the plain body text (typed input). Embeds already inserted are preserved (REQ-EDIT-ADP-003).
   const setBodyMarkup = useCallback((next) => {
@@ -369,10 +343,8 @@ export function useWriteController(user, options = {}) {
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
   const submitAction = useCallback(async (action) => {
     setActionError(null);
-    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — when the lock acquire was rejected, every transport call
-    // is suppressed (the page is read-only until the user dismisses and navigates away). This is the
-    // server-side AC-EDIT-LOCK-2/6 invariant mirrored at the client so the conflict is not papered
-    // over by a network error from the server-side lock guard.
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금이 거부된(차단) 상태에서는 모든 transport 호출을 막는다
+    // (페이지는 read-only). 서버측 잠금 가드를 클라이언트에서 미러링해 충돌이 네트워크 에러로 가려지지 않게 한다.
     if (lockError) {
       return;
     }
@@ -422,6 +394,9 @@ export function useWriteController(user, options = {}) {
         setActionError(`전송이 거부되었습니다 (${result?.reason ?? 'rejected'}).`);
         return;
       }
+      // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 액션 성공 시 서버가 잠금을 auto-release 한다. 클라이언트 획득
+      // 플래그를 꺼서 이후 unmount/beforeunload 가 다시 unlockArticle 을 호출하지 않게 한다(이중 해제 방지).
+      acquiredLockRef.current = false;
       setLifecycleStatus(result.status);
       // Success -> reset the page for a new article (status confirmation is preserved).
       resetDraft();
@@ -450,8 +425,8 @@ export function useWriteController(user, options = {}) {
     // (WritePage renders the read-only area only when this is non-null — AC-MAP-2/3).
     readonlyMeta,
     lifecycleStatus, actionError,
-    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — null when the lock is free / acquired; non-null
-    // ({ reason }) when the editor must stay read-only because another holder is editing.
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — null when the lock is free / acquired; a string message
+    // (LOCK_CONFLICT_MESSAGE) when the editor must stay read-only because another holder is editing.
     lockError,
     send: () => submitAction('send'),
     hold: () => submitAction('hold'),

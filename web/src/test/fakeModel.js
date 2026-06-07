@@ -3,7 +3,7 @@
 import { assertModel } from '../model/contract.js';
 
 export function createFakeModel(overrides = {}) {
-  // Realtime subscription registry: tests grab `emit` to push changes through the subscription interface.
+  // Realtime subscription registry: tests grab emit to push changes through the subscription interface.
   const subscribers = new Set();
   let connected = true;
 
@@ -34,25 +34,28 @@ export function createFakeModel(overrides = {}) {
     },
     async applyAction(_articleId, role, action) {
       // Default lifecycle results, role-aware (matches src/services/lifecycle.js RDS transitions).
-      // kill -> RRK (R) / DDK (D); hold -> RRH (R) / DDH (D); send -> DPS (D default).
+      // kill -> RRK (R) / DDK (D/Z); hold -> RRH (R) / DDH (D/Z);
+      // send -> RDS (R) / DPS (D/Z) — mirrors news.md lifecycle table (141~148행).
       if (action === 'kill') {
         return { ok: true, status: role === 'R' ? 'RRK' : 'DDK' };
       }
       if (action === 'hold') {
         return { ok: true, status: role === 'R' ? 'RRH' : 'DDH' };
       }
-      return { ok: true, status: 'DPS' };
+      // send: R 권한은 RDS, D/Z 권한은 DPS (lifecycle.js TRANSITIONS 정합).
+      return { ok: true, status: role === 'R' ? 'RDS' : 'DPS' };
     },
     async saveArticle(articleId) {
       return { ok: true, articleId: articleId ?? 'A-0001' };
     },
-    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — default succeed so tests that don't care about the lock
-    // path still pass; tests that DO care override via createFakeModel({ acquireEditLock, ... }).
-    async acquireEditLock(_articleId, _opts) {
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — default succeed so tests that don't care about the lock
+    // path still pass; tests that DO care override via createFakeModel({ lockArticle, ... }).
+    // holder is the login session (single-arg calls); the page-scoped UUID is gone.
+    async lockArticle(_articleId) {
       return { ok: true };
     },
-    async releaseEditLock(_articleId, _opts) {
-      return { ok: true };
+    async unlockArticle(_articleId) {
+      return { ok: true, released: true };
     },
     async logout() {
       // Default: end the session successfully (no real HTTP transport wired).

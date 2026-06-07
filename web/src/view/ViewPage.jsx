@@ -170,11 +170,85 @@ function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
   );
 }
 
+// Multi-select checkbox dropdown for department filter.
+// Supports "전체" (All) option that toggles all departments.
+function DeptMultiSelect({ departments, selectedDepts, onChange }) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selectedDepts.length === departments.length && departments.length > 0;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      onChange([]);
+    } else {
+      onChange([...departments]);
+    }
+  };
+
+  const toggleDept = (dept) => {
+    if (selectedDepts.includes(dept)) {
+      onChange(selectedDepts.filter((d) => d !== dept));
+    } else {
+      onChange([...selectedDepts, dept]);
+    }
+  };
+
+  // Display text for the dropdown trigger button.
+  const displayText = selectedDepts.length === 0
+    ? '선택'
+    : selectedDepts.length === departments.length
+      ? '전체'
+      : selectedDepts.length === 1
+        ? selectedDepts[0]
+        : `${selectedDepts[0]} 외 ${selectedDepts.length - 1}`;
+
+  return (
+    <div className="yh-multi-select" data-testid="dept-multi-select">
+      <button
+        type="button"
+        className="yh-multi-select__trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {displayText}
+      </button>
+      {open ? (
+        <ul className="yh-multi-select__menu" role="listbox" aria-label="부서 선택">
+          <li className="yh-multi-select__item">
+            <label>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                data-testid="dept-checkbox-all"
+              />
+              전체
+            </label>
+          </li>
+          {departments.map((dept) => (
+            <li key={dept} className="yh-multi-select__item">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selectedDepts.includes(dept)}
+                  onChange={() => toggleDept(dept)}
+                  data-testid={`dept-checkbox-${dept}`}
+                />
+                {dept}
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export function ViewPage({ user, nav }) {
   const ctrl = useViewController(user);
   const session = useSession();
   const navigate = session?.navigate;
-  const [selectedDept, setSelectedDept] = useState('');
+  const [selectedDepts, setSelectedDepts] = useState([]);
   const [page, setPage] = useState(1);
   // Right-click context menu state: { x, y, article } while open, null while closed.
   const [contextMenu, setContextMenu] = useState(null);
@@ -189,13 +263,13 @@ export function ViewPage({ user, nav }) {
   const pageCount = Math.max(1, Math.ceil(ctrl.articles.length / PAGE_SIZE));
   const pageItems = ctrl.articles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Reset to page 1, close any open context menu, and re-seed the department Select whenever the
+  // Reset to page 1, close any open context menu, and re-seed the department selection whenever the
   // active menu changes (부서별 작성 starts on the logged-in user's department and is auto-queried by
   // the controller, REQ-FE-VIEW-005 v0.4.0; 부서별 송고 starts unselected).
   useEffect(() => {
     setPage(1);
     setContextMenu(null);
-    setSelectedDept(ctrl.menu === '부서별 작성' ? (user.department ?? '') : '');
+    setSelectedDepts(ctrl.menu === '부서별 작성' && user.department ? [user.department] : []);
   }, [ctrl.menu, user.department]);
 
   // Clamp the page if the list shrinks below the current offset (e.g. a realtime update
@@ -225,21 +299,16 @@ export function ViewPage({ user, nav }) {
 
         {ctrl.menu === '부서별 송고' || ctrl.menu === '부서별 작성' ? (
           <div className="yh-dept-filter">
-            <label htmlFor="dept-select">부서</label>
-            <select
-              id="dept-select"
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-            >
-              <option value="">선택</option>
-              {ctrl.departments.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
+            <span id="dept-label">부서</span>
+            <DeptMultiSelect
+              departments={ctrl.departments}
+              selectedDepts={selectedDepts}
+              onChange={setSelectedDepts}
+            />
             <button
               type="button"
               className="yh-btn yh-btn--secondary yh-btn--sm"
-              onClick={() => { setPage(1); ctrl.queryDepartment(selectedDept); }}
+              onClick={() => { setPage(1); ctrl.queryDepartment(selectedDepts); }}
             >조회</button>
           </div>
         ) : null}
