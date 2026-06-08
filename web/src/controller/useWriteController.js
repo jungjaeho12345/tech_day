@@ -18,6 +18,27 @@ import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
 // sessionStorage 인 이유가 이 도메인 규칙과 일치한다.
 const DRAFT_STORAGE_KEY = 'newsroom.writeDraft';
 
+// 멀티탭 워크스페이스(WriteWorkspace)가 영속하는 편집 탭 목록 키. SPEC-NEWS-REVISE-008 REQ-LOCK-RETENTION:
+// 편집 탭이 살아있는 동안에는(= 이 키의 tabs 에 해당 editArticleId 가 남아있는 동안에는) 단순 조회 페이지
+// 이동으로 인한 unmount 가 잠금을 해제하면 안 된다. 탭이 × 로 닫히면 WriteWorkspace 가 unmount 직전에
+// 이 키를 동기 갱신하므로, cleanup 시점에 해당 탭이 사라져 있어 정상 해제된다.
+const EDITOR_TABS_KEY = 'newsroom.editorTabs';
+
+/** True when an edit tab for `articleId` still survives in the persisted tab list (멀티탭 생존 신호).
+ *  탭 메타데이터가 없으면(단독 페이지/레거시/비브라우저) false 를 돌려 보수적 기본값(해제)을 유지한다. */
+function editTabSurvives(articleId) {
+  try {
+    if (typeof sessionStorage === 'undefined') return false;
+    const raw = sessionStorage.getItem(EDITOR_TABS_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const tabs = Array.isArray(parsed?.tabs) ? parsed.tabs : [];
+    return tabs.some((t) => t && t.editArticleId === articleId);
+  } catch {
+    return false;
+  }
+}
+
 // 멀티탭 작성 — 워크스페이스(WriteWorkspace)는 탭마다 별도 초안 키('newsroom.writeDraft.<tabId>')를
 // options.draftKey 로 주입해 탭 간 초안이 섞이지 않게 한다. 키 미지정 단독 사용은 종전 키 그대로.
 /** Safe sessionStorage read — guarded so the controller never throws in non-browser/test contexts. */
@@ -196,8 +217,18 @@ export function useWriteController(user, options = {}) {
   const acquiredLockRef = useRef(false);
   // 보유 잠금 해제 (단일 경로): unmount, beforeunload, logout 콜백이 모두 이 함수를 거친다.
   // 미보유 상태(차단 진입, 액션 후 auto-release)에서는 no-op — unlockArticle 을 호출하지 않는다.
-  const releaseHeldLock = useCallback(() => {
+  //
+  // SPEC-NEWS-REVISE-008 REQ-LOCK-RETENTION / REQ-LOCK-RELEASE-EXPLICIT — `force` 가 false(기본)인
+  // unmount cleanup 경로에서는 편집 탭이 아직 살아있으면(editTabSurvives) 해제하지 않는다. 단순 조회
+  // 페이지(list.do) 이동으로 WritePage 가 unmount 되어도 편집 탭이 탭 목록에 남아있는 한 잠금을 유지해야
+  // 하기 때문이다(AC-LOCK-1 / AC-REL-3). 탭이 × 로 닫히면 WriteWorkspace 가 unmount 직전에 탭 목록을
+  // 갱신하므로 그 기사는 더 이상 생존하지 않아 정상 해제된다(AC-REL-2). beforeunload(브라우저 닫힘)와
+  // 로그아웃은 `force=true` 로 호출되어 탭 생존 여부와 무관하게 항상 해제한다(AC-LOCK-2 (c)(d)).
+  const releaseHeldLock = useCallback((force = false) => {
     if (!acquiredLockRef.current || !editArticleId) return;
+    // 조건부 보유: 편집 탭이 살아있는 단순 unmount 는 해제하지 않는다(락 유지, acquiredLockRef 도 유지해
+    // 동일 탭으로 돌아오면 같은 보유 상태로 멱등 재획득된다).
+    if (!force && editTabSurvives(editArticleId)) return;
     acquiredLockRef.current = false;
     try {
       // Best-effort: unload/unmount 경로는 절대 throw 하면 안 된다 (httpModel 은 keepalive 로 전송).
@@ -277,19 +308,22 @@ export function useWriteController(user, options = {}) {
   // over fetch because it survives the unload event without blocking it).
   useEffect(() => {
     if (!editArticleId) return undefined;
-    const onBeforeUnload = () => { releaseHeldLock(); };
+    // 브라우저(탭) 닫힘 — 탭 메타데이터가 sessionStorage 에 남아있어도 무조건 해제한다(force=true).
+    const onBeforeUnload = () => { releaseHeldLock(true); };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      // React unmount(페이지 이동/핫리로드)에서도 보유 잠금을 해제한다.
+      // React unmount(페이지 이동/핫리로드) — 편집 탭이 살아있으면 잠금을 유지한다(force 미지정 = 조건부).
+      // SPEC-NEWS-REVISE-008 AC-LOCK-1/AC-REL-3: 단순 조회 페이지 이동만으로는 풀리지 않는다.
       releaseHeldLock();
     };
   }, [editArticleId, releaseHeldLock]);
 
   // logout 경로 — App.handleLogout 이 세션 클리어 전에 호출할 해제 콜백을 등록한다(release-before-clear-session).
+  // SPEC-NEWS-REVISE-008 AC-LOCK-2(c): 로그아웃은 편집 탭 생존 여부와 무관하게 무조건 해제한다(force=true).
   useEffect(() => {
     if (!editArticleId) return undefined;
-    session?.registerEditLockRelease?.(() => { releaseHeldLock(); });
+    session?.registerEditLockRelease?.(() => { releaseHeldLock(true); });
     return undefined;
   }, [editArticleId, session, releaseHeldLock]);
 
