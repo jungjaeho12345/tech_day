@@ -1,6 +1,6 @@
 // @MX:NOTE: [AUTO] Clipboard-paste embed helpers (news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한
 // 이미지/유투브를 임베딩한다). Pure, dependency-free, unit-testable helpers used by WritePage's BodyEditor
-// onPaste handler. The 10%x10% sizing is handled by the existing .yh-embed CSS — no size logic here.
+// onPaste handler. The 17%x17% sizing is handled by the existing .yh-embed CSS — no size logic here.
 
 // Match a YouTube watch/short URL. Accepts:
 //   - youtube.com/watch?v=ID  (with optional extra query params, www./m. subdomains, http/https)
