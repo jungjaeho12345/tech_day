@@ -412,6 +412,134 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
   });
 });
 
+// 과업 ③ — 상세보기 '기사' 본문을 markupVersion(에디터 직렬화 JSON)을 파싱한 실제 본문으로 렌더한다.
+// content(공통정보 "내용")가 아니라 markupVersion 의 블록(텍스트 + 이미지/영상/기사 임베드)을 순서대로 표시.
+describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 ③)', () => {
+  // editorContent.serializeContent 와 동일한 포맷 — 테스트에서 직접 markup 문자열을 만든다.
+  function markup(blocks) {
+    return JSON.stringify({ format: 'yh-editor', version: 1, blocks });
+  }
+
+  function parse(html) {
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  it('텍스트 → 이미지 임베드 → "(끝)" 순서를 그대로 보존해 렌더한다', () => {
+    const article = {
+      title: '제목',
+      content: '짧은 리드(공통정보 내용)',
+      markupVersion: markup([
+        { type: 'text', text: '본문 첫 문단입니다.' },
+        { type: 'embed', embed: { type: 'image', title: '현장', url: 'https://u/1', thumbnailUrl: 'https://t/1' } },
+        { type: 'text', text: '(끝)' },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const content = doc.querySelector('section[aria-label="기사"] .yh-detail__content');
+    expect(content).not.toBeNull();
+    // 본문 텍스트가 공통정보 "내용"이 아니라 markupVersion 텍스트 블록에서 온다.
+    expect(content.textContent).toContain('본문 첫 문단입니다.');
+    expect(content.textContent).toContain('(끝)');
+    // 이미지 임베드는 <img> 로 렌더 (thumbnailUrl 우선).
+    const img = content.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('https://t/1');
+    // 블록 순서 보존: 텍스트 → 이미지 → (끝).
+    const text = content.textContent;
+    expect(text.indexOf('본문 첫 문단입니다.')).toBeLessThan(text.indexOf('(끝)'));
+    const imgPos = content.innerHTML.indexOf('<img');
+    expect(content.innerHTML.indexOf('본문 첫 문단입니다.')).toBeLessThan(imgPos);
+    expect(imgPos).toBeLessThan(content.innerHTML.lastIndexOf('(끝)'));
+  });
+
+  it('이미지 임베드 thumbnailUrl 없으면 url 로 폴백한다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([{ type: 'embed', embed: { type: 'image', url: 'https://only/url' } }]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const img = doc.querySelector('section[aria-label="기사"] img');
+    expect(img.getAttribute('src')).toBe('https://only/url');
+  });
+
+  it('영상 임베드는 썸네일 + 제목/링크로 렌더한다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'video', title: '현장 영상', url: 'https://yt/v', thumbnailUrl: 'https://t/v' } },
+      ]),
+    };
+    const html = buildArticleDetailHtml(article);
+    const doc = parse(html);
+    const article뷰 = doc.querySelector('section[aria-label="기사"]');
+    expect(article뷰.querySelector('img').getAttribute('src')).toBe('https://t/v');
+    expect(article뷰.textContent).toContain('현장 영상');
+    const link = article뷰.querySelector('a');
+    expect(link.getAttribute('href')).toBe('https://yt/v');
+  });
+
+  it('기사(article) 임베드는 제목 카드로 렌더한다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([{ type: 'embed', embed: { type: 'article', articleId: 'A-77', title: '폭우 피해' } }]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const section = doc.querySelector('section[aria-label="기사"]');
+    expect(section.textContent).toContain('폭우 피해');
+  });
+
+  it('임베드 동적 텍스트/URL 을 escape 한다 (XSS 방지)', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'text', text: '<img src=x onerror=alert(1)>' },
+        { type: 'embed', embed: { type: 'video', title: '<script>bad</script>', url: 'https://"x' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    // 본문 텍스트의 위험 토큰은 노드로 생성되지 않는다.
+    const section = doc.querySelector('section[aria-label="기사"]');
+    expect(section.querySelectorAll('script').length).toBe(0);
+    // onerror 이미지가 실제 img 노드로 생성되지 않는다(텍스트 블록은 escape).
+    // (임베드 영상 썸네일 img 는 없을 수 있으나, 위험 텍스트가 attribute 로 새지 않음을 확인)
+    expect(section.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(section.textContent).toContain('<script>bad</script>');
+  });
+
+  it('markupVersion 이 없거나 빈 레거시 기사는 content 로 폴백한다 (깨지지 않음)', () => {
+    for (const mv of [undefined, '', null]) {
+      const article = { title: 't', content: '레거시 본문', markupVersion: mv };
+      const doc = parse(buildArticleDetailHtml(article));
+      const content = doc.querySelector('section[aria-label="기사"] .yh-detail__content');
+      expect(content).not.toBeNull();
+      expect(content.textContent).toContain('레거시 본문');
+    }
+  });
+
+  it('공통정보 "내용" 행은 여전히 content(짧은 리드)를 표시한다 (본문과 독립)', () => {
+    const article = {
+      title: 't',
+      content: '짧은 리드',
+      markupVersion: markup([{ type: 'text', text: '진짜 본문' }]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    // 공통정보 "내용" = content.
+    const rows = doc.querySelectorAll('section[aria-label="공통정보"] .yh-detail__row');
+    let 내용 = null;
+    for (const row of rows) {
+      if (row.querySelector('dt')?.textContent === '내용') {
+        내용 = row.querySelector('dd')?.textContent ?? null;
+        break;
+      }
+    }
+    expect(내용).toBe('짧은 리드');
+    // 기사 본문 = markupVersion.
+    const body = doc.querySelector('section[aria-label="기사"] .yh-detail__content').textContent;
+    expect(body).toContain('진짜 본문');
+    expect(body).not.toContain('짧은 리드');
+  });
+});
+
 // REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드와 매핑된다.
 // articleDetail.js COMMON_INFO_FIELDS에서 'description' -> 'content' 키로 수정하여 해소.
 describe('REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드와 매핑되어야 한다', () => {
