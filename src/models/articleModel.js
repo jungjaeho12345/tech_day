@@ -43,7 +43,6 @@ export function createArticleModel(db) {
         data.departmentCode ?? null, data.createdAt ?? null, data.editedAt ?? null,
         data.sentAt ?? null, data.distributedAt ?? null, data.embargoAt ?? null,
         data.secondEmbargoAt ?? null, data.status, data.lockYN ?? 'N',
-        // 공통정보 8 fields persisted so edit-load can restore them (news.md 기사 편집 기능).
         data.coAuthor ?? null, data.region ?? null, data.attribute ?? null, data.keyword ?? null,
         data.internalComment ?? null, data.externalComment ?? null,
         data.attachmentFile ?? null, data.referenceFile ?? null,
@@ -51,8 +50,8 @@ export function createArticleModel(db) {
     },
 
     findById(articleId) {
-      // lockYN/lockedAt 명시 별칭: 레거시 news.db 는 컬럼명이 `LockYN`/`LockedAt`(대문자)라서
-      // SELECT * 결과 키가 LockYN 이 되고, 호출부(applyAction 잠금 가드)의 row.lockYN 이
+      // lockYN/lockedAt 명시 별칭: 레거시 news.db 는 커럼명이 `LockYN`/`LockedAt`(대문자)라서
+      // SELECT * 결과 키가 LockYN 이 되고, 호출부(기사 applyAction 잠금 가드)의 row.lockYN 이
       // undefined 가 된다. AS 별칭은 신규/레거시 DB 모두에서 키를 lockYN/lockedAt 으로 통일한다.
       return db.prepare(
         'SELECT *, lockYN AS lockYN, lockedAt AS lockedAt FROM Contents WHERE articleId = ?',
@@ -61,17 +60,12 @@ export function createArticleModel(db) {
 
     /**
      * Query Contents by an AND-combination of the supported metadata filters.
-     * Rows are joined with Article.markupVersion (LEFT JOIN on the shared PK) so an edit-load
-     * fetch (`query({ articleId })`) can repaint the editor body — markupVersion lives ONLY in
-     * the Article table and was previously absent from these rows (편집 진입 시 빈 화면 원인).
-     * Filter columns are c.-qualified because articleId/title/content exist in BOTH tables.
      */
     query(filters = {}) {
       const clauses = [];
       const values = [];
       for (const [key, column] of Object.entries(QUERY_FILTERS)) {
         if (filters[key] !== undefined && filters[key] !== null) {
-          // department filter — comma-separated multi-value supported (e.g. 'Politics,Economy').
           if (key === 'department') {
             const depts = String(filters[key]).split(',').filter(Boolean);
             if (depts.length > 0) {
@@ -84,8 +78,6 @@ export function createArticleModel(db) {
           }
         }
       }
-      // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).
-      // Previously status was silently ignored (not in QUERY_FILTERS), so menu filters returned all rows.
       if (filters.status !== undefined && filters.status !== null && filters.status !== '') {
         const statuses = Array.isArray(filters.status)
           ? filters.status.filter(Boolean)
@@ -94,12 +86,9 @@ export function createArticleModel(db) {
           clauses.push(`c.status IN (${statuses.map(() => '?').join(',')})`);
           values.push(...statuses);
         } else if (Array.isArray(filters.status)) {
-          // 명시적 빈 배열은 "아무 상태도 매칭하지 않음" — 전체 반환이 아니라 0건이어야 안전하다.
           clauses.push('1 = 0');
         }
       }
-      // statusNot filter — comma-separated exclusion (e.g. 'DPS,RRH' from 부서별 작성).
-      // Mirrors the status IN clause as NOT IN so menu filters can exclude lifecycle states.
       if (filters.statusNot !== undefined && filters.statusNot !== null && filters.statusNot !== '') {
         const excluded = String(filters.statusNot).split(',').filter(Boolean);
         if (excluded.length > 0) {
@@ -108,8 +97,6 @@ export function createArticleModel(db) {
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
-      // c.lockYN AS lockYN: 레거시 news.db 의 `LockYN`(대문자) 컬럼 케이스를 정규화 — findById 참고.
-      // 별칭이 없으면 목록의 LockYN 컬럼이 항상 'N' 으로 보이는 버그가 된다 (article.lockYN === undefined).
       return db.prepare(
         `SELECT c.*, c.lockYN AS lockYN, c.lockedAt AS lockedAt, a.markupVersion AS markupVersion
            FROM Contents c
@@ -117,11 +104,11 @@ export function createArticleModel(db) {
       ).all(...values);
     },
 
-    /** Full-text-ish search over title/content. */
+    /** Full-text-ish search over title/content. Returns lockYN/lockedAt as lowercase-keyed aliases. */
     searchByText(queryText) {
       const like = `%${queryText}%`;
       return db.prepare(
-        'SELECT * FROM Contents WHERE title LIKE ? OR content LIKE ?',
+        'SELECT *, lockYN AS lockYN, lockedAt AS lockedAt FROM Contents WHERE title LIKE ? OR content LIKE ?',
       ).all(like, like);
     },
 
