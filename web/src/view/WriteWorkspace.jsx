@@ -34,10 +34,28 @@ function readStoredTabs() {
     return null;
   }
 }
+// L-2 (보안 리뷰): 편집 탭(editArticleId 보유)이 영속될 때 editStartedAt 타임스탬프를 찍는다. 이 신호는
+// useWriteController.editTabSurvives 가 30분(서버 stale 창) TTL 로 만료 판정하는 데 쓰여, 조작·동결된
+// sessionStorage 가 타인 기사 잠금을 무한정 고정하지 못하게 한다. 이미 찍힌 타임스탬프는 보존하고(편집
+// 시작 시각 유지), 편집 컨텍스트가 끝난(editArticleId == null) 탭에서는 타임스탬프를 제거한다.
+function stampEditTabs(state, now = Date.now()) {
+  const tabs = (state.tabs ?? []).map((t) => {
+    if (t && t.editArticleId != null) {
+      return Number.isFinite(Number(t.editStartedAt)) ? t : { ...t, editStartedAt: now };
+    }
+    if (t && t.editStartedAt != null) {
+      const { editStartedAt, ...rest } = t;
+      return rest;
+    }
+    return t;
+  });
+  return { ...state, tabs };
+}
+
 function writeStoredTabs(state) {
   try {
     if (typeof sessionStorage === 'undefined') return;
-    sessionStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(state));
+    sessionStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(stampEditTabs(state)));
   } catch {
     // storage unavailable — 탭 구성은 in-memory 로만 유지 (no throw).
   }
@@ -79,7 +97,15 @@ function initTabsState() {
   if (stored && Array.isArray(stored.tabs) && stored.tabs.length > 0) {
     const tabs = stored.tabs
       .filter((t) => t && typeof t.id === 'string')
-      .map((t) => ({ id: t.id, editArticleId: t.editArticleId ?? null }));
+      .map((t) => {
+        const tab = { id: t.id, editArticleId: t.editArticleId ?? null };
+        // L-2: 편집 탭의 editStartedAt(생존 신호 TTL 기준 시각)을 복원 시에도 보존한다 — 그래야 연속
+        // 마운트 동안 만료 기준이 리셋되지 않는다. 유효 숫자가 아니면 stampEditTabs 가 재영속 시 새로 찍는다.
+        if (tab.editArticleId != null && Number.isFinite(Number(t.editStartedAt))) {
+          tab.editStartedAt = Number(t.editStartedAt);
+        }
+        return tab;
+      });
     // seq 는 항상 기존 탭 id 의 최대 숫자 접미사 이상이어야 한다 — 저장된 seq 가 없거나(구버전/손상)
     // 더 작으면(예: [t1, t3] 에 seq 미존재) 다음 새 탭이 기존 id 와 충돌해 React key 가 겹치고
     // 에디터 상태가 교차 배선된다. max(저장 seq, 최대 접미사) 로 복원해 충돌을 차단한다.

@@ -289,6 +289,26 @@ describe('SPEC-NEWS-REVISE-009 멀티탭 행위 계약 가드', () => {
     expect(akr2).toHaveAttribute('aria-selected', 'true');
   });
 
+  // L-2 (보안 리뷰) — 편집 탭이 영속될 때 editStartedAt 타임스탬프가 찍혀, 컨트롤러의 editTabSurvives
+  // 가 30분 TTL 로 동결된 sessionStorage 생존 신호를 만료 처리할 수 있게 한다. 일반(비편집) 탭에는
+  // 타임스탬프가 찍히지 않는다.
+  it('L-2: 편집 탭(?id=) 영속 시 newsroom.editorTabs 의 그 탭에 editStartedAt 숫자가 찍힌다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    renderWorkspace(modelWithArticle(EDIT_ROW));
+    await waitFor(() => {
+      expect(within(activePanel()).getByTestId('readonly-articleId')).toHaveTextContent('AKR-1');
+    });
+    await waitFor(() => {
+      const persisted = JSON.parse(sessionStorage.getItem('newsroom.editorTabs'));
+      const editTab = persisted.tabs.find((t) => t.editArticleId === 'AKR-1');
+      const newTab = persisted.tabs.find((t) => t.editArticleId == null);
+      expect(editTab).toBeTruthy();
+      expect(Number.isFinite(Number(editTab.editStartedAt))).toBe(true);
+      // 비편집(새 기사) 탭에는 타임스탬프가 없다.
+      expect(newTab.editStartedAt).toBeUndefined();
+    });
+  });
+
   // AC-EDTAB-5 — 송고 실패(SPEC-005 "(끝)" 가드 차단) 시 그 탭은 블랭크로 전환되지 않고 내용을 유지한다.
   it('AC-EDTAB-5: 송고가 (끝) 가드로 차단되면 편집 탭이 블랭크로 전환되지 않는다', async () => {
     const user = userEvent.setup();

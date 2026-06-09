@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildArticleDetailHtml, escapeHtml } from './articleDetail.js';
+import { buildArticleDetailHtml, escapeHtml, isSafeHref, isSafeImageSrc } from './articleDetail.js';
 
 describe('escapeHtml', () => {
   it('escapes the five HTML-significant characters', () => {
@@ -11,6 +11,108 @@ describe('escapeHtml', () => {
   it('returns empty string for null/undefined', () => {
     expect(escapeHtml(null)).toBe('');
     expect(escapeHtml(undefined)).toBe('');
+  });
+});
+
+// M-1 (보안 리뷰): javascript: 등 위험 스킴 URL 미필터링 → Stored XSS 방지. escapeHtml 은 HTML
+// 특수문자만 이스케이프하므로 URL 스킴은 별도 화이트리스트(isSafeHref / isSafeImageSrc)로 가드한다.
+describe('M-1: URL 스킴 화이트리스트 가드', () => {
+  describe('isSafeHref (http/https 링크만 허용)', () => {
+    it('http/https 는 허용한다', () => {
+      expect(isSafeHref('https://youtu.be/abc')).toBe(true);
+      expect(isSafeHref('http://example.com')).toBe(true);
+      expect(isSafeHref('  https://leading-space.com ')).toBe(true);
+      expect(isSafeHref('HTTPS://UPPER.com')).toBe(true);
+    });
+    it('javascript:/data:/기타 스킴·비문자열은 거부한다', () => {
+      expect(isSafeHref('javascript:alert(1)')).toBe(false);
+      expect(isSafeHref('JaVaScRiPt:alert(1)')).toBe(false);
+      expect(isSafeHref(' javascript:alert(1)')).toBe(false);
+      expect(isSafeHref('data:text/html,<script>alert(1)</script>')).toBe(false);
+      expect(isSafeHref('data:image/png;base64,AAAA')).toBe(false); // 링크엔 data: 불가
+      expect(isSafeHref('//evil.com')).toBe(false);
+      expect(isSafeHref('vbscript:msgbox(1)')).toBe(false);
+      expect(isSafeHref(null)).toBe(false);
+      expect(isSafeHref(undefined)).toBe(false);
+      expect(isSafeHref(123)).toBe(false);
+    });
+  });
+
+  describe('isSafeImageSrc (http/https + data:image 만 허용)', () => {
+    it('http/https 와 붙여넣기 이미지(data:image)는 허용한다', () => {
+      expect(isSafeImageSrc('https://t/1.jpg')).toBe(true);
+      expect(isSafeImageSrc('http://t/1.jpg')).toBe(true);
+      expect(isSafeImageSrc('data:image/png;base64,AAAA')).toBe(true);
+      expect(isSafeImageSrc('data:image/jpeg;base64,ZZZZ')).toBe(true);
+    });
+    it('javascript:/data:text/html/기타는 거부한다', () => {
+      expect(isSafeImageSrc('javascript:alert(1)')).toBe(false);
+      expect(isSafeImageSrc('data:text/html,<script>alert(1)</script>')).toBe(false);
+      expect(isSafeImageSrc(null)).toBe(false);
+    });
+  });
+
+  function markup(blocks) {
+    return JSON.stringify({ format: 'yh-editor', version: 1, blocks });
+  }
+  function parse(html) {
+    return new DOMParser().parseFromString(html, 'text/html');
+  }
+
+  it('영상 임베드의 javascript: url 은 클릭 가능한 <a href> 로 렌더되지 않는다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'video', title: '나쁜 영상', url: 'javascript:alert(document.cookie)' } },
+      ]),
+    };
+    const html = buildArticleDetailHtml(article);
+    expect(html).not.toContain('javascript:alert');
+    const doc = parse(html);
+    const section = doc.querySelector('section[aria-label="기사"]');
+    // 위험 스킴 링크는 anchor 로 생성되지 않는다.
+    expect(section.querySelector('a.yh-detail__embed-link')).toBeNull();
+    // 제목은 escape 된 평문으로 남는다(노드는 생성되되 href 없음).
+    expect(section.textContent).toContain('나쁜 영상');
+  });
+
+  it('정상 https 영상 url 은 종전대로 <a href> 로 렌더된다 (회귀 가드)', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'video', title: '영상', url: 'https://youtu.be/ok', thumbnailUrl: 'https://t/v.jpg' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const link = doc.querySelector('section[aria-label="기사"] a.yh-detail__embed-link');
+    expect(link).not.toBeNull();
+    expect(link.getAttribute('href')).toBe('https://youtu.be/ok');
+  });
+
+  it('이미지 임베드의 javascript: src 는 <img> 로 렌더되지 않는다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'image', title: '나쁜 이미지', url: 'javascript:alert(1)' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const figure = doc.querySelector('section[aria-label="기사"] figure.yh-detail__embed--image');
+    expect(figure).not.toBeNull();
+    expect(figure.querySelector('img')).toBeNull();
+  });
+
+  it('붙여넣기 이미지(data:image) src 는 종전대로 <img> 로 렌더된다 (회귀 가드)', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'image', url: 'data:image/png;base64,AAAA' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const img = doc.querySelector('section[aria-label="기사"] figure.yh-detail__embed--image img');
+    expect(img).not.toBeNull();
+    expect(img.getAttribute('src')).toBe('data:image/png;base64,AAAA');
   });
 });
 

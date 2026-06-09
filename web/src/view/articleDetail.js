@@ -25,6 +25,31 @@ export function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * M-1: protocol whitelist guards. escapeHtml neutralizes HTML metacharacters but NOT dangerous URL
+ * schemes — a stored `javascript:alert(1)` in embed.url survives escapeHtml and would execute when a
+ * user clicks the rendered <a href> (the detail popup is built via document.write, so React's auto
+ * escaping does not apply here). Only render navigable links / image sources for schemes we trust.
+ *
+ * isSafeHref: http(s) only — used for the video embed's clickable link.
+ * @param {unknown} url
+ * @returns {boolean}
+ */
+export function isSafeHref(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url.trim());
+}
+
+/**
+ * isSafeImageSrc: http(s) OR inline data:image — clipboard-pasted images are persisted as
+ * `data:image/...;base64,...` URLs, so they must be allowed for <img src>; every other scheme
+ * (javascript:, data:text/html, etc.) is rejected.
+ * @param {unknown} url
+ * @returns {boolean}
+ */
+export function isSafeImageSrc(url) {
+  return typeof url === 'string' && /^(?:https?:\/\/|data:image\/)/i.test(url.trim());
+}
+
 // 공통정보 (common-info) fields per news.md "# 상세보기" enumeration, in display order.
 // `content` is the form's "내용" field saved by WritePage (COMMON_FIELDS key: content).
 // `secondEmbargoAt` also accepts the write-form alias `secondaryEmbargoAt`.
@@ -76,18 +101,26 @@ function buildCommonInfoRows(article) {
 function renderEmbed(embed) {
   if (!embed || typeof embed !== 'object') return '';
   if (embed.type === 'image') {
-    const src = escapeHtml(embed.thumbnailUrl || embed.url || '');
+    // M-1: only emit the <img> when the src uses a trusted scheme (http(s) or data:image). An unsafe
+    // URL (e.g. javascript:) renders no <img> rather than an attribute carrying a dangerous scheme.
+    const rawSrc = embed.thumbnailUrl || embed.url || '';
     const alt = escapeHtml(embed.title || '삽입 이미지');
+    const img = isSafeImageSrc(rawSrc)
+      ? `<img src="${escapeHtml(String(rawSrc).trim())}" alt="${alt}" />`
+      : '';
     return `<figure class="yh-detail__embed yh-detail__embed--image">`
-      + `<img src="${src}" alt="${alt}" /></figure>`;
+      + `${img}</figure>`;
   }
   if (embed.type === 'video') {
-    const thumb = embed.thumbnailUrl
-      ? `<img src="${escapeHtml(embed.thumbnailUrl)}" alt="${escapeHtml(embed.title || '영상')}" />`
+    // M-1: thumbnail src and the clickable link are each scheme-checked. An unsafe url drops the
+    // <a href> (so `javascript:` can never become a clickable link) while the title still shows as
+    // escaped plain text.
+    const thumb = isSafeImageSrc(embed.thumbnailUrl)
+      ? `<img src="${escapeHtml(String(embed.thumbnailUrl).trim())}" alt="${escapeHtml(embed.title || '영상')}" />`
       : '';
     const title = escapeHtml(embed.title || embed.url || '영상');
-    const link = embed.url
-      ? `<a class="yh-detail__embed-link" href="${escapeHtml(embed.url)}" rel="noreferrer">${escapeHtml(embed.url)}</a>`
+    const link = isSafeHref(embed.url)
+      ? `<a class="yh-detail__embed-link" href="${escapeHtml(String(embed.url).trim())}" rel="noreferrer">${escapeHtml(embed.url)}</a>`
       : '';
     return `<figure class="yh-detail__embed yh-detail__embed--video">`
       + `${thumb}<figcaption class="yh-detail__embed-cap"><span class="yh-detail__embed-mark">영상</span>`

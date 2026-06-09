@@ -24,16 +24,34 @@ const DRAFT_STORAGE_KEY = 'newsroom.writeDraft';
 // 이 키를 동기 갱신하므로, cleanup 시점에 해당 탭이 사라져 있어 정상 해제된다.
 const EDITOR_TABS_KEY = 'newsroom.editorTabs';
 
+// L-2: editTabSurvives 가 신뢰하는 "탭 생존 신호"의 최대 수명. 서버 락의 stale 판정 창(30분)과 동일하게
+// 잡아, WriteWorkspace 가 찍는 editStartedAt 타임스탬프(stampEditTabs)가 이 한도를 넘으면 더 이상 잠금
+// 유지 신호로 인정하지 않는다.
+const EDITOR_TAB_TTL_MS = 30 * 60 * 1000;
+
 /** True when an edit tab for `articleId` still survives in the persisted tab list (멀티탭 생존 신호).
- *  탭 메타데이터가 없으면(단독 페이지/레거시/비브라우저) false 를 돌려 보수적 기본값(해제)을 유지한다. */
-function editTabSurvives(articleId) {
+ *  탭 메타데이터가 없으면(단독 페이지/레거시/비브라우저) false 를 돌려 보수적 기본값(해제)을 유지한다.
+ *
+ *  L-2 (보안 리뷰): sessionStorage 의 생존 신호는 클라이언트가 조작할 수 있어 무결성이 보장되지 않는다.
+ *  WriteWorkspace 가 편집 탭에 editStartedAt 타임스탬프를 찍으므로(stampEditTabs), 그 값이
+ *  EDITOR_TAB_TTL_MS(서버 stale 창 = 30분)를 초과하면 만료로 처리해, 동결·위조된 sessionStorage 가
+ *  타인 기사 잠금을 무한정 고정하지 못하게 클라이언트 측 방어를 더한다. 타임스탬프가 없는 항목(레거시/
+ *  단독 사용)은 종전 보수적 동작(생존)을 그대로 유지한다. */
+function editTabSurvives(articleId, now = Date.now()) {
   try {
     if (typeof sessionStorage === 'undefined') return false;
     const raw = sessionStorage.getItem(EDITOR_TABS_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     const tabs = Array.isArray(parsed?.tabs) ? parsed.tabs : [];
-    return tabs.some((t) => t && t.editArticleId === articleId);
+    return tabs.some((t) => {
+      if (!t || t.editArticleId !== articleId) return false;
+      const startedAt = Number(t.editStartedAt);
+      if (Number.isFinite(startedAt)) {
+        return (now - startedAt) <= EDITOR_TAB_TTL_MS;
+      }
+      return true;
+    });
   } catch {
     return false;
   }

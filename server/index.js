@@ -33,6 +33,14 @@ export function createApp({ controllers, sessionService }) {
   bus.setMaxListeners(0);
 
   const app = express();
+  // M-2: trust the reverse proxy so req.ip (and thus the login rate-limiter key) reflects the real
+  // client IP from X-Forwarded-For instead of the proxy's socket IP. Without this, every request behind
+  // nginx/caddy collapses to one proxy IP — the 15m/10-attempt login throttle becomes effectively global
+  // (or trivially bypassable). Hop count is configurable via TRUST_PROXY (default 1 = single reverse
+  // proxy; set TRUST_PROXY=0 for direct exposure with no proxy). A numeric value is used deliberately:
+  // express-rate-limit rejects the permissive `true` setting with a validation error.
+  const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY ?? '1', 10);
+  app.set('trust proxy', Number.isNaN(trustProxyHops) ? 1 : trustProxyHops);
   app.use(express.json());
   // M-5: baseline security headers. CSP is tuned so the React+Vite SPA, its SSE stream, and
   // external media thumbnails (YouTube/Google image search) keep working — not maximally strict.
@@ -44,7 +52,15 @@ export function createApp({ controllers, sessionService }) {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        // L-1: drop 'unsafe-inline' from style-src (governs <style>/<link> ELEMENTS) so an injected
+        // <style> block cannot be used for CSS-injection / UI-redressing. The built SPA ships its CSS
+        // as a same-origin external file ('self'), so no inline <style> is needed in production.
+        styleSrc: ["'self'"],
+        // style-src-attr governs inline style ATTRIBUTES separately. React renders inline style props
+        // (e.g. ContextMenu top/left positioning, label white-space) to style="" attributes, so this
+        // keeps 'unsafe-inline' for attributes only — the SPA stays functional while injected <style>
+        // elements remain blocked.
+        styleSrcAttr: ["'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: ["'self'"],
         fontSrc: ["'self'", 'data:'],
