@@ -1,7 +1,7 @@
 ---
 name: moai-domain-news-editor
 description: >
-  뉴스 제작 시스템(연합뉴스 스타일) 도메인 지식의 단일 출처(SSOT) 스킬.
+  기사 작성기(스타일) 도메인 지식의 단일 출처(SSOT) 스킬.
   기사 생애주기 RDS/DPS/RRH/RRK/DDH/DDK(Z=D-mirror), 권한 R/D/Z 버튼 매트릭스,
   송고 (끝) 가드, list.do 메뉴 4종 상태 필터·컬럼, 12개 공통정보,
   에디터 단축키(Alt+Y/Ctrl+D)·인라인 임베딩·디자인 토큰을 표로 제공한다.
@@ -16,7 +16,7 @@ metadata:
   category: "domain"
   status: "active"
   updated: "2026-06-06"
-  tags: "news, editor, lifecycle, design-tokens, 연합뉴스"
+  tags: "news, editor, lifecycle, design-tokens"
 
 # MoAI Extension: Progressive Disclosure
 progressive_disclosure:
@@ -40,9 +40,7 @@ triggers:
     - DDH
     - DDK
     - Alt+Y
-    - Ctrl+D
-    - 연합뉴스
-    - 공통정보
+    - Ctrl+D    - 공통정보
     - 송고
     - 보류
     - KILL
@@ -59,6 +57,7 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-08 (v0.1.9): 생애주기 신규 결정 동기화 — **최초 송고 = RDS**: 작성 페이지(writer.do) 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이 없이 RDS 저장만 한다 (useWriteController.submitAction 이 applyAction 을 부르지 않음). §1.3/§2.2 의 권한별 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고/보류/KILL 에만 적용된다. 보류/KILL 은 신규에서도 종전 전이 유지 (R→RRH/RRK, D→DDH/DDK). news.md 기사 생애주기 절에 결정 1줄 반영. 동반: 부서별 작성/송고의 부서 멀티셀렉트 체크박스 드롭다운(.yh-multi-select) 디자인 토큰 스타일 신설 (yonhap.css — 종전엔 무스타일이라 깨져 보였음).
 - 2026-06-06 (v0.1.8): 작성 에디터 멀티탭 동기화 — writer.do 는 WriteWorkspace(web/src/view/WriteWorkspace.jsx) 가 탭 스트립 + 탭별 WritePage 인스턴스(전부 mounted, 비활성 hidden)를 관리. 탭 메타 sessionStorage `newsroom.editorTabs`, 탭별 초안 키 `newsroom.writeDraft.<tabId>` (구 단일 키는 첫 진입 시 1회 이관). 조회(list.do) 편집/고침/포털고침 진입(?id=)은 **새 탭** 생성·활성화, 같은 기사 재진입은 기존 탭 활성화(잠금 자기충돌 방지 — D2-5 strict 정합). 편집 탭에서 송고/보류/KILL 성공 시 그 탭은 빈 '새 기사' 탭으로 전환(잠금 해제 + 주소창 ?id= 제거). 주소창은 활성 탭을 replaceState 로 비춘다. 동반 수정: 서버 POST /lock 이 sendBeacon 페이로드의 release:true 를 해제로 처리하도록 계약 복원 (종전엔 무시되어 언로드 해제가 잠금 재획득이 되는 기존 버그). news.md 기사 작성페이지 절(L60-62)에 규칙 3줄 반영.
 - 2026-06-06 (v0.1.7): 작성 초안 보존 동기화 — writer.do → list.do 이동 후 복귀 시 작성 내용(제목/본문/임베드/공통정보) 유지. sessionStorage 키 `newsroom.writeDraft` 영속(useWriteController, 블랭크-신규 컨텍스트 한정), 편집 진입(?id=)은 서버 ContentsVO 로드 우선(영속/복원 OFF), 송고/보류/KILL 성공 초기화 시 보존 draft 도 함께 제거. news.md 기사 작성페이지 절에 규칙 반영.
 - 2026-06-06 (v0.1.6): 세션 정책 신설 동기화 — (1) 무동작 1시간(IDLE_TIMEOUT_MS=3600000) 세션 만료, 요청마다 sliding 갱신 (src/services/sessionService.js touchSession). (2) 로그아웃 전까지 활동 시 무기한 유지. (3) F5 새로고침 유지 — sessionId 를 sessionStorage 영속 + GET /api/session 복원 (탭/브라우저 닫힘 시 소멸 = lockYN 규칙 정합). news.md "## 세션 정책" 섹션(L94-97 부근) 신설 반영.
@@ -80,7 +79,7 @@ triggers:
 
 ## 1. Quick Reference (Level 1)
 
-뉴스 제작 시스템(연합뉴스 스타일, NodeJS + SQLite 서버 / React + Vite 클라이언트)의 도메인 사실을 한 곳에 모은 스킬이다. 페이지 3종(login.do, writer.do, list.do), 권한 R/D/Z, 기사 생애주기 6 상태, 에디터 단축키, 인라인 임베딩, 디자인 토큰을 표로 제공한다.
+기사 작성기(스타일, NodeJS + SQLite 서버 / React + Vite 클라이언트)의 도메인 사실을 한 곳에 모은 스킬이다. 페이지 3종(login.do, writer.do, list.do), 권한 R/D/Z, 기사 생애주기 6 상태, 에디터 단축키, 인라인 임베딩, 디자인 토큰을 표로 제공한다.
 
 ### 1.1 페이지·URL
 
@@ -90,7 +89,7 @@ triggers:
 | `writer.do` | 기사 작성 페이지 | **멀티탭**: 작성 에디터를 탭으로 여러 개 연다 (＋ 추가/× 닫기, 탭별 내용 독립; 조회의 편집/고침/포털고침 진입은 새 탭, 같은 기사 재진입은 기존 탭 활성화 — v0.1.8). 각 탭 = 좌측 에디터 60% + 우측 메타데이터 40%. 우측 탭 4종(공통정보/이미지/영상/글기사). 송고/보류/KILL 버튼 (Source: news.md L45, L51-69 — news.md L45 표기는 `wirter.do` 오타, 구현·테스트는 `writer.do`) |
 | `list.do` | 기사 조회 페이지 | 실시간 + 메뉴 4종(데스크 미송고/부서별 작성/부서별 송고/개인별 수정). 메뉴별 상태 필터·컬럼은 §2.8. 시간 내림차순, 10개씩 페이징 (Source: news.md L46, L68-86) |
 
-### 1.2 디자인 토큰 (연합뉴스 스타일)
+### 1.2 디자인 토큰 (스타일)
 
 | 변수 | 값 | 용도 |
 |------|----|----|

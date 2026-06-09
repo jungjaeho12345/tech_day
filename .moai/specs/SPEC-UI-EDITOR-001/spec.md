@@ -49,7 +49,7 @@ issue_number: 0
 - 프레임워크/빌드: **React 19 + Vite 7** (tech.md 확정).
 - 아키텍처: **클라이언트 MVC** — 에디터는 View 계층에서 어댑터 계약을 통해 노출, Controller(`useWriteController`)가 DTO 조립.
 - 테스트: **Vitest ^3.2.4** + jsdom + `@testing-library/react` (tech.md 확정). 파싱은 순수 함수로 단위테스트 가능해야 한다.
-- 디자인: 연합뉴스 스타일 토큰 `web/src/styles/yonhap.css` (명조 헤드라인 `--yh-serif`, 본문 고딕 `--yh-sans`, 브랜드 레드 `--yh-red` #C8102E, 회색 구분선 `--yh-gray-line`). 인라인 임베드는 이 토큰 체계를 따른다.
+- 디자인: 스타일 토큰 `web/src/styles/yonhap.css` (명조 헤드라인 `--yh-serif`, 본문 고딕 `--yh-sans`, 브랜드 레드 `--yh-red` #C8102E, 회색 구분선 `--yh-gray-line`). 인라인 임베드는 이 토큰 체계를 따른다.
 - 인코딩: 모든 텍스트 입출력 **UTF-8** (CLAUDE.md HARD 규칙).
 - 검색 백엔드 결과 형태는 SPEC-BACKEND-CORE-001 확정 사항을 소비한다.
 
@@ -92,7 +92,7 @@ issue_number: 0
 - **REQ-EDIT-EMBED-003 (Event-Driven) [NEW]**: **When** a YouTube/video search result is embedded, the system **shall** render it inline as a visual video reference (player or link card) rather than as marker text.
 - **REQ-EDIT-EMBED-004 (Event-Driven) [NEW]**: **When** an internal text-article search result (`{articleId, title}`) is embedded, the system **shall** render it inline as a visual article reference card (showing at least the article title) rather than as the prior `기사:{articleId}` marker text.
 - **REQ-EDIT-EMBED-005 (Ubiquitous) [NEW]**: Inline embeds **shall** be preserved within the `markupVersion` value such that re-loading the markup via `setMarkup()` reconstructs the same inline embeds (round-trip stable).
-- **REQ-EDIT-EMBED-006 (Ubiquitous) [NEW]**: Inline embeds **shall** follow the 연합뉴스 design tokens (`web/src/styles/yonhap.css`: serif headlines, sans body, brand red `--yh-red`, gray separators), visually distinguishing an embed from surrounding body text.
+- **REQ-EDIT-EMBED-006 (Ubiquitous) [NEW]**: Inline embeds **shall** follow the design tokens (`web/src/styles/yonhap.css`: serif headlines, sans body, brand red `--yh-red`, gray separators), visually distinguishing an embed from surrounding body text.
 - **REQ-EDIT-EMBED-007 (Optional) [NEW]**: **Where** multiple search results are embedded in sequence, the system **shall** insert each as a distinct inline embed, preserving their relative order in the body.
 
 ---
@@ -120,4 +120,4 @@ issue_number: 0
 - 원천 명세: `news.md` 80~83줄 "기사 에디터", 48~56줄 "기사 작성페이지"
 - 보존 계약 코드: `web/src/model/editorAdapter.js`, `web/src/controller/useWriteController.js`, `web/src/view/WritePage.jsx`, `web/src/controller/useSearchController.js`, `web/src/model/contract.js`, `src/services/mediaSearch.js`
 - 디자인 토큰: `web/src/styles/yonhap.css`
-- 프로젝트 HARD 규칙: `CLAUDE.md` — "모든 텍스트는 UTF-8", 현재 구현 범위는 제작 시스템
+- 프로젝트 HARD 규칙: `CLAUDE.md` — "모든 텍스트는 UTF-8", 현재 구현 범위는 기사 작성기

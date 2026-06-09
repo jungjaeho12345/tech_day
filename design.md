@@ -1,6 +1,6 @@
 # 디자인 가이드 (design.md)
 
-본 문서는 기사 제작 시스템(연합뉴스 스타일, React + 단일 yonhap.css)의 디자인 규칙을 정리한다. 추출 대상은 구현 단일 출처인 `web/src/styles/yonhap.css`(CSS 변수 토큰 + 컴포넌트 클래스), 뷰 컴포넌트(`web/src/view/*`), `web/index.html`, `news.md`, `CLAUDE.md`, `.moai/` 하위 SPEC·스킬·프로젝트 문서다. 값이 충돌하는 경우 양쪽을 병기하고, `web/src/styles/yonhap.css`를 비롯한 코드가 현재 구현 기준임을 표시한다.
+본 문서는 기사 작성기(React + 단일 yonhap.css)의 디자인 규칙을 정리한다. 추출 대상은 구현 단일 출처인 `web/src/styles/yonhap.css`(CSS 변수 토큰 + 컴포넌트 클래스), 뷰 컴포넌트(`web/src/view/*`), `web/index.html`, `news.md`, `CLAUDE.md`, `.moai/` 하위 SPEC·스킬·프로젝트 문서다. 값이 충돌하는 경우 양쪽을 병기하고, `web/src/styles/yonhap.css`를 비롯한 코드가 현재 구현 기준임을 표시한다.
 
 > 주의: `.moai/design/*.md` 와 `.moai/project/brand/*.md` 는 전부 빈 TBD 템플릿(값 없음)이다. 디자인 토큰·색·타이포의 실값은 모두 코드와 news.md/SPEC/스킬 문서에서 추출했다. (자세한 목록은 11장 참조)
 
@@ -8,7 +8,7 @@
 
 ## 브랜드 아이덴티티
 
-연합뉴스 보도 화면을 기준으로 한 신문형 보도 화면 아이덴티티를 따른다.
+보도 화면을 기준으로 한 신문형 보도 화면 아이덴티티를 따른다.
 
 - **색 체계 (코드 기준)**: blue+white 주도 — BLUE가 UI 크롬(헤더 보더/워드마크, 기본 버튼, 활성 탭/네비, 링크, 포커스, 테이블 밑줄)을 주도하고, RED는 연합 브랜드 액센트(로고 좌측 룰, 알림 보더, '송고' 상태 배지)로 유지된다. 흰 배경이 지배적이다. (출처: web/src/styles/yonhap.css)
 - **글자색 규칙**: 헤드라인/제목·브랜드 워드마크·UI 라벨 강조는 파란색(--yh-blue). 본문은 검정(--yh-ink) 유지. (출처: CLAUDE.md, .claude/skills/moai-domain-news-editor/SKILL.md)
@@ -283,7 +283,7 @@ position sticky top 0, z-index `var(--yh-topbar-z)`=100, height 48px, padding `0
 ### 브랜드/사용자 영역
 
 - `.yh-brand__logo`: '연합' 블루 레터링, 명조 1.15rem weight 700, letter-spacing -0.02em, color `--yh-blue`, **border-left 3px solid `--yh-red`**(레드 좌측 룰), padding `3px --yh-sp-sm`. (출처: web/src/styles/yonhap.css)
-- `.yh-brand__title`: 0.8rem weight 600 color `--yh-blue` opacity 0.9. 텍스트 '기사 제작 시스템'. (출처: web/src/styles/yonhap.css, web/src/view/TopBar.jsx)
+- `.yh-brand__title`: 0.8rem weight 600 color `--yh-blue` opacity 0.9. 텍스트 '기사 작성기'. (출처: web/src/styles/yonhap.css, web/src/view/TopBar.jsx)
 - `.yh-user`: flex gap `--yh-sp-md` 0.8rem. `__name` weight 600 color `--yh-blue`(userId 브랜드 블루) · `__dept` color `--yh-gray-dark` · `__role` color `--yh-gray-mid` 0.75rem. ' · ' 구분자. (출처: web/src/styles/yonhap.css, web/src/view/TopBar.jsx)
 - `.yh-logout-btn`: padding `2px --yh-sp-sm`, 0.75rem weight 600, color `--yh-blue`, bg `--yh-white`, border 1px solid `--yh-blue`, border-radius 3px. hover bg `--yh-blue` color `--yh-white`. focus-visible outline 2px solid `--yh-blue`. aria-label='로그아웃'. (출처: web/src/styles/yonhap.css, web/src/view/TopBar.jsx)
 - 로그인 카드 로고 `.yh-card__logo`: 명조 1.9rem weight 800(최중량, 신문 1면 타이틀 질감), color `--yh-blue`, letter-spacing -0.04em, **border-left 4px solid `--yh-red`**. 서브타이틀 `.yh-card__subtitle`: Noto Serif KR 0.82rem weight 400 color `--yh-blue` opacity 0.7 letter-spacing 0.1em. (출처: web/src/styles/yonhap.css)
@@ -401,7 +401,7 @@ evaluator-active 4차원 점수, 각 0.0~1.0. pass_threshold 0.75(종합 PASS), 
 5. Identical component structure (무관한 섹션 2개 이상 동일 레이아웃)
 6. Missing interactive states (버튼/링크/입력/카드 hover·focus·active 누락)
 
-> 안티패턴 3(Purple/blue gradient)과 본 프로젝트 로그인 블루 그라데이션 배경의 관계: 본 프로젝트의 블루 그라데이션은 연합뉴스 브랜드 색(--yh-blue 계열)에 정합된 의도적 배경이므로 "브랜드 정합 없는" 안티패턴에 해당하지 않는다.
+> 안티패턴 3(Purple/blue gradient)과 본 프로젝트 로그인 블루 그라데이션 배경의 관계: 본 프로젝트의 블루 그라데이션은 브랜드 색(--yh-blue 계열)에 정합된 의도적 배경이므로 "브랜드 정합 없는" 안티패턴에 해당하지 않는다.
 
 ### 디자인 anti-pattern cross-check
 
@@ -430,7 +430,7 @@ evaluator-active 4차원 점수, 각 0.0~1.0. pass_threshold 0.75(종합 PASS), 
 | 파일 | 비고 |
 |------|------|
 | `web/src/styles/yonhap.css` | **디자인 구현 단일 출처(SSOT)**. CSS 변수 토큰 + 전 컴포넌트 클래스. v2.0 (tokens→resets→layout→components) + 별도 layer '6b. Writer workspace tabs' |
-| `web/index.html` | Google Fonts 3종 로딩 + preconnect, lang=ko, `<title>기사 제작 시스템 – 연합뉴스</title>` |
+| `web/index.html` | Google Fonts 3종 로딩 + preconnect, lang=ko, `<title>기사 작성기</title>` |
 | `web/src/view/WriteWorkspace.jsx` | 작성 멀티탭 워크스페이스 셸 — `.yh-workspace` + 탭 스트립(role=tablist) + 탭 패널(role=tabpanel), 새 탭 열기/기존 탭 활성화(D2-5 자기 잠금 차단), 전 탭 mounted 유지 |
 | `web/src/view/articleDetail.js` | 상세보기 새창 팝업 — 자체 :root 토큰 6종(#0A4DA6/#08306B/#E8F0FB/#DDE3EC/#6B7A90), 통합 '기사' 영역, 본문>제목 폰트 강조 |
 | `web/src/view/articleDetail.test.js` | 폰트 크기·gray-line(#DDE3EC) 정확 토큰·섹션 분리·12필드 테스트 가드 |
@@ -440,8 +440,8 @@ evaluator-active 4차원 점수, 각 0.0~1.0. pass_threshold 0.75(종합 PASS), 
 | `web/src/view/ContextMenu.jsx` | 우클릭 컨텍스트 메뉴 클래스 구조 + 커서 추종 |
 | `web/src/view/ViewPage.jsx` | 조회 래퍼/4메뉴/8컬럼 리스트/부서 필터/페이지네이션/실시간 상태바 |
 | `web/src/view/editorColoring.js` | 줄 역할 판정(제목/부제목/본문/(끝)) + 골드 세그먼트 분리 |
-| `news.md` | 제작 시스템 요구 — 연합뉴스 스타일 톤, 레드 #C8102E 서술(코드와 충돌, 10장 참조), 레이아웃·단축키·임베드 |
-| `CLAUDE.md` | 디자인 규칙으로 design.md 위임. 루트 변형본에 '연합뉴스 스타일, 파랑+흰색, 글자색 파랑' 명시 |
+| `news.md` | 기사 작성기 요구 — 스타일 톤, 레드 #C8102E 서술(코드와 충돌, 10장 참조), 레이아웃·단축키·임베드 |
+| `CLAUDE.md` | 디자인 규칙으로 design.md 위임. 루트 변형본에 '스타일, 파랑+흰색, 글자색 파랑' 명시 |
 | `.moai/project/tech.md` | 디자인 토큰 표(--yh-blue #0A4DA6 등), gray-line #DDE3EC, 클립보드 10%(코드 17%와 충돌) |
 | `.moai/config/evaluator-profiles/frontend.md` | 평가 루브릭(Originality 40/Design 30/Craft 30), AI-slop 안티패턴 6종, WCAG/반응형 must-pass |
 | `.claude/skills/moai-domain-news-editor/SKILL.md` | 도메인 SSOT — 디자인 토큰 표, 줄 색 규칙, 60/40, Alt+Y/Ctrl+D, 임베드 1.7배, 상세보기 가로/통합 |

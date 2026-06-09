@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 import { createSchema, backfillContentsDepartmentFromAuthor } from '../src/db/schema.js';
 import { createControllers } from '../src/controllers/index.js';
@@ -32,6 +34,30 @@ export function createApp({ controllers, sessionService }) {
 
   const app = express();
   app.use(express.json());
+  // M-5: baseline security headers. CSP is tuned so the React+Vite SPA, its SSE stream, and
+  // external media thumbnails (YouTube/Google image search) keep working — not maximally strict.
+  //   - scriptSrc 'self' (the built SPA bundle is same-origin)
+  //   - imgSrc 'self' data: https: (search results return https thumbnails; data: for inline assets)
+  //   - connectSrc 'self' (fetch + EventSource /api/stream are same-origin)
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        mediaSrc: ["'self'", 'https:'],
+        frameSrc: ["'self'", 'https:'],
+        // frameAncestors: block this app from being embedded elsewhere (clickjacking
+        // defense at the CSP level; modern browsers prefer this over X-Frame-Options).
+        frameAncestors: ["'self'"],
+      },
+    },
+    // The SPA fetches https media thumbnails cross-origin; the default require-corp would block them.
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(cors({
     origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
   }));
@@ -57,8 +83,19 @@ export function createApp({ controllers, sessionService }) {
   });
 
   // --- Auth -----------------------------------------------------------------
+  // M-6: brute-force throttle on the login endpoint ONLY (15m window, 10 attempts/IP).
+  // standardHeaders surfaces RateLimit-* so clients can back off; the body matches the app's
+  // { ok:false, reason } convention used by every other rejection.
+  const loginRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, reason: 'too-many-attempts' },
+  });
+
   // POST /api/login -> { ok, user?, sessionId? }. Client stores sessionId and sends it back.
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', loginRateLimiter, (req, res) => {
     const { userId, password } = req.body ?? {};
     const result = controllers.auth.login(userId, password, sessionIdOf(req));
     res.json(result);
@@ -97,12 +134,12 @@ export function createApp({ controllers, sessionService }) {
       const result = controllers.auth.manageUsers(sessionIdOf(req), 'query', req.query);
       return res.json(result.ok ? result.users : { ok: false, reason: result.reason });
     }
-    // Non-Z authenticated session: expose only department + identifying labels, never the full roster.
+    // Non-Z authenticated session: the frontend only reads u.department (useViewController populates
+    // the 부서별 작성/송고 dropdown from it). C-2 scope reduction — drop userId/departmentCode so the
+    // non-管理 path cannot enumerate the user roster's identifiers; expose only name + department.
     const minimal = controllers.user.query(req.query).map((u) => ({
-      userId: u.userId,
       name: u.name,
       department: u.department,
-      departmentCode: u.departmentCode,
     }));
     return res.json(minimal);
   });
@@ -129,13 +166,21 @@ export function createApp({ controllers, sessionService }) {
 
   // --- Articles -------------------------------------------------------------
   // GET /api/articles -> array. Query params are AND-combined metadata filters.
+  // H-1: session-gated — the article roster is not public (no unauthenticated leak).
   app.get('/api/articles', (req, res) => {
-    res.json(controllers.article.query(req.query));
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
+    return res.json(controllers.article.query(req.query));
   });
 
   // GET /api/articles/search?q= -> array of text-matched articles.
+  // H-2: same session gate as the list route.
   app.get('/api/articles/search', (req, res) => {
-    res.json(controllers.article.search(req.query.q ?? ''));
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
+    return res.json(controllers.article.search(req.query.q ?? ''));
   });
 
   // POST /api/articles/:id/action { action } -> { ok, status?, reason? }.
@@ -156,14 +201,15 @@ export function createApp({ controllers, sessionService }) {
       return res.json(gate);
     }
     // Transition is driven by the SESSION role, never by any client-supplied body.role.
-    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): pass the caller's lock identity — the page-scoped sessionId
-    // from the body (or x-page-session-id header) + the session-derived userId — so a transition on
-    // an article live-locked by ANOTHER holder is rejected ({ok:false, reason:'lock-required'}).
-    // Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    // REQ-EDIT-LOCK (AC-EDIT-LOCK-6): the lock holder identity is the LOGIN session id (sessionIdOf),
+    // matching the lock/unlock/PUT routes (신설계: holder = 로그인 세션 id, page-scoped UUID 폐기).
+    // The edit lock is acquired under this same login session id (POST /lock uses sid), so the
+    // action guard must compare against sid — NOT the client body's page-scoped sessionId, which is a
+    // DIFFERENT value and would spuriously reject a legitimate hold/send/kill on a locked article with
+    // {ok:false, reason:'lock-required'}. Unlocked articles (e.g. 신규 작성 직후 송고) pass through unchanged.
     const result = controllers.article.applyAction(req.params.id, session.role, action, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId,
     });
     if (result.ok) {
       bus.emit('change', { type: 'status', articleId: req.params.id, status: result.status });
@@ -205,16 +251,10 @@ export function createApp({ controllers, sessionService }) {
   }
   app.post('/api/articles', saveArticle);
 
-  // SPEC-NEWS-REVISE-002 REQ-API-INSERT-UPDATE-SPLIT (R-CRIT-2 해소) — PUT /api/articles/:id routes
-  // through articleService.update (D2-7 = A partial update), NOT through articleService.create. The
-  // previous wiring `app.put('/api/articles/:id', saveArticle)` silently invoked .create on every PUT,
-  // which generated a NEW articleId and never updated the original row (REQ-CRIT regression).
-  //
-  // Lock holder is validated BEFORE the update (NFR-SEC + AC-EDIT-LOCK-6). The lock sessionId arrives
-  // in the request body so the same page-scoped UUID used at acquireEditLock is replayed here. When
-  // body.sessionId is missing we attempt the update under the assertLockHolder gate using a synthetic
-  // 'transport' sessionId — assertLockHolder will reject because the locker session won't match, which
-  // is the correct behaviour (lock-required) for clients that lost the page sessionId.
+  // SPEC-EDIT-LOCK-001 PUT /api/articles/:id — partial update (D2-7 = A). 신설계: holder = 로그인 세션 id.
+  // NEWS-REVISE-002 R-CRIT-2 회귀 가드: articleService.update (부분 update) 경로 유지 — .create 호출 금지.
+  // Lock guard: caller의 x-session-id 가 잠금 보유자인지 assertLockHolder 로 확인한다(AC-EDIT-LOCK-6).
+  // @MX:NOTE: [AUTO] page-scoped UUID 의존 제거 — holder 식별은 sessionIdOf(req) 단일 출처(SPEC-EDIT-LOCK-001).
   app.put('/api/articles/:id', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
@@ -225,47 +265,51 @@ export function createApp({ controllers, sessionService }) {
       return res.json({ ok: false, reason: 'forbidden' });
     }
     const articleId = req.params.id;
-    // Lock guard — the caller MUST hold the page edit lock (AC-EDIT-LOCK-6). The page-scoped sessionId
-    // is supplied either in the body or as an x-page-session-id header so beforeunload (sendBeacon with
-    // a JSON body) and normal PUT (header) both work.
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
+    // Lock guard — 로그인 세션 id 가 잠금 보유자여야 한다 (AC-EDIT-LOCK-6 신설계).
     const holder = controllers.article.assertLockHolder(articleId, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (!holder.ok) {
       return res.json({ ok: false, reason: holder.reason ?? 'lock-required' });
     }
-    // D2-7 = A partial update — strip the transport-only `sessionId` from the persisted fields.
-    const { sessionId: _sessionId, ...fields } = (req.body ?? {});
-    const result = controllers.article.update(articleId, fields);
+    // D2-7 = A partial update.
+    const result = controllers.article.update(articleId, req.body ?? {});
     if (result.ok) {
       bus.emit('change', { type: 'update', articleId });
     }
     return res.json(result);
   });
 
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — acquire/release endpoints (NFR-SEC: userId derived from the
-  // server session, never the request body). The page-scoped sessionId arrives from the client (UUID
-  // per editor mount) so the lock distinguishes same-user-different-page attempts (D2-5 = A strict).
+  // SPEC-EDIT-LOCK-001 — POST /api/articles/:id/lock (신설계: holder = 로그인 세션 id 단위).
+  // 처리 순서: 401 (미인증) → 403 (R/D/Z 아닌 역할) → 404 (기사 없음) → 획득 시도.
+  // 성공: 200 {ok:true, article:{...LockYN:'Y', LockedBySessionId:sid}}
+  // 비보유·비스테일: 409 {ok:false, reason:'locked'} — lockedBy 미노출(보안 NFR-SEC)
+  // @MX:NOTE: [AUTO] holder = sessionIdOf(req); userId는 서비스 계층 식별용, HTTP 응답에 노출 안 함.
   app.post('/api/articles/:id/lock', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
     if (session === undefined) {
-      return res.json({ ok: false, reason: 'unauthenticated' });
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
-    if (!pageSessionId) {
-      return res.json({ ok: false, reason: 'invalid-args' });
+    if (!['R', 'D', 'Z'].includes(session.role)) {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
+    }
+    const articleId = req.params.id;
+    // 404 체크: 기사 존재 여부를 획득 시도 전에 확인.
+    const [existing] = controllers.article.query({ articleId });
+    if (existing === undefined) {
+      return res.status(404).json({ ok: false, reason: 'not-found' });
     }
     // sendBeacon unload-release 호환 (D2-4 = C): sendBeacon 은 DELETE 메서드를 지정할 수 없어
     // 클라이언트(useWriteController.beaconRelease)가 POST 본문에 release:true 를 실어 보낸다.
     // 이 플래그가 있으면 acquire 가 아니라 release 로 처리한다 — 종전에는 무시되어 언로드 해제가
     // 사실상 잠금 재획득이 되는 버그였다 (브라우저 닫힘 후에도 stale 타임아웃까지 lock 잔존).
     if (req.body && req.body.release === true) {
+      // holder = 로그인 세션 id (acquire 경로와 동일) — body의 page session id가 아니다.
       const released = controllers.article.releaseEditLock(req.params.id, {
         userId: session.userId,
-        sessionId: pageSessionId,
+        sessionId: sid,
       });
       if (released.ok) {
         bus.emit('change', { type: 'unlock', articleId: req.params.id });
@@ -274,7 +318,7 @@ export function createApp({ controllers, sessionService }) {
     }
     const result = controllers.article.acquireEditLock(req.params.id, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (result.ok) {
       // LockYN is a displayed list column — notify subscribers so open views refresh live.
@@ -282,19 +326,28 @@ export function createApp({ controllers, sessionService }) {
     }
     return res.json(result);
   });
-  app.delete('/api/articles/:id/lock', (req, res) => {
+
+  // SPEC-EDIT-LOCK-001 — POST /api/articles/:id/unlock (신규 라우트; DELETE /lock 대체).
+  // 처리 순서: 401 → 403 → 404 → 해제 시도.
+  // 보유자 해제: {ok:true, released:true}; 비보유자: {ok:true, released:false} (no-op, 409 아님).
+  // @MX:NOTE: [AUTO] 비보유자 해제는 no-op + released:false (AC-RLE-2); 보유자만 실제 해제 (AC-RLE-1).
+  app.post('/api/articles/:id/unlock', (req, res) => {
     const sid = sessionIdOf(req);
     const session = sessionService.touchSession(sid);
     if (session === undefined) {
-      return res.json({ ok: false, reason: 'unauthenticated' });
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
-    const pageSessionId = (req.body && req.body.sessionId) ?? req.get('x-page-session-id');
-    if (!pageSessionId) {
-      return res.json({ ok: false, reason: 'invalid-args' });
+    if (!['R', 'D', 'Z'].includes(session.role)) {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
     }
-    const result = controllers.article.releaseEditLock(req.params.id, {
+    const articleId = req.params.id;
+    const [existing] = controllers.article.query({ articleId });
+    if (existing === undefined) {
+      return res.status(404).json({ ok: false, reason: 'not-found' });
+    }
+    const result = controllers.article.releaseEditLock(articleId, {
       userId: session.userId,
-      sessionId: pageSessionId,
+      sessionId: sid,
     });
     if (result.ok) {
       bus.emit('change', { type: 'unlock', articleId: req.params.id });
@@ -307,8 +360,12 @@ export function createApp({ controllers, sessionService }) {
   // 2026-06-06 directive (supersedes D2-8 fallback): type 'video' -> YouTube, 'image' -> Google
   // Image Search. Unknown/missing type normalizes to 'video'. No cross-provider fallback.
   app.get('/api/media/search', async (req, res) => {
+    // H-3: session-gated to stop unauthenticated abuse of the upstream (paid) media API keys.
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
     const type = req.query.type === 'image' ? 'image' : 'video';
-    res.json(await controllers.media.search(req.query.q ?? '', type));
+    return res.json(await controllers.media.search(req.query.q ?? '', type));
   });
 
   // --- Realtime (SSE) -------------------------------------------------------
@@ -316,6 +373,11 @@ export function createApp({ controllers, sessionService }) {
   // and edit-lock acquire/release (row-less invalidation signals; the client re-queries its filter).
   // Filtering is intentionally naive (send all) per the build spec; the client may filter.
   app.get('/api/stream', (req, res) => {
+    // H-4: validate the session BEFORE switching to the SSE content-type so an unauthenticated
+    // client gets a clean 401 JSON rejection rather than an open event stream.
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -332,6 +394,19 @@ export function createApp({ controllers, sessionService }) {
     req.on('close', () => {
       bus.off('change', onChange);
     });
+  });
+
+  // M-7: global error handler (must be registered LAST, after all routes). Logs the full error
+  // server-side and returns only a generic { ok:false, reason } so stack traces / internals never
+  // reach the client. 4-arg signature is required for Express to treat this as an error handler.
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    // eslint-disable-next-line no-console
+    console.error('[unhandled-error]', err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    return res.status(500).json({ ok: false, reason: 'internal-error' });
   });
 
   return app;

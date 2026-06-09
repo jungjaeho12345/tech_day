@@ -38,7 +38,7 @@
 
 - [ ] **AC-DOMAIN-1** (REQ-HARNESS-SKILL-DOMAIN)
   - 검증 명령: `Read D:/agents/tech_day/.claude/skills/moai-domain-news-editor/SKILL.md` + YAML 파싱.
-  - 통과 기준: 파일 존재 + frontmatter 파싱 성공 + `name: moai-domain-news-editor`, `allowed-tools: Read, Grep, Glob, Bash` (정확히 4 도구 CSV), `metadata.category: "domain"`, `metadata.status: "active"`, `triggers.keywords` 배열에 `news`, `RDS`, `Alt+Y`, `Ctrl+D`, `연합뉴스` 5 키워드 모두 포함.
+  - 통과 기준: 파일 존재 + frontmatter 파싱 성공 + `name: moai-domain-news-editor`, `allowed-tools: Read, Grep, Glob, Bash` (정확히 4 도구 CSV), `metadata.category: "domain"`, `metadata.status: "active"`, `triggers.keywords` 배열에 `news`, `RDS`, `Alt+Y`, `Ctrl+D`, `` 5 키워드 모두 포함.
 
 - [ ] **AC-DOMAIN-2** (REQ-HARNESS-SKILL-DOMAIN)
   - 검증 명령: `Grep` patterns `RDS`, `RRH`, `RRK`, `DPS`, `DDH`, `DDK` in SKILL.md.

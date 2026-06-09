@@ -9,7 +9,7 @@ priority: high
 issue_number: null
 ---
 
-# SPEC-FRONTEND-UI-001 — 기사 제작 시스템 프런트엔드 UI 계층
+# SPEC-FRONTEND-UI-001 — 기사 작성기 프런트엔드 UI 계층
 
 ## HISTORY
 
@@ -24,7 +24,7 @@ issue_number: null
 
 ## 개요 (Overview)
 
-기사 제작 시스템(기사 작성기)의 **프런트엔드 UI 계층**을 정의한다. React + Vite + MVC 패턴 위에서
+기사 작성기(기사 작성기)의 **프런트엔드 UI 계층**을 정의한다. React + Vite + MVC 패턴 위에서
 3개 페이지(로그인 / 기사 작성 / 기사 조회), 모든 페이지 공통의 우측 상단 로그인 사용자 정보 표시,
 기사 작성 페이지의 에디터 + 4탭 메타데이터 레이아웃, 외부 미디어 검색(유튜브 → 구글 폴백) 및 내부 글기사 검색,
 기사 조회 페이지의 실시간 갱신 + 상태바 + 4개 메뉴, 그리고 권한(R/D/Z) 기반 UI 노출/비활성을 정의한다.
@@ -177,4 +177,4 @@ issue_number: null
 - 의존 SPEC: `.moai/specs/SPEC-DB-FOUNDATION-001/spec.md` (승인됨 — 기사 필드/status/distributedAt 정렬)
 - 원천 명세: `news.md` (클라이언트 기술명세, 페이지, 공통 조건, 기사 작성/조회 페이지, 사용자 권한, 기사 제어 권한, 기사 생애주기, 워크플로우)
 - VO 명세: `UserVO.md`(사용자 표시 필드), `ContentsVO.md`(기사 메타데이터 필드)
-- 프로젝트 HARD 규칙: `CLAUDE.md` — "모든 텍스트는 UTF-8", 현재 구현 범위는 제작 시스템
+- 프로젝트 HARD 규칙: `CLAUDE.md` — "모든 텍스트는 UTF-8", 현재 구현 범위는 기사 작성기

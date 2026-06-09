@@ -300,26 +300,27 @@ test('USRMGMT: an unauthenticated PUT /api/users/:userId is rejected and does no
   assert.notEqual(unchanged.department, '사회부', 'the user must be unchanged without a session');
 });
 
-// --- SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK + REQ-API-INSERT-UPDATE-SPLIT route wiring ---
+// --- SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK + REQ-API-INSERT-UPDATE-SPLIT route wiring ---
+// 신설계: holder = 로그인 세션 id (x-session-id). page-scoped UUID 폐기.
 
-async function acquireLock(articleId, { sessionId, pageSessionId } = {}) {
+// acquireLock: POST /lock, x-session-id만 사용 (신설계).
+async function acquireLock(articleId, { sessionId } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (sessionId !== undefined) headers['x-session-id'] = sessionId;
   const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(pageSessionId === undefined ? {} : { sessionId: pageSessionId }),
   });
   return res.json();
 }
 
-async function releaseLock(articleId, { sessionId, pageSessionId } = {}) {
+// releaseLock: POST /unlock (신설계; DELETE /lock 폐기). x-session-id만 사용.
+async function releaseLock(articleId, { sessionId } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (sessionId !== undefined) headers['x-session-id'] = sessionId;
-  const res = await fetch(`${base}/api/articles/${articleId}/lock`, {
-    method: 'DELETE',
+  const res = await fetch(`${base}/api/articles/${articleId}/unlock`, {
+    method: 'POST',
     headers,
-    body: JSON.stringify(pageSessionId === undefined ? {} : { sessionId: pageSessionId }),
   });
   return res.json();
 }
@@ -335,12 +336,12 @@ async function putArticle(articleId, body, { sessionId } = {}) {
   return res.json();
 }
 
-// AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires the lock with the page-scoped sessionId.
-test('AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires (auth session userId, page sessionId)', async () => {
+// AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires lock with the login session id (신설계).
+test('AC-EDIT-LOCK-1: POST /api/articles/:id/lock acquires (login session id as holder)', async () => {
   seedUser('r-lock-1', 'R');
   const sessionId = loginSessionId('r-lock-1');
   const { articleId } = controllers.article.create({ title: 'lock-1' });
-  const result = await acquireLock(articleId, { sessionId, pageSessionId: 'page-A' });
+  const result = await acquireLock(articleId, { sessionId });
   assert.equal(result.ok, true, 'first-time acquire on a free lock must succeed');
 });
 
@@ -351,24 +352,24 @@ test('AC-EDIT-LOCK-2: second user cannot acquire while another user holds the lo
   const { articleId } = controllers.article.create({ title: 'lock-2' });
   const sessionA = loginSessionId('r-lock-2a');
   const sessionB = loginSessionId('r-lock-2b');
-  const first = await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  const first = await acquireLock(articleId, { sessionId: sessionA });
   assert.equal(first.ok, true);
-  const second = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  const second = await acquireLock(articleId, { sessionId: sessionB });
   assert.equal(second.ok, false);
   assert.equal(second.reason, 'locked');
 });
 
-// AC-EDIT-LOCK-3: release frees the lock so another user can acquire.
-test('AC-EDIT-LOCK-3: DELETE /api/articles/:id/lock releases; a second user can then acquire', async () => {
+// AC-EDIT-LOCK-3: POST /unlock releases the lock so another user can acquire.
+test('AC-EDIT-LOCK-3: POST /api/articles/:id/unlock releases; a second user can then acquire', async () => {
   seedUser('r-lock-3a', 'R');
   seedUser('r-lock-3b', 'R');
   const { articleId } = controllers.article.create({ title: 'lock-3' });
   const sessionA = loginSessionId('r-lock-3a');
   const sessionB = loginSessionId('r-lock-3b');
-  await acquireLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
-  const released = await releaseLock(articleId, { sessionId: sessionA, pageSessionId: 'page-A' });
+  await acquireLock(articleId, { sessionId: sessionA });
+  const released = await releaseLock(articleId, { sessionId: sessionA });
   assert.equal(released.ok, true);
-  const reAcquired = await acquireLock(articleId, { sessionId: sessionB, pageSessionId: 'page-B' });
+  const reAcquired = await acquireLock(articleId, { sessionId: sessionB });
   assert.equal(reAcquired.ok, true);
 });
 
@@ -402,7 +403,7 @@ test('sendBeacon 호환: POST /lock + release:true 는 해제로 처리되어 �
 // AC-EDIT-LOCK-1 boundary: an unauthenticated POST /api/articles/:id/lock is rejected.
 test('AC-EDIT-LOCK-1 boundary: unauthenticated lock acquire is rejected', async () => {
   const { articleId } = controllers.article.create({ title: 'lock-anon' });
-  const result = await acquireLock(articleId, { pageSessionId: 'page-A' });
+  const result = await acquireLock(articleId, {});
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'unauthenticated');
 });
@@ -410,15 +411,16 @@ test('AC-EDIT-LOCK-1 boundary: unauthenticated lock acquire is rejected', async 
 // AC-API-2: PUT /api/articles/:id routes to articleService.update (R-CRIT-2 regression guard).
 // The previous wiring (saveArticle) called .create on every PUT — assert that the SAME articleId is
 // updated (not a NEW one minted), so we know we are hitting the update path.
+// SPEC-EDIT-LOCK-001: PUT 전에 같은 세션으로 잠금 획득 (신설계 실제 편집 흐름).
 test('AC-API-2 + R-CRIT-2: PUT /api/articles/:id updates the SAME row (no new id minted)', async () => {
   seedUser('d-put', 'D');
   const sessionId = loginSessionId('d-put');
   const { articleId } = controllers.article.create({ title: '원본', content: '원본 본문' });
-  // Acquire the lock first (REQ-EDIT-LOCK gates PUT).
-  await acquireLock(articleId, { sessionId, pageSessionId: 'page-PUT' });
+  // Acquire the lock first (REQ-EDIT-LOCK gates PUT; 신설계: 동일 세션 id가 holder).
+  await acquireLock(articleId, { sessionId });
   const result = await putArticle(
     articleId,
-    { sessionId: 'page-PUT', title: '편집된 제목', markupVersion: 'v2' },
+    { title: '편집된 제목', markupVersion: 'v2' },
     { sessionId },
   );
   assert.equal(result.ok, true, 'PUT must succeed when the caller holds the lock');
@@ -440,7 +442,7 @@ test('AC-EDIT-LOCK-6: PUT /api/articles/:id without lock is rejected with lock-r
   const { articleId } = controllers.article.create({ title: 'no-lock' });
   const result = await putArticle(
     articleId,
-    { sessionId: 'page-PUT', title: 'should-not-apply' },
+    { title: 'should-not-apply' },
     { sessionId },
   );
   assert.equal(result.ok, false);
@@ -509,15 +511,19 @@ test('AC-EDIT-LOCK-6: 타 보유자가 락 중인 기사의 POST action은 lock-
   );
 });
 
-test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 body.sessionId로 식별되어 통과한다', async () => {
+test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 로그인 세션 id로 식별되어 통과한다', async () => {
   seedUser('d-act-holder', 'D');
   const sessionId = loginSessionId('d-act-holder');
   const { articleId } = controllers.article.create({ title: 'holder-action' });
-  // 보유자 = 세션 사용자 본인 + 페이지 단위 sessionId 'P-hold' (클라이언트가 body로 회신).
-  const held = controllers.article.acquireEditLock(articleId, { userId: 'd-act-holder', sessionId: 'P-hold' });
+  // SPEC-EDIT-LOCK-001 신설계: 잠금 holder = 로그인 세션 id. 실제 편집 흐름과 동일하게 POST /lock 이
+  // 사용하는 식별자(userId=세션 사용자, sessionId=로그인 세션 id)로 잠금을 획득한다 — page-scoped UUID 폐기.
+  const session = sessions.validateSession(sessionId);
+  const held = controllers.article.acquireEditLock(articleId, { userId: session.userId, sessionId });
   assert.equal(held.ok, true);
 
-  const result = await postAction(articleId, { sessionId, body: { action: 'send', sessionId: 'P-hold' } });
+  // 클라이언트는 body 에 page-scoped UUID 를 sessionId 로 실어 보내지만(holder 와 다른 값), action 라우트는
+  // 로그인 세션 id(x-session-id)로 holder 를 식별하므로 보유자 본인의 action 은 통과한다 (Bug 2 회귀 가드).
+  const result = await postAction(articleId, { sessionId, body: { action: 'send', sessionId: 'P-hold-differs' } });
   assert.equal(result.ok, true);
   assert.equal(result.status, 'DPS', 'RDS|D|send → DPS (보유자 본인은 차단되지 않는다)');
 });

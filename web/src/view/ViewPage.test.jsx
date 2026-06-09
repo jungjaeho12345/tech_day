@@ -78,33 +78,42 @@ describe('ViewPage realtime + status bar (REQ-FE-VIEW-001..003) [DP-F2]', () => 
     expect(screen.queryByText('구버전')).not.toBeInTheDocument();
   });
 
-  it('메뉴 전환 직전의 in-flight 재조회가 부서별 송고 빈 목록을 오염시키지 않는다 (seq 가드)', async () => {
+  it('메뉴 전환 직전의 in-flight 재조회가 부서별 송고 자동 조회 결과를 오염시키지 않는다 (seq 가드)', async () => {
     const resolvers = [];
     const queryArticles = vi.fn(() => new Promise((resolve) => { resolvers.push(resolve); }));
     const u = userEvent.setup();
     const { model } = renderView(createFakeModel({ queryArticles }));
     await act(async () => { resolvers[0]([{ articleId: 'A-0', title: '데스크 행', status: 'RDS' }]); });
     await screen.findByText('데스크 행');
-    // 데스크 미송고에서 신호 → 재조회 in-flight(pending) 상태로 둔다.
+    // 데스크 미송고에서 신호 → 재조회 in-flight(pending, resolvers[1]) 상태로 둔다.
     act(() => { model.__emit({ type: 'status', articleId: 'A-0' }); });
-    // 응답 도착 전에 부서별 송고(deferred)로 전환 — 목록과 필터가 비워진다.
+    // 부서별 송고로 전환 — 진입 자동 조회({ status: 'DPS' })가 새 in-flight(resolvers[2])로 발사된다.
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    expect(screen.queryByText('데스크 행')).not.toBeInTheDocument();
-    // 이제 늦은 데스크 응답 도착 — 폐기되어 빈 목록이 유지되어야 한다.
+    // 부서별 송고 자동 조회(최신 seq)가 먼저 도착 — DPS 목록이 표시된다.
+    await act(async () => { resolvers[2]([{ articleId: 'A-D', title: '송고 자동', status: 'DPS' }]); });
+    expect(await screen.findByText('송고 자동')).toBeInTheDocument();
+    // 이제 늦은 데스크 재조회 응답(이전 seq)이 도착 — seq 가드로 폐기되어 DPS 목록을 덮지 않는다.
     await act(async () => { resolvers[1]([{ articleId: 'A-9', title: '늦은 데스크 응답', status: 'RDS' }]); });
     expect(screen.queryByText('늦은 데스크 응답')).not.toBeInTheDocument();
+    expect(screen.getByText('송고 자동')).toBeInTheDocument();
   });
 
-  it('부서별 송고 조회 전에는 change 신호가 이전 메뉴 필터를 재생하지 않는다 (deferred 가드)', async () => {
+  it('부서별 송고 진입 시 전체 DPS 를 자동 조회하고, change 신호가 그 { status: DPS } 필터로 재조회한다', async () => {
     const u = userEvent.setup();
-    const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-9', title: '누설 금지', status: 'DPS' }]);
+    const queryArticles = vi.fn()
+      .mockResolvedValueOnce([{ articleId: 'A-0', title: '데스크 기본', status: 'RDS' }]) // 데스크 미송고 초기
+      .mockResolvedValueOnce([{ articleId: 'A-9', title: '송고 전체', status: 'DPS' }]) // 부서별 송고 진입 자동 조회
+      .mockResolvedValueOnce([{ articleId: 'A-9', title: '송고 갱신', status: 'DPS' }]); // change 재조회
     const { model } = renderView(createFakeModel({ queryArticles }));
-    await screen.findByText('누설 금지'); // 데스크 미송고 초기 조회 결과
+    await screen.findByText('데스크 기본'); // 데스크 미송고 초기 조회 결과
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    expect(screen.queryByText('누설 금지')).not.toBeInTheDocument();
-    await act(async () => { model.__emit({ type: 'create', articleId: 'A-9' }); });
-    // 여전히 빈 목록: null 필터에서는 신호 기반 재조회를 억제한다.
-    expect(screen.queryByText('누설 금지')).not.toBeInTheDocument();
+    // 진입 즉시 전체 부서 DPS 자동 조회 (전체 = 부서 필터 없음, DPS 전체).
+    expect(await screen.findByText('송고 전체')).toBeInTheDocument();
+    expect(queryArticles.mock.calls.at(-1)[0]).toEqual({ status: 'DPS' });
+    // lastFilterRef 가 { status: 'DPS' } 로 채워져 SSE change 신호가 재조회를 트리거한다 (LockYN 실시간 갱신).
+    await act(async () => { model.__emit({ type: 'lock', articleId: 'A-9' }); });
+    expect(await screen.findByText('송고 갱신')).toBeInTheDocument();
+    expect(queryArticles.mock.calls.at(-1)[0]).toEqual({ status: 'DPS' });
   });
 });
 
@@ -127,10 +136,11 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Politics', statusNot: 'DPS,RRH' });
     expect(await screen.findByText('dep art')).toBeInTheDocument();
-    // The department Select is seeded with the user's own department.
-    const select = await screen.findByLabelText('부서');
-    await within(select).findByRole('option', { name: 'Politics' });
-    expect(select).toHaveValue('Politics');
+    // The department multi-select is seeded with the user's own department.
+    expect(screen.getByText('부서')).toBeInTheDocument();
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    // Trigger button should show user's department as display text.
+    expect(within(multiSelect).getByRole('button')).toHaveTextContent('Politics');
   });
 
   it('AC-7.1b: 부서별 작성 — 다른 부서 선택 + 조회 → statusNot 유지 재조회 (v0.4.0)', async () => {
@@ -138,9 +148,12 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-1e', title: 'econ written' }]);
     renderView(createFakeModel({ queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 작성' }));
-    const select = await screen.findByLabelText('부서');
-    await within(select).findByRole('option', { name: 'Economy' });
-    await user.selectOptions(select, 'Economy');
+    // Open multi-select dropdown.
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await user.click(within(multiSelect).getByRole('button'));
+    // Uncheck current department (Politics), check another (Economy).
+    await user.click(screen.getByTestId('dept-checkbox-Politics'));
+    await user.click(screen.getByTestId('dept-checkbox-Economy'));
     await user.click(screen.getByRole('button', { name: '조회' }));
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Economy', statusNot: 'DPS,RRH' });
@@ -152,17 +165,39 @@ describe('ViewPage four menus (REQ-FE-VIEW-004..008)', () => {
     const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'econ art' }]);
     renderView(createFakeModel({ queryUsers, queryArticles }));
     await user.click(screen.getByRole('button', { name: '부서별 송고' }));
-    // Dropdown populated (distinct) from the separated data-source.
-    const select = await screen.findByLabelText('부서');
-    expect(within(select).getByRole('option', { name: 'Economy' })).toBeInTheDocument();
-    // Before pressing 조회, no department articles are queried.
-    expect(queryArticles).not.toHaveBeenCalledWith(expect.objectContaining({ sender: expect.anything() }));
-    await user.selectOptions(select, 'Economy');
+    // Multi-select populated (distinct) from the separated data-source, defaulting to 전체.
+    expect(screen.getByText('부서')).toBeInTheDocument();
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await within(multiSelect).findByText('전체');
+    await user.click(within(multiSelect).getByRole('button'));
+    expect(screen.getByTestId('dept-checkbox-Economy')).toBeInTheDocument();
+    // Before pressing 조회, no department articles are queried (deferred 계약 유지).
+    expect(queryArticles).not.toHaveBeenCalledWith(expect.objectContaining({ department: expect.anything() }));
+    // 전체 기본값에서 Politics 를 해제해 Economy 단독 조회로 좁힌다.
+    await user.click(screen.getByTestId('dept-checkbox-Politics'));
+    // Close dropdown by clicking trigger again.
+    await user.click(within(multiSelect).getByRole('button'));
     await user.click(screen.getByRole('button', { name: '조회' }));
     expect(await screen.findByText('econ art')).toBeInTheDocument();
     // news.md: 부서별 송고 is DPS-only — the query filter must carry status: 'DPS'.
     const call = queryArticles.mock.calls.at(-1)[0];
     expect(call).toEqual({ department: 'Economy', status: 'DPS' });
+  });
+
+  it('AC-7.2b: 부서별 송고 — 전체가 기본 선택이며 조회 시 다중 부서 쿼리', async () => {
+    const user = userEvent.setup();
+    const queryUsers = vi.fn().mockResolvedValue([{ department: 'Politics' }, { department: 'Economy' }]);
+    const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-2', title: 'multi art' }]);
+    renderView(createFakeModel({ queryUsers, queryArticles }));
+    await user.click(screen.getByRole('button', { name: '부서별 송고' }));
+    // 2026-06-08 지시: 부서별 송고 진입 시 셀렉트 기본값은 전체 — 체크 없이 바로 조회 가능.
+    const multiSelect = screen.getByTestId('dept-multi-select');
+    await within(multiSelect).findByText('전체');
+    await user.click(screen.getByRole('button', { name: '조회' }));
+    expect(await screen.findByText('multi art')).toBeInTheDocument();
+    // Query should have comma-separated departments (order by descending: Politics > Economy).
+    const call = queryArticles.mock.calls.at(-1)[0];
+    expect(call).toEqual({ department: 'Politics,Economy', status: 'DPS' });
   });
 
   it('AC-7.3: 개인별 수정 — 본인 작성 + 상태 RDS/RRK만 (v0.4.0)', async () => {

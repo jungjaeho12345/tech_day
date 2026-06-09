@@ -120,27 +120,17 @@ function RealtimeStatus({ connected }) {
 
 // One article rendered as a dense newspaper-index row (news.md 디자인: "기사 목록은 신문 인덱스처럼
 // 한 줄에 조밀하게 표시"). REQ-FE-VIEW-011 v0.5.0: ALL four menus share the same eight-column base —
-// 기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN. 부서별 송고는 DPS 기사에 고침/포털고침
-// 버튼을 추가한다 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS AC-FWD-3).
-// Props: article, role, menu, navigate, onContextMenu — 모두 ViewPage에서 전달됨.
-function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
-  // Click anywhere on the row (but not the action buttons) opens the detail window.
+// 기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN. (2026-06-08 지시: 부서별 송고 DPS 행의
+// 인라인 고침/포털고침 버튼은 제거 — 고침 진입은 우클릭 컨텍스트 메뉴로만 한다.)
+// Props: article, onContextMenu — ViewPage에서 전달됨.
+function ArticleRow({ article, onContextMenu }) {
+  // Click anywhere on the row opens the detail window.
   const openDetail = () => openArticleDetail(article);
   const onKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       openDetail();
     }
-  };
-
-  // SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS (AC-FWD-3): 부서별 송고 DPS 행의 인라인 고침/포털고침 버튼.
-  // Role D + DPS: 활성 + 포워딩. 그 외 권한: disabled (AC-FWD-3 게이팅).
-  // stopPropagation으로 행 클릭(상세보기)이 동시 발생하지 않도록 차단.
-  const showDpsButtons = menu === '부서별 송고' && article.status === 'DPS';
-  const canDpsEdit = role === 'D';
-  const handleDpsEdit = (e) => {
-    e.stopPropagation();
-    if (canDpsEdit && navigate) navigate(ROUTES.WRITE, { id: article.articleId });
   };
 
   return (
@@ -160,13 +150,81 @@ function ArticleRow({ article, role, menu, navigate, onContextMenu }) {
       <span className="yh-article-row__time" data-testid="article-edited-time">{formatCreatedAt(article.editedAt)}</span>
       <span className="yh-desk-row__status" data-testid="article-status">{article.status ?? ''}</span>
       <span className="yh-desk-row__lock" data-testid="article-lockyn">{article.lockYN ?? 'N'}</span>
-      {showDpsButtons ? (
-        <span className="yh-article-row__actions">
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>고침</button>
-          <button type="button" className="yh-btn yh-btn--secondary yh-btn--sm" disabled={!canDpsEdit} onClick={handleDpsEdit}>포털고침</button>
-        </span>
-      ) : null}
     </li>
+  );
+}
+
+// Multi-select checkbox dropdown for department filter.
+// Supports "전체" (All) option that toggles all departments.
+function DeptMultiSelect({ departments, selectedDepts, onChange }) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selectedDepts.length === departments.length && departments.length > 0;
+
+  const toggleAll = () => {
+    if (allSelected) {
+      onChange([]);
+    } else {
+      onChange([...departments]);
+    }
+  };
+
+  const toggleDept = (dept) => {
+    if (selectedDepts.includes(dept)) {
+      onChange(selectedDepts.filter((d) => d !== dept));
+    } else {
+      onChange([...selectedDepts, dept]);
+    }
+  };
+
+  // Display text for the dropdown trigger button.
+  const displayText = selectedDepts.length === 0
+    ? '선택'
+    : selectedDepts.length === departments.length
+      ? '전체'
+      : selectedDepts.length === 1
+        ? selectedDepts[0]
+        : `${selectedDepts[0]} 외 ${selectedDepts.length - 1}`;
+
+  return (
+    <div className="yh-multi-select" data-testid="dept-multi-select">
+      <button
+        type="button"
+        className="yh-multi-select__trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {displayText}
+      </button>
+      {open ? (
+        <ul className="yh-multi-select__menu" role="listbox" aria-label="부서 선택">
+          <li className="yh-multi-select__item">
+            <label>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                data-testid="dept-checkbox-all"
+              />
+              전체
+            </label>
+          </li>
+          {departments.map((dept) => (
+            <li key={dept} className="yh-multi-select__item">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={selectedDepts.includes(dept)}
+                  onChange={() => toggleDept(dept)}
+                  data-testid={`dept-checkbox-${dept}`}
+                />
+                {dept}
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -174,7 +232,7 @@ export function ViewPage({ user, nav }) {
   const ctrl = useViewController(user);
   const session = useSession();
   const navigate = session?.navigate;
-  const [selectedDept, setSelectedDept] = useState('');
+  const [selectedDepts, setSelectedDepts] = useState([]);
   const [page, setPage] = useState(1);
   // Right-click context menu state: { x, y, article } while open, null while closed.
   const [contextMenu, setContextMenu] = useState(null);
@@ -189,14 +247,24 @@ export function ViewPage({ user, nav }) {
   const pageCount = Math.max(1, Math.ceil(ctrl.articles.length / PAGE_SIZE));
   const pageItems = ctrl.articles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // Reset to page 1, close any open context menu, and re-seed the department Select whenever the
+  // Reset to page 1, close any open context menu, and re-seed the department selection whenever the
   // active menu changes (부서별 작성 starts on the logged-in user's department and is auto-queried by
   // the controller, REQ-FE-VIEW-005 v0.4.0; 부서별 송고 starts unselected).
   useEffect(() => {
     setPage(1);
     setContextMenu(null);
-    setSelectedDept(ctrl.menu === '부서별 작성' ? (user.department ?? '') : '');
+    setSelectedDepts(ctrl.menu === '부서별 작성' && user.department ? [user.department] : []);
   }, [ctrl.menu, user.department]);
+
+  // 부서별 송고 기본값 "전체": 부서 목록(비동기 로드)이 도착했고 선택이 아직 초기 상태([])일 때만
+  // 전체 선택을 시드한다. 사용자가 이미 손댄 선택은 덮어쓰지 않는다(함수형 업데이트 + 빈 배열 가드).
+  // 진입 즉시 조회는 컨트롤러가 { status: 'DPS' }(전체 = 부서 필터 없음, DPS 전체)로 자동 수행하며, 이
+  // 멀티셀렉트 시드는 표시용 기본값(전체 체크)만 맞춘다. 사용자가 부서를 좁혀 조회를 누르면 그 부서로 재조회한다.
+  // ctrl.departments 는 메뉴 진입 시 1회 setDepartments 로 고정되므로 이 effect 는 로드 후 1회만 돈다.
+  useEffect(() => {
+    if (ctrl.menu !== '부서별 송고' || ctrl.departments.length === 0) return;
+    setSelectedDepts((prev) => (prev.length === 0 ? [...ctrl.departments] : prev));
+  }, [ctrl.menu, ctrl.departments]);
 
   // Clamp the page if the list shrinks below the current offset (e.g. a realtime update
   // removes rows) so we never land on an empty page.
@@ -225,21 +293,16 @@ export function ViewPage({ user, nav }) {
 
         {ctrl.menu === '부서별 송고' || ctrl.menu === '부서별 작성' ? (
           <div className="yh-dept-filter">
-            <label htmlFor="dept-select">부서</label>
-            <select
-              id="dept-select"
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-            >
-              <option value="">선택</option>
-              {ctrl.departments.map((d) => (
-                <option key={d} value={d}>{d}</option>
-              ))}
-            </select>
+            <span id="dept-label">부서</span>
+            <DeptMultiSelect
+              departments={ctrl.departments}
+              selectedDepts={selectedDepts}
+              onChange={setSelectedDepts}
+            />
             <button
               type="button"
               className="yh-btn yh-btn--secondary yh-btn--sm"
-              onClick={() => { setPage(1); ctrl.queryDepartment(selectedDept); }}
+              onClick={() => { setPage(1); ctrl.queryDepartment(selectedDepts); }}
             >조회</button>
           </div>
         ) : null}
@@ -264,9 +327,6 @@ export function ViewPage({ user, nav }) {
             <ArticleRow
               key={a.articleId}
               article={a}
-              role={user.role}
-              menu={ctrl.menu}
-              navigate={navigate}
               onContextMenu={openContextMenu}
             />
           ))}

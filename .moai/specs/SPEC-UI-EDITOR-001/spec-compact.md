@@ -24,7 +24,7 @@
 - REQ-EDIT-EMBED-003 (Event-Driven) [NEW]: 유튜브/영상 결과는 시각적 비디오 참조(플레이어/링크 카드)로 인라인 렌더.
 - REQ-EDIT-EMBED-004 (Event-Driven) [NEW]: 내부 글기사 결과(`{articleId,title}`)는 시각적 기사 참조 카드(최소 제목 표시)로 인라인 렌더(기존 `기사:{articleId}` 마커 대체).
 - REQ-EDIT-EMBED-005 (Ubiquitous) [NEW]: 인라인 임베드는 `markupVersion`에 보존되어 `setMarkup()` 재로드 시 동일 임베드 재구성(round-trip 안정).
-- REQ-EDIT-EMBED-006 (Ubiquitous) [NEW]: 인라인 임베드는 연합뉴스 디자인 토큰(`yonhap.css`)을 따라 본문과 시각적으로 구별.
+- REQ-EDIT-EMBED-006 (Ubiquitous) [NEW]: 인라인 임베드는 디자인 토큰(`yonhap.css`)을 따라 본문과 시각적으로 구별.
 - REQ-EDIT-EMBED-007 (Optional) [NEW]: 다중 임베드 시 각각을 distinct 인라인 임베드로 삽입, 상대 순서 보존.
 
 ## 인수 기준 (Acceptance — Given/When/Then 요약)

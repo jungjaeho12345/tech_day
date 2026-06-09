@@ -188,7 +188,7 @@ updated: 2026-06-03
 - **When** computed style 또는 적용 CSS 클래스(`yh-embed--inline` 또는 동등)를 검사한다
 - **Then** 임베드 노드의 `display` 가 인라인 흐름과 호환되는 값(`inline-block` / `inline` 등)이며 전체 폭을 점유하지 않는다 (본문 텍스트와 같은 라인에 공존 가능)
 - **And** 임베드 노드 주변 텍스트의 baseline 정렬이 깨지지 않는다 (인접 텍스트 노드와 동일 행 박스에 정렬)
-- **And** 임베드 노드는 연합뉴스 디자인 토큰(`--yh-blue` / `--yh-gray-line` 계열)을 사용하며 신규 색 변수를 도입하지 않는다
+- **And** 임베드 노드는 디자인 토큰(`--yh-blue` / `--yh-gray-line` 계열)을 사용하며 신규 색 변수를 도입하지 않는다
 
 ### Scenario AC-IME-1: 한글 IME 합성 중 paintEditor/replaceChildren 차단 (commit b1f7155 / 7580d2b, plan.md D-7)
 

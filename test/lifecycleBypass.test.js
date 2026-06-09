@@ -2,7 +2,7 @@
 // 생애주기 우회 경로 부재를 정적 텍스트 검사로 단언한다: status를 직접 바꾸는 SQL
 // (`UPDATE Contents SET status`)은 데이터 계층(articleModel.js / softDelete.js)에만 존재하고,
 // 서비스 계층(articleService.js)·전송 계층(server/index.js)에는 없으며, 등록된 /api 라우트에는
-// 알려진 article action / lock / update 외에 status를 직접 변경하는 라우트가 없다.
+// 알려진 article action / lock / unlock / update 외에 status를 직접 변경하는 라우트가 없다.
 //
 // 비고: acceptance.md §1 의 "articleService.js 내부 1곳" 예시 표현 대신, 실제 아키텍처(모델/DB
 // 계층에 status SQL 집약, 서비스는 model.updateStatus 위임)의 결과적 불변식을 단언한다.
@@ -63,7 +63,7 @@ test('AC-LIFE-4: server/index.js 는 status를 직접 UPDATE하는 SQL을 포함
 });
 
 // AC-LIFE-4: 등록된 /api/articles 라우트 목록에 알려진 엔드포인트 외 status 직접 변경 라우트가 없다.
-test('AC-LIFE-4: /api/articles 하위 라우트는 알려진 action/lock/update/조회 외에 status 직접 변경 라우트가 없다', () => {
+test('AC-LIFE-4: /api/articles 하위 라우트는 알려진 action/lock/unlock/update/조회 외에 status 직접 변경 라우트가 없다', () => {
   const text = readFileSync(SERVER_INDEX, 'utf8');
 
   // app.<method>('<path>' 형태로 등록된 모든 라우트를 enumerate.
@@ -79,21 +79,21 @@ test('AC-LIFE-4: /api/articles 하위 라우트는 알려진 action/lock/update/
   // /api/articles 하위(검색·락 포함) 라우트만 추린다.
   const articleRoutes = [...routes].filter((r) => / \/api\/articles/.test(r)).sort();
 
-  // 생애주기/상태에 관여하는 article 라우트의 화이트리스트.
+  // 생애주기/상태에 관여하는 article 라우트의 화이트리스트 (SPEC-EDIT-LOCK-001 신설계).
   // - GET    /api/articles            (조회: 전이 없음)
   // - GET    /api/articles/search     (내부 검색: 전이 없음)
   // - POST   /api/articles            (신규 작성 = articleInsert; RDS 적재)
   // - POST   /api/articles/:id/action (유일한 상태 전이 진입점, 인가 게이트 통과)
   // - PUT    /api/articles/:id        (편집 = articleUpdate; assertLockHolder 게이트, status 직접변경 아님)
-  // - POST   /api/articles/:id/lock   (락 획득)
-  // - DELETE /api/articles/:id/lock   (락 해제)
+  // - POST   /api/articles/:id/lock   (락 획득; 신설계 holder = 로그인 세션 id)
+  // - POST   /api/articles/:id/unlock (락 해제; DELETE /lock 폐기 → POST /unlock)
   const ALLOWED = [
-    'DELETE /api/articles/:id/lock',
     'GET /api/articles',
     'GET /api/articles/search',
     'POST /api/articles',
     'POST /api/articles/:id/action',
     'POST /api/articles/:id/lock',
+    'POST /api/articles/:id/unlock',
     'PUT /api/articles/:id',
   ].sort();
 

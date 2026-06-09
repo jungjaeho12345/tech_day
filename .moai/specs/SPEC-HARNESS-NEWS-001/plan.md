@@ -1,6 +1,6 @@
 # SPEC-HARNESS-NEWS-001 — Implementation Plan
 
-뉴스 제작 시스템 하네스의 단계별 구현 계획. 본 plan.md는 SPEC 본문(spec.md)이 정의한 REQ-HARNESS-CMD / SKILL-DOMAIN / SKILL-WORKFLOW / PIPELINE / EVAL / SLACK 6종을 실제 파일로 옮기기 위한 순서와 위임 경로를 명시한다.
+기사 작성기 하네스의 단계별 구현 계획. 본 plan.md는 SPEC 본문(spec.md)이 정의한 REQ-HARNESS-CMD / SKILL-DOMAIN / SKILL-WORKFLOW / PIPELINE / EVAL / SLACK 6종을 실제 파일로 옮기기 위한 순서와 위임 경로를 명시한다.
 
 > 우선순위 표기: Priority High / Medium / Low (시간 예측 금지 — agent-common-protocol.md HARD).
 
@@ -39,9 +39,9 @@
   ---
   name: moai-domain-news-editor
   description: >
-    뉴스 제작 시스템(news.md source-of-truth) 도메인 지식 캡슐.
+    기사 작성기(news.md source-of-truth) 도메인 지식 캡슐.
     기사 생애주기(RDS/DPS/RRH/RRK/DDH/DDK), 권한 R/D/Z, 12 공통정보 필드,
-    에디터 단축키(Alt+Y/Ctrl+D), 인라인 임베딩, 연합뉴스 디자인 토큰.
+    에디터 단축키(Alt+Y/Ctrl+D), 인라인 임베딩, 디자인 토큰.
   allowed-tools: Read, Grep, Glob, Bash
   metadata:
     version: "0.1.0"
@@ -50,7 +50,7 @@
     updated: "2026-06-03"
     tags: "news, editor, lifecycle, design-tokens"
   triggers:
-    keywords: [news, 기사, writer.do, list.do, 에디터, 임베드, RDS, DPS, RRH, RRK, DDH, DDK, Alt+Y, Ctrl+D, 연합뉴스, 공통정보]
+    keywords: [news, 기사, writer.do, list.do, 에디터, 임베드, RDS, DPS, RRH, RRK, DDH, DDK, Alt+Y, Ctrl+D, 공통정보]
     agents: [manager-spec, expert-frontend, evaluator-active]
     phases: [plan, run]
   ---
@@ -80,7 +80,7 @@
   ---
   name: moai-workflow-news-production
   description: >
-    뉴스 제작 시스템(news.md) 닫힌 루프 제작 파이프라인. /news produce/plan/verify
+    기사 작성기(news.md) 닫힌 루프 제작 파이프라인. /news produce/plan/verify
     인텐트 라우팅, manager-spec → expert-frontend → evaluator-active GAN 루프,
     Slack tech-day 채널 보고. SPEC-HARNESS-NEWS-001 구현.
   allowed-tools: Agent, AskUserQuestion, Skill, TaskCreate, TaskUpdate, TaskList, Read, Write, Edit, Glob, Grep, Bash
@@ -122,7 +122,7 @@
   `produce.md`:
   ```
   ---
-  description: 뉴스 제작 시스템 닫힌 루프 파이프라인 실행 (SPEC → 구현 → 평가 → Slack)
+  description: 기사 작성기 닫힌 루프 파이프라인 실행 (SPEC → 구현 → 평가 → Slack)
   argument-hint: "[SPEC-ID|--from-newsmd] [--resume] [--harness thorough|standard] [--max-iterations N]"
   allowed-tools: Skill
   ---

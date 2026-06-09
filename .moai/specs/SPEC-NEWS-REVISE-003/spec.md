@@ -80,7 +80,7 @@ related_specs:
 ### 2.2 제외 (Out of Scope)
 
 - 코드 구현 (본 SPEC 은 Plan 단계 문서만)
-- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 제작 시스템만")
+- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 기사 작성기만")
 - 새 디자인 토큰 정의 (기존 `--yh-blue` `#0A4DA6` / `--yh-gray-line` 재사용)
 - 권한 R/D/Z 의미 변경 (SPEC-AUTH-001 유지)
 - 생애주기 전이표 자체의 변경 (SPEC-BACKEND-CORE-001 / SPEC-NEWS-REVISE-001 유지)
@@ -404,7 +404,7 @@ related_specs:
 ## 11. Exclusions (What NOT to Build) — 명시적 비목표
 
 - 기능 *구현* (본 SPEC 은 Plan 단계 문서만; Run 단계에서 002 마일스톤 + 본 SPEC 회귀 가드 테스트 추가).
-- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 제작 시스템만").
+- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 기사 작성기만").
 - 새 디자인 토큰 정의 (CSS 변수 추가 금지).
 - 권한 R/D/Z 의미 변경 또는 신규 권한 도입.
 - lifecycle 전이표(R/D/Z × send/hold/kill) 변경.

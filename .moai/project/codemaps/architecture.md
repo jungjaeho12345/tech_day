@@ -1,4 +1,4 @@
-# Architecture Codemap — 기사 제작 시스템
+# Architecture Codemap — 기사 작성기
 
 SPEC 구현 현황 및 파일별 역할 매핑.
 

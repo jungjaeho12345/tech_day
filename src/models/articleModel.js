@@ -51,7 +51,12 @@ export function createArticleModel(db) {
     },
 
     findById(articleId) {
-      return db.prepare('SELECT * FROM Contents WHERE articleId = ?').get(articleId);
+      // lockYN/lockedAt 명시 별칭: 레거시 news.db 는 컬럼명이 `LockYN`/`LockedAt`(대문자)라서
+      // SELECT * 결과 키가 LockYN 이 되고, 호출부(applyAction 잠금 가드)의 row.lockYN 이
+      // undefined 가 된다. AS 별칭은 신규/레거시 DB 모두에서 키를 lockYN/lockedAt 으로 통일한다.
+      return db.prepare(
+        'SELECT *, lockYN AS lockYN, lockedAt AS lockedAt FROM Contents WHERE articleId = ?',
+      ).get(articleId);
     },
 
     /**
@@ -66,17 +71,31 @@ export function createArticleModel(db) {
       const values = [];
       for (const [key, column] of Object.entries(QUERY_FILTERS)) {
         if (filters[key] !== undefined && filters[key] !== null) {
-          clauses.push(`c.${column} = ?`);
-          values.push(filters[key]);
+          // department filter — comma-separated multi-value supported (e.g. 'Politics,Economy').
+          if (key === 'department') {
+            const depts = String(filters[key]).split(',').filter(Boolean);
+            if (depts.length > 0) {
+              clauses.push(`c.${column} IN (${depts.map(() => '?').join(',')})`);
+              values.push(...depts);
+            }
+          } else {
+            clauses.push(`c.${column} = ?`);
+            values.push(filters[key]);
+          }
         }
       }
       // status filter — comma-separated multi-value supported (e.g. 'RDS,DDH' from 데스크 미송고).
       // Previously status was silently ignored (not in QUERY_FILTERS), so menu filters returned all rows.
       if (filters.status !== undefined && filters.status !== null && filters.status !== '') {
-        const statuses = String(filters.status).split(',').filter(Boolean);
+        const statuses = Array.isArray(filters.status)
+          ? filters.status.filter(Boolean)
+          : String(filters.status).split(',').filter(Boolean);
         if (statuses.length > 0) {
           clauses.push(`c.status IN (${statuses.map(() => '?').join(',')})`);
           values.push(...statuses);
+        } else if (Array.isArray(filters.status)) {
+          // 명시적 빈 배열은 "아무 상태도 매칭하지 않음" — 전체 반환이 아니라 0건이어야 안전하다.
+          clauses.push('1 = 0');
         }
       }
       // statusNot filter — comma-separated exclusion (e.g. 'DPS,RRH' from 부서별 작성).
@@ -89,8 +108,10 @@ export function createArticleModel(db) {
         }
       }
       const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+      // c.lockYN AS lockYN: 레거시 news.db 의 `LockYN`(대문자) 컬럼 케이스를 정규화 — findById 참고.
+      // 별칭이 없으면 목록의 LockYN 컬럼이 항상 'N' 으로 보이는 버그가 된다 (article.lockYN === undefined).
       return db.prepare(
-        `SELECT c.*, a.markupVersion AS markupVersion
+        `SELECT c.*, c.lockYN AS lockYN, c.lockedAt AS lockedAt, a.markupVersion AS markupVersion
            FROM Contents c
            LEFT JOIN Article a ON a.articleId = c.articleId${where}`,
       ).all(...values);

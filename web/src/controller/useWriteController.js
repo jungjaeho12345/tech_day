@@ -7,7 +7,8 @@
 // After a SUCCESSFUL action the write page is reset to a fresh draft (news.md: 기사 작성페이지는 초기화 된다),
 // while the backend-returned status confirmation remains visible.
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useModel } from '../app/context.js';
+import { useModel, useSession } from '../app/context.js';
+import { ROUTES } from '../app/routing.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
 
@@ -16,6 +17,27 @@ import { hasEndMarker, deserializeContent } from '../model/editorContent.js';
 // 고침에는 살아남고, 탭/브라우저를 닫으면(세션 종료, news.md lockYN) 함께 사라진다. localStorage 가 아니라
 // sessionStorage 인 이유가 이 도메인 규칙과 일치한다.
 const DRAFT_STORAGE_KEY = 'newsroom.writeDraft';
+
+// 멀티탭 워크스페이스(WriteWorkspace)가 영속하는 편집 탭 목록 키. SPEC-NEWS-REVISE-008 REQ-LOCK-RETENTION:
+// 편집 탭이 살아있는 동안에는(= 이 키의 tabs 에 해당 editArticleId 가 남아있는 동안에는) 단순 조회 페이지
+// 이동으로 인한 unmount 가 잠금을 해제하면 안 된다. 탭이 × 로 닫히면 WriteWorkspace 가 unmount 직전에
+// 이 키를 동기 갱신하므로, cleanup 시점에 해당 탭이 사라져 있어 정상 해제된다.
+const EDITOR_TABS_KEY = 'newsroom.editorTabs';
+
+/** True when an edit tab for `articleId` still survives in the persisted tab list (멀티탭 생존 신호).
+ *  탭 메타데이터가 없으면(단독 페이지/레거시/비브라우저) false 를 돌려 보수적 기본값(해제)을 유지한다. */
+function editTabSurvives(articleId) {
+  try {
+    if (typeof sessionStorage === 'undefined') return false;
+    const raw = sessionStorage.getItem(EDITOR_TABS_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const tabs = Array.isArray(parsed?.tabs) ? parsed.tabs : [];
+    return tabs.some((t) => t && t.editArticleId === articleId);
+  } catch {
+    return false;
+  }
+}
 
 // 멀티탭 작성 — 워크스페이스(WriteWorkspace)는 탭마다 별도 초안 키('newsroom.writeDraft.<tabId>')를
 // options.draftKey 로 주입해 탭 간 초안이 섞이지 않게 한다. 키 미지정 단독 사용은 종전 키 그대로.
@@ -46,9 +68,12 @@ function clearStoredDraft(key = DRAFT_STORAGE_KEY) {
   }
 }
 
-// SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — page-scoped sessionId generator (D2-5 = A strict).
-// One UUID per editor mount so two tabs of the same user collide on the lock (different sessionIds).
-// Falls back to a Math.random pair when crypto.randomUUID is unavailable (jsdom/older Node).
+// SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금 충돌 시 사용자에게 노출되는 문자열 메시지(lockError 는 문자열|null).
+const LOCK_CONFLICT_MESSAGE = '다른 사용자가 편집 중입니다.';
+
+// Page-scoped sessionId generator (D2-5 = A strict): one UUID per editor mount so two tabs of the
+// same user collide on the lock. Falls back to a Math.random pair when crypto.randomUUID is
+// unavailable (jsdom/older Node).
 function generatePageSessionId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -142,6 +167,8 @@ function draftHasContent(markup, common, authorDefault) {
 export function useWriteController(user, options = {}) {
   const { editArticleId, draftKey = DRAFT_STORAGE_KEY } = options;
   const model = useModel();
+  // SPEC-EDIT-LOCK-001 — 차단 진입 시 목록 복귀(navigate)와 logout 해제 콜백 등록에 쓰인다.
+  const session = useSession();
   const authorDefault = user.name ?? '';
   // SPEC-NEWS-REVISE: rehydrate a previously-typed NEW draft (작성 → 조회 전환 → 복귀) from sessionStorage.
   // Only in the blank-new context (no editArticleId) — an edit context loads fresh from the server and
@@ -173,9 +200,8 @@ export function useWriteController(user, options = {}) {
   const [status, setStatus] = useState(() => initialDraft?.status ?? 'RDS');
   const [lifecycleStatus, setLifecycleStatus] = useState(null);
   const [actionError, setActionError] = useState(null);
-  // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — frontend lock integration. lockError holds the conflict
-  // reason ('locked' / 'unauthenticated' / 'network-error') so WritePage can show ALERT + banner +
-  // disable the editor body (AC-EDIT-LOCK-2 / NFR-A11Y).
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lockError 는 문자열(또는 null). 충돌(409) 시 LOCK_CONFLICT_MESSAGE
+  // 를 담아 WritePage 가 ALERT + 배너 + 에디터 비활성을 그릴 수 있게 한다 (NFR-A11Y).
   const [lockError, setLockError] = useState(null);
   // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields, populated only in an edit
   // context (editArticleId present). Null in a blank-new context so WritePage renders no read-only area
@@ -186,14 +212,59 @@ export function useWriteController(user, options = {}) {
   if (pageSessionIdRef.current == null) {
     pageSessionIdRef.current = generatePageSessionId();
   }
+  // SPEC-EDIT-LOCK-001 — true while THIS mount holds the server lock. Cleared on release and on a
+  // successful action (server auto-releases) so unmount/beforeunload never double-unlocks.
+  const acquiredLockRef = useRef(false);
+  // 보유 잠금 해제 (단일 경로): unmount, beforeunload, logout 콜백이 모두 이 함수를 거친다.
+  // 미보유 상태(차단 진입, 액션 후 auto-release)에서는 no-op — unlockArticle 을 호출하지 않는다.
+  //
+  // SPEC-NEWS-REVISE-008 REQ-LOCK-RETENTION / REQ-LOCK-RELEASE-EXPLICIT — `force` 가 false(기본)인
+  // unmount cleanup 경로에서는 편집 탭이 아직 살아있으면(editTabSurvives) 해제하지 않는다. 단순 조회
+  // 페이지(list.do) 이동으로 WritePage 가 unmount 되어도 편집 탭이 탭 목록에 남아있는 한 잠금을 유지해야
+  // 하기 때문이다(AC-LOCK-1 / AC-REL-3). 탭이 × 로 닫히면 WriteWorkspace 가 unmount 직전에 탭 목록을
+  // 갱신하므로 그 기사는 더 이상 생존하지 않아 정상 해제된다(AC-REL-2). beforeunload(브라우저 닫힘)와
+  // 로그아웃은 `force=true` 로 호출되어 탭 생존 여부와 무관하게 항상 해제한다(AC-LOCK-2 (c)(d)).
+  const releaseHeldLock = useCallback((force = false) => {
+    if (!acquiredLockRef.current || !editArticleId) return;
+    // 조건부 보유: 편집 탭이 살아있는 단순 unmount 는 해제하지 않는다(락 유지, acquiredLockRef 도 유지해
+    // 동일 탭으로 돌아오면 같은 보유 상태로 멱등 재획득된다).
+    if (!force && editTabSurvives(editArticleId)) return;
+    acquiredLockRef.current = false;
+    try {
+      // Best-effort: unload/unmount 경로는 절대 throw 하면 안 된다 (httpModel 은 keepalive 로 전송).
+      model.unlockArticle?.(editArticleId)?.catch?.(() => {});
+    } catch {
+      // Ignore — release is best effort.
+    }
+  }, [model, editArticleId]);
 
-  // Edit-load (news.md 데스크 미송고 편집): when an editArticleId is supplied, fetch the row and load it
-  // into the editor + common fields, and adopt its articleId so the next save PUTs (updates) the row.
-  // Blank-new behavior is unchanged when editArticleId is absent.
+  // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lock-before-load: editArticleId 가 있으면 마운트 시 먼저
+  // lockArticle(id) 로 잠금을 획득하고, 성공한 경우에만 queryArticles 로 기사를 로드한다. 409(locked) 등
+  // 실패 시 lockError 를 세팅하고 로드를 차단한 뒤 session.navigate(ROUTES.VIEW) 로 목록에 복귀한다.
+  // 신규 초안(editArticleId 없음)은 잠금/로드를 모두 건너뛴다 (blank-new 동작 보존).
   useEffect(() => {
-    if (!editArticleId) return;
+    if (!editArticleId) return undefined;
     let cancelled = false;
+
     (async () => {
+      // 1) 잠금 획득 (lock-before-load).
+      let lockResult;
+      try {
+        lockResult = await model.lockArticle(editArticleId);
+      } catch {
+        lockResult = { ok: false, reason: 'network-error' };
+      }
+      if (cancelled) return;
+      if (!lockResult?.ok) {
+        // 차단: 잠금 미획득 → 에디터 read-only + 목록 복귀. queryArticles 는 호출하지 않는다.
+        setLockError(LOCK_CONFLICT_MESSAGE);
+        session?.navigate?.(ROUTES.VIEW);
+        return;
+      }
+      acquiredLockRef.current = true;
+      setLockError(null);
+
+      // 2) 잠금 성공 후에만 기사 로드.
       const [row] = await model.queryArticles({ articleId: editArticleId });
       if (cancelled || !row) return;
       adapter.setMarkup(row.markupVersion ?? '');
@@ -207,8 +278,9 @@ export function useWriteController(user, options = {}) {
       // Adopt the loaded row's status so the action buttons gate on the real article state.
       if (row.status != null) setStatus(row.status);
     })();
+
     return () => { cancelled = true; };
-  }, [editArticleId, model, adapter]);
+  }, [editArticleId, model, adapter, session]);
 
   // SPEC-NEWS-REVISE — persist the in-progress NEW draft so leaving for 조회(list.do) and returning
   // (WritePage remount) keeps the editor body, title, and 공통정보. Runs only in the blank-new context
@@ -236,65 +308,49 @@ export function useWriteController(user, options = {}) {
   // over fetch because it survives the unload event without blocking it).
   useEffect(() => {
     if (!editArticleId) return undefined;
-    let cancelled = false;
-    const sessionId = pageSessionIdRef.current;
-
-    (async () => {
-      try {
-        const result = await model.acquireEditLock(editArticleId, { sessionId });
-        if (cancelled) return;
-        if (!result?.ok) {
-          setLockError({ reason: result?.reason ?? 'locked' });
-        } else {
-          setLockError(null);
-        }
-      } catch {
-        if (!cancelled) setLockError({ reason: 'network-error' });
-      }
-    })();
-
-    // sendBeacon release — used by both unload channels and the cleanup path so the server frees the
-    // lock even if the user closes the tab without an explicit logout.
-    const beaconRelease = () => {
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          // Backend endpoint accepts the page sessionId in the body for sendBeacon compatibility
-          // (sendBeacon cannot specify HTTP method = DELETE; the server reads sessionId from the
-          // JSON payload and treats POST-to-lock-release as equivalent to DELETE for unload paths).
-          const payload = JSON.stringify({ sessionId, articleId: editArticleId, release: true });
-          const blob = new Blob([payload], { type: 'application/json' });
-          navigator.sendBeacon(`/api/articles/${encodeURIComponent(editArticleId)}/lock`, blob);
-        }
-      } catch {
-        // Ignore — unload paths must never throw.
-      }
-    };
-
-    const onBeforeUnload = () => { beaconRelease(); };
-    const onVisibilityChange = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        beaconRelease();
-      }
-    };
+    // 브라우저(탭) 닫힘 — 탭 메타데이터가 sessionStorage 에 남아있어도 무조건 해제한다(force=true).
+    const onBeforeUnload = () => { releaseHeldLock(true); };
     window.addEventListener('beforeunload', onBeforeUnload);
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
     return () => {
-      cancelled = true;
       window.removeEventListener('beforeunload', onBeforeUnload);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      // Best-effort async release on React unmount (page navigation, hot reload).
-      try {
-        model.releaseEditLock?.(editArticleId, { sessionId }).catch(() => {});
-      } catch {
-        // Ignore — release is best effort.
-      }
+      // React unmount(페이지 이동/핫리로드) — 편집 탭이 살아있으면 잠금을 유지한다(force 미지정 = 조건부).
+      // SPEC-NEWS-REVISE-008 AC-LOCK-1/AC-REL-3: 단순 조회 페이지 이동만으로는 풀리지 않는다.
+      releaseHeldLock();
     };
-  }, [editArticleId, model]);
+  }, [editArticleId, releaseHeldLock]);
 
-  // Set the plain body text (typed input). Embeds already inserted are preserved (REQ-EDIT-ADP-003).
-  const setBodyMarkup = useCallback((next) => {
-    adapter.setBodyText(next);
+  // logout 경로 — App.handleLogout 이 세션 클리어 전에 호출할 해제 콜백을 등록한다(release-before-clear-session).
+  // SPEC-NEWS-REVISE-008 AC-LOCK-2(c): 로그아웃은 편집 탭 생존 여부와 무관하게 무조건 해제한다(force=true).
+  useEffect(() => {
+    if (!editArticleId) return undefined;
+    session?.registerEditLockRelease?.(() => { releaseHeldLock(true); });
+    return undefined;
+  }, [editArticleId, session, releaseHeldLock]);
+
+  // Set the body from typed input. Embeds already inserted are preserved (REQ-EDIT-ADP-003).
+  //
+  // Bug 1 fix — OPTIONAL 2nd arg `orderedContent`: a pre-ordered {blocks} snapshot read from the live
+  // editor DOM. When present it is applied verbatim (adapter.setOrderedContent) so the true interleave
+  // of text and inline embeds is preserved in the model AND in markupVersion. Without it, the flat-text
+  // path (adapter.setBodyText) runs exactly as before — this keeps every existing single-arg caller
+  // (Alt+Y/reset/edit-load/IME paths that pass only text) behaving identically (backward-compatible).
+  // The flat path rebuilt `[...text, ...embeds]`, which reordered a trailing embed BELOW text typed
+  // after it; the ordered path keeps the embed where the user placed it (visible AND persisted order).
+  const setBodyMarkup = useCallback((next, orderedContent) => {
+    if (orderedContent) {
+      adapter.setOrderedContent(orderedContent);
+    } else {
+      adapter.setBodyText(next);
+    }
+    setContent(adapter.getContent());
+  }, [adapter]);
+
+  // Bug 1 fix — set the editor content from a pre-ORDERED block list (read from the live DOM) so the
+  // true interleave of text and inline embeds is preserved in the model (and thus in markupVersion).
+  // setBodyText placed all text before all embeds, so a trailing embed was reordered BELOW text typed
+  // after it; this keeps the embed where the user actually placed it (visible AND persisted order).
+  const setBodyContent = useCallback((ordered) => {
+    adapter.setOrderedContent(ordered);
     setContent(adapter.getContent());
   }, [adapter]);
 
@@ -369,10 +425,8 @@ export function useWriteController(user, options = {}) {
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
   const submitAction = useCallback(async (action) => {
     setActionError(null);
-    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — when the lock acquire was rejected, every transport call
-    // is suppressed (the page is read-only until the user dismisses and navigates away). This is the
-    // server-side AC-EDIT-LOCK-2/6 invariant mirrored at the client so the conflict is not papered
-    // over by a network error from the server-side lock guard.
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금이 거부된(차단) 상태에서는 모든 transport 호출을 막는다
+    // (페이지는 read-only). 서버측 잠금 가드를 클라이언트에서 미러링해 충돌이 네트워크 에러로 가려지지 않게 한다.
     if (lockError) {
       return;
     }
@@ -402,7 +456,10 @@ export function useWriteController(user, options = {}) {
       // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
       // route's lock guard (assertLockHolder) accepts the request. The DTO field is stripped by
       // server/index.js before the partial update is applied (it is transport-only metadata).
-      {
+      // v0.6.0 — 신규 초안(A-DRAFT) KILL 은 저장(기사 생성)을 건너뛴다: 존재하지 않는 기사는 KILL
+      // 대상이 아니며, 저장하면 "기사를 만들었다 바로 죽이는" 동작이 된다. WritePage 도 같은 이유로
+      // 초안에서 KILL 버튼을 숨기지만(!isDraft 게이트), 컨트롤러 정책으로도 이중 방어한다.
+      if (action !== 'kill' || isEditContext) {
         const dto = assembleDto();
         const payload = isEditContext ? { ...dto, sessionId: pageSessionIdRef.current } : dto;
         const saved = await model.saveArticle(articleId, payload);
@@ -410,6 +467,15 @@ export function useWriteController(user, options = {}) {
           id = saved.articleId;
           setArticleId(id);
         }
+      }
+      // 최초 송고 = RDS (2026-06-07 결정): 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이
+      // 없이 RDS 그대로 저장만 한다 — 데스크 미송고 목록에 올라 데스크 검수를 기다린다. 생애주기
+      // 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고에만 적용된다. 보류/KILL 은
+      // 신규에서도 종전대로 전이를 일으킨다 (R→RRH/RRK, D→DDH/DDK).
+      if (action === 'send' && !isEditContext) {
+        setLifecycleStatus('RDS');
+        resetDraft();
+        return;
       }
       // AC-EDIT-LOCK-6 — 편집 컨텍스트에선 페이지 락 sessionId를 4번째 인자로 함께 보내 서버 action
       // 라우트의 락 게이트가 호출자를 락 보유자 본인으로 식별하게 한다. 신규 초안은 락이 없으므로
@@ -422,6 +488,9 @@ export function useWriteController(user, options = {}) {
         setActionError(`전송이 거부되었습니다 (${result?.reason ?? 'rejected'}).`);
         return;
       }
+      // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 액션 성공 시 서버가 잠금을 auto-release 한다. 클라이언트 획득
+      // 플래그를 꺼서 이후 unmount/beforeunload 가 다시 unlockArticle 을 호출하지 않게 한다(이중 해제 방지).
+      acquiredLockRef.current = false;
       setLifecycleStatus(result.status);
       // Success -> reset the page for a new article (status confirmation is preserved).
       resetDraft();
@@ -450,8 +519,8 @@ export function useWriteController(user, options = {}) {
     // (WritePage renders the read-only area only when this is non-null — AC-MAP-2/3).
     readonlyMeta,
     lifecycleStatus, actionError,
-    // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — null when the lock is free / acquired; non-null
-    // ({ reason }) when the editor must stay read-only because another holder is editing.
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — null when the lock is free / acquired; a string message
+    // (LOCK_CONFLICT_MESSAGE) when the editor must stay read-only because another holder is editing.
     lockError,
     send: () => submitAction('send'),
     hold: () => submitAction('hold'),

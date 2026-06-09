@@ -196,3 +196,124 @@ describe('WriteWorkspace 멀티탭 작성', () => {
     expect(window.location.pathname + window.location.search).toBe('/writer.do');
   });
 });
+
+// SPEC-NEWS-REVISE-009 — 멀티탭 워크스페이스 행위 계약(REQ-MULTITAB-LIFECYCLE / REQ-EDIT-TAB-ROUTING)을
+// 1급 EARS 로 잠그는 회귀 가드. Δ-only: 대상 동작은 HEAD 에 이미 구현되어 있으므로 가드는 신설 즉시 GREEN
+// 이며 회귀 시 RED 를 검출한다. [HARD] 본 가드는 탭 UI(생성/활성/폐기/전환)만 단언한다 — lockYN/락 해제 등
+// 편집 잠금 메커니즘은 SPEC-008/002 소관이므로 새로 단언하지 않는다(R1 위험 회피).
+describe('SPEC-NEWS-REVISE-009 멀티탭 행위 계약 가드', () => {
+  beforeEach(() => {
+    try { sessionStorage.clear(); } catch { /* no storage */ }
+    window.history.replaceState({}, '', '/writer.do');
+  });
+
+  // AC-TAB-1 — ＋ 버튼 클릭 시 탭 1→2 증가 + 새 탭 활성화 (newsroom.editorTabs.activeId 가 새 탭 id).
+  it('AC-TAB-1: ＋ 버튼이 새 탭을 추가하고 그 탭을 활성화한다 (영속 activeId 가 새 탭 id)', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    expect(tabStrip().getAllByRole('tab')).toHaveLength(1);
+    const before = JSON.parse(sessionStorage.getItem('newsroom.editorTabs'));
+
+    await user.click(screen.getByRole('button', { name: '새 작성 탭' }));
+
+    const tabs = tabStrip().getAllByRole('tab');
+    expect(tabs).toHaveLength(2);
+    // 새로 추가된 탭이 활성이다 (aria-selected + 영속 activeId).
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'false');
+    const after = JSON.parse(sessionStorage.getItem('newsroom.editorTabs'));
+    expect(after.tabs).toHaveLength(2);
+    expect(after.activeId).not.toBe(before.activeId);
+    expect(after.tabs.some((t) => t.id === after.activeId)).toBe(true);
+  });
+
+  // AC-TAB-3 — 탭 A(내용 있음)를 닫으면 그 탭의 초안만 폐기되고, 탭 B 나 레거시 초안으로 복원되지 않는다.
+  it('AC-TAB-3: 닫은 탭의 초안만 폐기되고 탭 B/레거시 초안으로 복원되지 않는다', async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    // 탭 A 에 내용 입력 → 탭 A 초안 영속.
+    await user.type(within(activePanel()).getByTestId('editor-body'), '탭 A 본문');
+    // 탭 B 추가(활성) — 탭 A 는 mounted 유지.
+    await user.click(screen.getByRole('button', { name: '새 작성 탭' }));
+    const tabsBefore = tabStrip().getAllByRole('tab');
+    expect(tabsBefore).toHaveLength(2);
+    const tabAId = JSON.parse(sessionStorage.getItem('newsroom.editorTabs')).tabs[0].id;
+    expect(sessionStorage.getItem(`newsroom.writeDraft.${tabAId}`)).not.toBeNull();
+
+    // 탭 A 를 × 로 닫는다 (탭 B 는 남는다).
+    await user.click(within(tabsBefore[0].closest('.yh-edit-tab')).getByRole('button', { name: /탭 닫기/ }));
+
+    // 탭은 1개(탭 B)만 남고, 닫힌 탭 A 의 초안은 폐기된다.
+    expect(tabStrip().getAllByRole('tab')).toHaveLength(1);
+    expect(sessionStorage.getItem(`newsroom.writeDraft.${tabAId}`)).toBeNull();
+    // 탭 A 의 내용이 탭 B 나 단일-에디터 시절 레거시 초안으로 복원되지 않는다.
+    expect(sessionStorage.getItem('newsroom.writeDraft')).toBeNull();
+    expect(within(activePanel()).getByTestId('editor-body')).not.toHaveTextContent('탭 A 본문');
+  });
+
+  // SPEC-NEWS-REVISE-008 AC-REL-2 — 편집 탭(× 닫기) 경로에서 그 기사의 락이 해제된다. 탭이 목록에서
+  // 제거된 뒤 WritePage 가 unmount 되므로, closeTab 이 탭 목록을 unmount 직전에 갱신해야 컨트롤러
+  // cleanup 이 "탭이 더 이상 살아있지 않음"을 보고 해제한다. (조회 이동 시 탭 생존 = 비해제와 대비.)
+  it('AC-REL-2: 편집 탭을 × 로 닫으면 그 기사의 unlockArticle 이 호출된다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    const lockArticle = vi.fn().mockResolvedValue({ ok: true });
+    const unlockArticle = vi.fn().mockResolvedValue({ ok: true, released: true });
+    const model = modelWithArticle(EDIT_ROW, { lockArticle, unlockArticle });
+    renderWorkspace(model);
+    await waitFor(() => expect(lockArticle).toHaveBeenCalledWith('AKR-1'));
+
+    // AKR-1 편집 탭의 × 를 눌러 닫는다.
+    const editTab = tabStrip().getByRole('tab', { name: 'AKR-1' });
+    await user.click(within(editTab.closest('.yh-edit-tab')).getByRole('button', { name: /탭 닫기/ }));
+
+    await waitFor(() => expect(unlockArticle).toHaveBeenCalledWith('AKR-1'));
+  });
+
+  // AC-EDTAB-3 — 서로 다른 기사는 각각 자신의 탭을 가진다 (한 탭에 합쳐지지 않음).
+  it('AC-EDTAB-3: 다른 기사를 편집 진입하면 별도의 새 탭이 추가된다', () => {
+    // AKR-1 편집 탭이 이미 열려 있는 상태에서 AKR-2 진입.
+    sessionStorage.setItem('newsroom.editorTabs', JSON.stringify({
+      tabs: [{ id: 't1', editArticleId: null }, { id: 't2', editArticleId: 'AKR-1' }],
+      activeId: 't1',
+      seq: 2,
+    }));
+    window.history.replaceState({}, '', '/writer.do?id=AKR-2');
+    renderWorkspace(modelWithArticle({ ...EDIT_ROW, articleId: 'AKR-2' }));
+
+    // 세 탭: 새 기사 / AKR-1 / AKR-2 — 두 편집 기사가 한 탭에 합쳐지지 않는다.
+    expect(tabStrip().getAllByRole('tab')).toHaveLength(3);
+    expect(tabStrip().getByRole('tab', { name: 'AKR-1' })).toBeInTheDocument();
+    const akr2 = tabStrip().getByRole('tab', { name: 'AKR-2' });
+    expect(akr2).toBeInTheDocument();
+    expect(akr2).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // AC-EDTAB-5 — 송고 실패(SPEC-005 "(끝)" 가드 차단) 시 그 탭은 블랭크로 전환되지 않고 내용을 유지한다.
+  it('AC-EDTAB-5: 송고가 (끝) 가드로 차단되면 편집 탭이 블랭크로 전환되지 않는다', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    // 본문에 "(끝)" 마커가 없는 편집 기사 → 송고 가드가 차단한다.
+    const noEndRow = { ...EDIT_ROW, markupVersion: markupFor('편집 제목\n편집 본문') };
+    const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'AKR-1' });
+    const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
+    renderWorkspace(modelWithArticle(noEndRow, { saveArticle, applyAction }));
+    await waitFor(() => {
+      expect(within(activePanel()).getByTestId('readonly-articleId')).toHaveTextContent('AKR-1');
+    });
+
+    await user.click(within(activePanel()).getByRole('button', { name: '송고' }));
+
+    // 가드가 alert 로 차단 — 저장/액션 모두 미호출.
+    expect(alertSpy).toHaveBeenCalled();
+    expect(saveArticle).not.toHaveBeenCalled();
+    expect(applyAction).not.toHaveBeenCalled();
+    // 편집 탭은 블랭크로 전환되지 않고 AKR-1 라벨/내용/주소창 ?id= 를 유지한다.
+    expect(tabStrip().getByRole('tab', { name: 'AKR-1' })).toBeInTheDocument();
+    expect(within(activePanel()).getByTestId('readonly-articleId')).toHaveTextContent('AKR-1');
+    expect(within(activePanel()).getByTestId('editor-body')).toHaveTextContent('편집 본문');
+    expect(window.location.search).toBe('?id=AKR-1');
+  });
+});

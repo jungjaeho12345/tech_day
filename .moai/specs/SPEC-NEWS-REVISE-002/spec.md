@@ -83,7 +83,7 @@ related_specs:
 
 ### 2.2 제외 (Out of Scope)
 
-- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 제작 시스템만")
+- 수집/배부 시스템 (CLAUDE.md "현재 구현 범위는 기사 작성기만")
 - R/D/Z 권한 의미 변경 (SPEC-AUTH-001 유지)
 - lifecycle 전이 표(R/D/Z × send/hold/kill) 변경 (SPEC-NEWS-REVISE-001 D-6 유지)
 - 디자인 토큰 신규 도입 (기존 `--yh-blue` `#0A4DA6`, `--yh-gray-line` 등 재사용)
@@ -246,7 +246,7 @@ related_specs:
 
 ## 5. 비기능 요건 (Non-Functional Requirements)
 
-### 5.1 디자인 토큰 (연합뉴스 스타일)
+### 5.1 디자인 토큰 (스타일)
 
 - 신규 CSS 변수 도입 없음. 기존 토큰(`--yh-blue` `#0A4DA6`, `--yh-blue-deep` `#08306B`, `--yh-gray-line` `#DDE3EC`, `--yh-serif`, `--yh-sans`)을 재사용한다.
 - 상세보기 본문 폰트 강조는 `font-size`의 절대값(rem 단위)으로만 표현하며, 새 토큰을 만들지 않는다 (`.yh-detail__title 1.3rem`, `.yh-detail__content 1.75rem` 등 미커밋 작업트리 값을 흡수).
@@ -389,7 +389,7 @@ related_specs:
 
 ## 11. Exclusions (What NOT to Build) — 명시적 비목표
 
-- 수집/배부 시스템 (제작 시스템만).
+- 수집/배부 시스템 (기사 작성기만).
 - R/D/Z 권한 의미 변경 또는 신규 권한 도입.
 - lifecycle 전이 표(R/D/Z × send/hold/kill) 변경.
 - 디자인 토큰 신규 도입 (CSS 변수 추가 금지).

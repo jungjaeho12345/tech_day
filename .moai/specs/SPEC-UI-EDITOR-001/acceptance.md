@@ -8,7 +8,7 @@
 
 - **Given** 에디터에 다음 내용이 입력됨:
   ```
-  연합뉴스 속보 제목입니다
+  속보 제목입니다
   부제목 첫째 줄
   부제목 둘째 줄
 
@@ -16,7 +16,7 @@
   본문 둘째 문단입니다.
   ```
 - **When** DTO 조립을 위해 에디터 내용을 파싱하면
-- **Then** 파서는 `title = "연합뉴스 속보 제목입니다"`, `subtitle = "부제목 첫째 줄\n부제목 둘째 줄"`, `body = "본문 첫 문단입니다.\n본문 둘째 문단입니다."`를 산출한다 (REQ-EDIT-PARSE-001/002/003).
+- **Then** 파서는 `title = "속보 제목입니다"`, `subtitle = "부제목 첫째 줄\n부제목 둘째 줄"`, `body = "본문 첫 문단입니다.\n본문 둘째 문단입니다."`를 산출한다 (REQ-EDIT-PARSE-001/002/003).
 - **And** 동일 입력으로 다시 파싱해도 동일 결과가 나온다 (순수 함수, REQ-EDIT-PARSE-005).
 
 ### AC-2 — 인라인 임베딩: 이미지 검색 결과 삽입 (텍스트 마커 아님)
@@ -25,7 +25,7 @@
 - **When** 사용자가 그 결과의 "삽입" 버튼을 누르면
 - **Then** 에디터 본문에 **시각적 인라인 이미지 요소**(thumbnailUrl/url 사용)가 삽입된다 (REQ-EDIT-EMBED-001/002).
 - **And** 기존처럼 `[youtube] https://img/...` 같은 plain 마커 텍스트를 본문 끝에 append하지 **않는다** (REQ-EDIT-EMBED-001 [MODIFY] — 회귀 금지).
-- **And** 삽입된 임베드는 연합뉴스 디자인 토큰(`--yh-red`/`--yh-gray-line`/serif·sans)을 따라 본문 텍스트와 시각적으로 구별된다 (REQ-EDIT-EMBED-006).
+- **And** 삽입된 임베드는 디자인 토큰(`--yh-red`/`--yh-gray-line`/serif·sans)을 따라 본문 텍스트와 시각적으로 구별된다 (REQ-EDIT-EMBED-006).
 
 ### AC-3 — 임베드 round-trip 안정성
 
@@ -106,7 +106,7 @@
 
 - **Tested**: 파서 단위테스트(AC-1, EC-1/2/4), 임베드 round-trip(AC-3), 다중 삽입(EC-3), 어댑터-DTO 가드(AC-4) 통과. Vitest 커버리지 기준 충족 (tech.md `development_mode: tdd`).
 - **Readable**: 파서는 순수 함수로 명확히 분리, 임베드 타입별 렌더 명명 일관.
-- **Unified**: 연합뉴스 디자인 토큰(`yonhap.css`) 일관 사용 (REQ-EDIT-EMBED-006), Vitest/ESLint 포맷 준수.
+- **Unified**: 디자인 토큰(`yonhap.css`) 일관 사용 (REQ-EDIT-EMBED-006), Vitest/ESLint 포맷 준수.
 - **Secured**: 임베드 url/thumbnailUrl 렌더 시 입력 검증(부분 결과 방어 EC-5). 외부 URL은 검색 백엔드(이미 검증)에서 옴.
 - **Trackable**: 커밋에 SPEC-UI-EDITOR-001 및 REQ-EDIT-* 참조.
 
@@ -118,5 +118,5 @@
 - [ ] **DP-F5 lifecycle 비계산 계약** 불변 — 본 SPEC이 송고/보류 로직을 건드리지 않음 확인.
 - [ ] plan.md §4 **파싱 규칙(후보 A/B/C) 사용자 확정** 반영 — REQ-EDIT-PARSE-003 및 EC-4 기대값 고정.
 - [ ] 검색 백엔드(SPEC-BACKEND-CORE-001) **재구현 없음** — 결과 소비만 확인.
-- [ ] 연합뉴스 디자인 토큰 적용된 인라인 임베드(이미지/유튜브/내부기사 3종).
+- [ ] 디자인 토큰 적용된 인라인 임베드(이미지/유튜브/내부기사 3종).
 - [ ] markupVersion round-trip 안정.

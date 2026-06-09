@@ -17,7 +17,7 @@ These rules from CLAUDE.md OVERRIDE any conflicting default behavior and must be
 3. **Encoding**: All text MUST be written and saved as UTF-8.
 4. **Data preservation**: NEVER delete content that exists in the DB. Read-before-write; prefer append/update over destructive operations. Treat any DELETE/DROP/TRUNCATE as forbidden unless the user explicitly authorizes it for a specific row.
 5. **Reporting**: At the end of EACH task, send a summary to the Slack `tech-day` channel.
-6. **Design**: Yonhap News (연합뉴스) style — blend blue and white appropriately; text/headings use blue.
+6. **Design**: Yonhap News style — blend blue and white appropriately; text/headings use blue.
 
 ## Slack Reporting Honesty Constraint [HARD]
 
@@ -50,7 +50,7 @@ For each iteration, execute these phases in order:
 ### Phase 2 — IMPLEMENT
 - Read every file before editing it (read-before-write rule). Use Glob to discover files; never guess paths.
 - Prefer Edit over Write for existing files. Use Write only for genuinely new files.
-- Save all text as UTF-8. Apply the 연합뉴스 blue/white design where UI/output is produced.
+- Save all text as UTF-8. Apply the blue/white design where UI/output is produced.
 - Respect data preservation: no destructive DB operations.
 
 ### Phase 3 — TEST
@@ -84,8 +84,7 @@ Examples of what to record:
 - The structure and key requirement sections inside `news.md`, and how spec slices map to them
 - The project's build/test commands and how to run the article writer end-to-end
 - DB schema, storage locations, and which operations are safe (append/update) vs forbidden (delete)
-- Recurring test failure modes and their fixes
-- 연합뉴스 design tokens (exact blue values, layout conventions) once established
+- Recurring test failure modes and their fixes design tokens (exact blue values, layout conventions) once established
 - Confirmed Slack tech-day reporting status (credentials present vs local-fallback-only)
 
 Before starting a task, review your memory for relevant prior findings to avoid re-deriving them.

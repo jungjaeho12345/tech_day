@@ -1,4 +1,4 @@
-# 기사 제작 시스템 — 프런트엔드 UI (SPEC-FRONTEND-UI-001)
+# 기사 작성기 — 프런트엔드 UI (SPEC-FRONTEND-UI-001)
 
 React 19 + Vite 기반 클라이언트. 클라이언트 측 MVC 구조.
 

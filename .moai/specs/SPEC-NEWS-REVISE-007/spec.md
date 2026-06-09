@@ -167,7 +167,7 @@ related_specs:
 
 ## 5. 비기능 요건 (Non-Functional Requirements)
 
-### 5.1 디자인 토큰 (연합뉴스 스타일)
+### 5.1 디자인 토큰 (스타일)
 
 - 신규 CSS 변수 도입 없음. 기존 토큰(`--yh-blue` `#0A4DA6`, `--yh-gray-line` `#DDE3EC` 등)만 재사용한다.
 - 읽기전용 표시 영역의 라벨색/구분선은 기존 토큰(`--yh-blue`, `--yh-gray-line`)을 사용한다.
@@ -233,7 +233,7 @@ related_specs:
 ## 9. Exclusions (What NOT to Build) — 명시적 비목표
 
 - 기사 상태값 전이(lifecycle) 발생 또는 "고침 모드" 플래그/별도 상태/별도 라우트 파라미터 도입.
-- 수집/배부 시스템 (제작 시스템만; CLAUDE.md "현재 구현 범위는 제작 시스템만").
+- 수집/배부 시스템 (기사 작성기만; CLAUDE.md "현재 구현 범위는 기사 작성기만").
 - 신규 디자인 토큰/CSS 변수 도입.
 - 타 SPEC(SPEC-NEWS-REVISE-001~006 및 기타 SPEC) 의 3파일(spec/plan/acceptance) 수정.
 - DB 스키마 변경(ContentsVO 13필드는 매핑 근거일 뿐 본 SPEC 은 컬럼을 추가/변경하지 않음).

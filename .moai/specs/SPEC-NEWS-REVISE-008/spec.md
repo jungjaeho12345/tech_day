@@ -184,7 +184,7 @@ related_specs:
 
 ## 5. 비기능 요건 (Non-Functional Requirements)
 
-### 5.1 디자인 토큰 (연합뉴스 스타일)
+### 5.1 디자인 토큰 (스타일)
 
 - 신규 CSS 변수 도입 없음. 기존 토큰(`--yh-blue` `#0A4DA6`, `--yh-gray-line` `#DDE3EC` 등)만 재사용한다.
 - DDH 버튼은 기존 RDS 버튼과 동일한 클래스(`yh-btn--primary`/`yh-btn--kill`)를 재사용한다(신규 버튼 스타일 금지).
@@ -256,7 +256,7 @@ related_specs:
 - `DDH|R|*` 전이 또는 `DDH|*|hold` 전이 정의(R 권한 DDH 전이 / DDH 재보류는 비목표 — invalid-transition 유지).
 - 새 락 규칙/락 스토어/세션 메커니즘 변경, 새 폴링/타이머 도입.
 - 신규 디자인 토큰/CSS 변수/버튼 스타일 도입.
-- 수집/배부 시스템 (제작 시스템만; CLAUDE.md "현재 구현 범위는 제작 시스템만").
+- 수집/배부 시스템 (기사 작성기만; CLAUDE.md "현재 구현 범위는 기사 작성기만").
 - DB 스키마 변경(LockYN 등 기존 컬럼 재사용; 컬럼 추가/변경 없음, DB 내용 삭제 없음).
 - 타 SPEC(SPEC-NEWS-REVISE-001~007 및 기타 SPEC)의 3파일(spec/plan/acceptance) 수정.
 - 코드 구현 (본 SPEC 은 Plan 단계 문서만; Run 단계에서 구현).

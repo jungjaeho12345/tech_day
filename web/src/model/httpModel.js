@@ -28,7 +28,8 @@ function resolveBaseUrl(baseUrl) {
 // sessionStorage key holding the server-issued session id so a browser refresh (F5) can restore the
 // session. sessionStorage (not localStorage) is intentional: it survives a same-tab reload but is
 // cleared when the tab/browser closes, matching the domain rule "브라우저 닫힘 → 세션 종료" (news.md lockYN).
-const SESSION_STORAGE_KEY = 'newsroom.sessionId';
+// 'tech_day.' prefix — App.jsx 의 USER_KEY('tech_day.user')와 같은 네임스페이스를 쓴다 (정합성 검사 공유).
+const SESSION_STORAGE_KEY = 'tech_day.sessionId';
 
 /** Safe sessionStorage access — guarded so the module never throws in non-browser/test contexts. */
 function readStoredSessionId() {
@@ -88,13 +89,23 @@ export function createHttpModel({ baseUrl } = {}) {
     }
   }
 
-  /** Encode a flat filters object into a query string (empty -> ''). */
+  /** Encode a flat filters object into a query string (empty -> '').
+   * Array values are serialized as repeated key params: status=['RDS','DDH'] → status=RDS&status=DDH.
+   * undefined/null array elements are skipped. Scalar values use a single append.
+   */
   function toQueryString(filters) {
     const params = new URLSearchParams();
     if (filters && typeof filters === 'object') {
       for (const [key, value] of Object.entries(filters)) {
         if (value === undefined || value === null) continue;
-        params.append(key, String(value));
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            if (item === undefined || item === null) continue;
+            params.append(key, String(item));
+          }
+        } else {
+          params.append(key, String(value));
+        }
       }
     }
     const qs = params.toString();
@@ -193,26 +204,34 @@ export function createHttpModel({ baseUrl } = {}) {
       return sendJson('PUT', `/api/articles/${encodeURIComponent(articleId)}`, dto, { ok: false });
     },
 
-    // --- Edit lock (SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK, D2-4 = C) -----------
-    // NFR-SEC: userId is NOT sent — the server derives it from the validated x-session-id session.
-    // Only the page-scoped sessionId is sent so the server can distinguish same-user-different-page
-    // attempts (D2-5 = A strict: rejected). The sessionId here is a CLIENT-generated UUID per editor
-    // page (NOT the auth session id) so two tabs of the same user are still mutually exclusive.
-    async acquireEditLock(articleId, { sessionId } = {}) {
+    // --- Edit lock (SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK) ----------------------
+    // holder IS the login session: the server derives it from the validated x-session-id header
+    // (injected by headers()), so both calls carry NO body and take ONLY articleId.
+    //   lockArticle   -> POST /api/articles/:id/lock    { ok:true, article? } | { ok:false, reason }
+    //   unlockArticle -> POST /api/articles/:id/unlock  { ok:true, released }  (keepalive for beforeunload)
+    async lockArticle(articleId) {
       return sendJson(
         'POST',
         `/api/articles/${encodeURIComponent(articleId)}/lock`,
-        { sessionId },
+        undefined,
         { ok: false, reason: 'network-error' },
       );
     },
-    async releaseEditLock(articleId, { sessionId } = {}) {
-      return sendJson(
-        'DELETE',
-        `/api/articles/${encodeURIComponent(articleId)}/lock`,
-        { sessionId },
-        { ok: true }, // idempotent default — release failures must not block beforeunload
-      );
+    async unlockArticle(articleId) {
+      // keepalive:true so the release still flushes when fired from a beforeunload handler during page
+      // teardown (the request must outlive the unloading document). Network failures degrade to
+      // { ok:true, released:false } — release must never block unload.
+      try {
+        const res = await fetch(`${base}/api/articles/${encodeURIComponent(articleId)}/unlock`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({}),
+          keepalive: true,
+        });
+        return await res.json();
+      } catch {
+        return { ok: true, released: false };
+      }
     },
 
     // --- Realtime (SSE, DP-F2) ----------------------------------------------

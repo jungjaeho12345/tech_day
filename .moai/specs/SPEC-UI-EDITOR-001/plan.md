@@ -13,7 +13,7 @@
 | T3 | concrete 에디터를 `EditorAdapter` 계약 뒤에 배치 (`createPlainTextEditorAdapter` 대체 또는 신규 `create*EditorAdapter`). 상위 화면/DTO 조립 불변. | High | REQ-EDIT-ADP-001~003 |
 | T4 | `markupVersion` 직렬화/역직렬화 — 구조(제목/부제목/본문) + 인라인 임베드가 round-trip 안정하도록 인코딩. | High | REQ-EDIT-PARSE-006, REQ-EDIT-EMBED-005 |
 | T5 | 인라인 임베드 렌더링: 이미지/유튜브/내부기사 3종을 `embed(reference)`의 텍스트 append 대신 시각 인라인 요소로. | High | REQ-EDIT-EMBED-001~004, 007 |
-| T6 | 연합뉴스 디자인 토큰(`yonhap.css`)으로 임베드 스타일링 (serif/sans, `--yh-red`, `--yh-gray-line`). | Medium | REQ-EDIT-EMBED-006 |
+| T6 | 디자인 토큰(`yonhap.css`)으로 임베드 스타일링 (serif/sans, `--yh-red`, `--yh-gray-line`). | Medium | REQ-EDIT-EMBED-006 |
 | T7 | Vitest 테스트: 파서 단위테스트 + 임베드 round-trip + WritePage 통합(어댑터 교체가 DTO에 영향 없음 회귀). | High | acceptance.md 전체 |
 
 ### 마일스톤 (우선순위 순서)

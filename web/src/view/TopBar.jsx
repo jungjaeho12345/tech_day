@@ -10,7 +10,7 @@ export function TopBar({ statusBar }) {
       {/* Brand wordmark (left) */}
       <div className="yh-brand">
         <span className="yh-brand__logo">연합</span>
-        <span className="yh-brand__title">기사 제작 시스템</span>
+        <span className="yh-brand__title">기사 작성기</span>
       </div>
 
       {/* Right: optional status bar + user info + logout */}
