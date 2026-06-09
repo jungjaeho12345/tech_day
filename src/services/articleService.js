@@ -243,10 +243,6 @@ export function createArticleService(db) {
           articleValues.push(safe[key] ?? null);
         }
       }
-      if (articleSets.length > 0) {
-        db.prepare(`UPDATE Article SET ${articleSets.join(', ')} WHERE articleId = ?`)
-          .run(...articleValues, articleId);
-      }
       const contentsAllowed = new Set([
         'title', 'content', 'author', 'modifier', 'sender', 'department', 'departmentCode',
         'editedAt', 'sentAt', 'distributedAt', 'embargoAt', 'secondEmbargoAt',
@@ -262,9 +258,21 @@ export function createArticleService(db) {
           contentsValues.push(safe[key] ?? null);
         }
       }
-      if (contentsSets.length > 0) {
-        db.prepare(`UPDATE Contents SET ${contentsSets.join(', ')} WHERE articleId = ?`)
-          .run(...contentsValues, articleId);
+      // Wrap both table writes in one transaction so Article and Contents stay in sync.
+      db.exec('BEGIN');
+      try {
+        if (articleSets.length > 0) {
+          db.prepare(`UPDATE Article SET ${articleSets.join(', ')} WHERE articleId = ?`)
+            .run(...articleValues, articleId);
+        }
+        if (contentsSets.length > 0) {
+          db.prepare(`UPDATE Contents SET ${contentsSets.join(', ')} WHERE articleId = ?`)
+            .run(...contentsValues, articleId);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
       }
       return { ok: true };
     },

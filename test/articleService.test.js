@@ -452,3 +452,23 @@ test('edit-load: 공통정보 8필드가 create→query→update 라운드트립
   assert.equal(after.keyword, '갱신');
   assert.equal(after.coAuthor, '공동기자', '부분 update는 다른 공통정보 필드를 건드리지 않는다');
 });
+
+test('AC-API-5 (transaction): Contents UPDATE 실패 시 Article UPDATE도 롤백된다', () => {
+  const { db, svc } = freshService();
+  const { articleId } = svc.create({ title: '원본', content: '본문', author: 'r1', department: '사회부' });
+  const origPrepare = db.prepare.bind(db);
+  db.prepare = function (sql) {
+    const stmt = origPrepare(sql);
+    if (sql.startsWith('UPDATE Contents')) {
+      return { run(..._args) { throw new Error('simulated Contents UPDATE failure'); } };
+    }
+    return stmt;
+  };
+  assert.throws(
+    () => svc.update(articleId, { title: '변경 제목', content: '변경 본문' }),
+    /simulated Contents UPDATE failure/,
+  );
+  db.prepare = origPrepare;
+  const article = db.prepare('SELECT title FROM Article WHERE articleId = ?').get(articleId);
+  assert.equal(article.title, '원본', 'Article UPDATE は Contents 失敗で롤백되어 원본이어야 한다');
+});

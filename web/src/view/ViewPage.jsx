@@ -257,8 +257,9 @@ export function ViewPage({ user, nav }) {
   }, [ctrl.menu, user.department]);
 
   // 부서별 송고 기본값 "전체": 부서 목록(비동기 로드)이 도착했고 선택이 아직 초기 상태([])일 때만
-  // 전체 선택을 시드한다. 사용자가 이미 손댄 선택은 덮어쓰지 않으며(함수형 업데이트 + 빈 배열 가드),
-  // 쿼리는 여전히 조회 버튼으로만 실행된다 — deferred 계약(SPEC-NEWS-REVISE-007/EC-4) 유지.
+  // 전체 선택을 시드한다. 사용자가 이미 손댄 선택은 덮어쓰지 않는다(함수형 업데이트 + 빈 배열 가드).
+  // 진입 즉시 조회는 컨트롤러가 { status: 'DPS' }(전체 = 부서 필터 없음, DPS 전체)로 자동 수행하며, 이
+  // 멀티셀렉트 시드는 표시용 기본값(전체 체크)만 맞춘다. 사용자가 부서를 좁혀 조회를 누르면 그 부서로 재조회한다.
   // ctrl.departments 는 메뉴 진입 시 1회 setDepartments 로 고정되므로 이 effect 는 로드 후 1회만 돈다.
   useEffect(() => {
     if (ctrl.menu !== '부서별 송고' || ctrl.departments.length === 0) return;
