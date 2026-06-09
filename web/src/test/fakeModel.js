@@ -75,7 +75,16 @@ export function createFakeModel(overrides = {}) {
     },
   };
 
-  const model = assertModel({ ...base, ...overrides });
+  // Lineage bridge: an older test family overrides the lock entry point as `acquireEditLock`
+  // (the pre-merge method name). The canonical controller contract uses `lockArticle`, so when a
+  // test supplies `acquireEditLock` we route the contract's `lockArticle` through it. Tests that
+  // override `lockArticle` directly are unaffected (acquireEditLock absent => no aliasing).
+  const merged = { ...base, ...overrides };
+  if (typeof overrides.acquireEditLock === 'function' && overrides.lockArticle === undefined) {
+    merged.lockArticle = (...args) => overrides.acquireEditLock(...args);
+  }
+
+  const model = assertModel(merged);
 
   // Test helpers (not part of the Model contract).
   model.__emit = (payload) => {

@@ -821,7 +821,8 @@ textarea {
 
 .yh-desk-row__id,
 .yh-desk-row__status,
-.yh-desk-row__lock {
+.yh-desk-row__lock,
+.yh-desk-row__dept {
   color: var(--yh-gray-dark);
   font-size: 0.82rem;
   white-space: nowrap;
@@ -829,8 +830,177 @@ textarea {
   text-overflow: ellipsis;
 }
 
-.yh-article-row__title {
+/* Centered modal dialog (2026-06-10 — column-settings entry point moved to the header right-click
+   '설정' item). Reuses the existing --yh-* tokens / .yh-card chrome family; no new colors hardcoded.
+   The translucent backdrop overlays the whole viewport above the topbar and centers its panel. */
+.yh-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--yh-topbar-z) + 20); /* sit above the topbar and any context menu */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--yh-sp-lg);
+  background: rgba(26, 26, 26, 0.45); /* --yh-ink (#1a1a1a) at 45% — neutral dim, brand-consistent */
+}
+
+.yh-modal__panel {
+  background: var(--yh-white);
+  border: 1px solid var(--yh-gray-line);
+  border-top: 3px solid var(--yh-red); /* RED accent rule — 연합 identity */
+  border-radius: var(--yh-radius-lg);
+  box-shadow: var(--yh-shadow-lg);
+  padding: var(--yh-sp-md) var(--yh-sp-lg) var(--yh-sp-lg);
+  min-width: 16rem;
+  max-width: min(22rem, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* The column-settings panel inherited .yh-col-settings (a toolbar-only right-align rule). Inside the
+   centered modal that margin must NOT push the panel — the backdrop flexbox already centers it. */
+.yh-modal__panel.yh-col-settings {
+  margin-left: 0;
+}
+
+.yh-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yh-sp-sm);
+  margin-bottom: var(--yh-sp-sm);
+  padding-bottom: var(--yh-sp-sm);
+  border-bottom: 1px solid var(--yh-gray-line);
+}
+
+.yh-modal__title {
+  margin: 0;
+  font-family: var(--yh-serif);
+  font-size: 1rem;
+  color: var(--yh-blue);
+}
+
+.yh-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--yh-gray-dark);
+  background: var(--yh-white);
+  border: 1px solid var(--yh-gray-line);
+  border-radius: var(--yh-radius-sm);
+  cursor: pointer;
+  transition: background var(--yh-transition), border-color var(--yh-transition);
+}
+
+.yh-modal__close:hover {
+  background: var(--yh-gray-bg);
+  border-color: var(--yh-blue);
+  color: var(--yh-blue);
+}
+
+.yh-modal__close:focus-visible {
+  outline: 2px solid var(--yh-blue);
+  outline-offset: 1px;
+}
+
+/* SPEC-NEWS-COLCONFIG — column show/hide + DnD width/gap controls.
+   The list toolbar lays the department filter (left) and the 컬럼 설정 panel (right) on one row. */
+.yh-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--yh-sp-sm);
+  margin-bottom: var(--yh-sp-sm);
+  flex-wrap: wrap;
+}
+
+/* Push the 컬럼 설정 trigger to the right edge even when there is no department filter. */
+.yh-col-settings {
+  margin-left: auto;
+}
+
+/* The settings dropdown reuses .yh-multi-select__menu positioning; widen it for the gap slider row. */
+.yh-col-settings__panel {
+  right: 0;
+  left: auto;
+  min-width: 12rem;
+  padding: var(--yh-sp-xs) 0;
+}
+
+.yh-col-settings__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The first column row is a normal toggle, not the '전체' header — drop the inherited divider/weight. */
+.yh-col-settings__list .yh-multi-select__item:first-child label {
+  font-weight: 400;
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 3px;
+}
+
+/* Gap slider row, separated from the checkbox list by a thin brand-grey divider. */
+.yh-col-settings__gap {
+  display: flex;
+  align-items: center;
+  gap: var(--yh-sp-xs);
+  padding: var(--yh-sp-xs) var(--yh-sp-sm);
+  margin-top: var(--yh-sp-xs);
+  border-top: 1px solid var(--yh-gray-line);
+  font-size: 0.78rem;
+  color: var(--yh-gray-dark);
+}
+
+.yh-col-settings__gap input[type="range"] {
   flex: 1;
+  accent-color: var(--yh-blue); /* brand chrome on the slider thumb/track */
+}
+
+.yh-col-settings__gap-val {
+  min-width: 2.5rem;
+  text-align: right;
+  color: var(--yh-gray-mid);
+}
+
+/* Header cell wraps the label + a right-edge resizer handle (the cell is a positioning context). */
+.yh-desk-header__cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.yh-desk-header__label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Drag handle on the column's right boundary. A 1px brand-grey rule with a wider invisible hit area. */
+.yh-col-resizer {
+  position: absolute;
+  top: 0;
+  right: calc(var(--yh-sp-sm) / -2); /* sit over the inter-column gap */
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none; /* let pointer events drive the resize instead of scrolling */
+  border-right: 1px solid var(--yh-gray-line);
+}
+
+.yh-col-resizer:hover {
+  border-right-color: var(--yh-blue); /* brand accent on hover */
+}
+
+.yh-article-row__title {
   min-width: 0; /* allow the title to shrink/ellipsize beside the meta columns */
   font-family: var(--yh-serif);
   color: var(--yh-ink);
@@ -839,12 +1009,9 @@ textarea {
   text-overflow: ellipsis;
 }
 
-/* Compact newspaper-index meta columns: 작성자 / 수정자 / 시간 on one dense line.
-   Fixed-ish widths keep the columns aligned without wrapping. */
+/* Compact newspaper-index meta columns: 작성자 / 수정자 / 시간 on one dense line. */
 .yh-article-row__author,
 .yh-article-row__modifier {
-  flex-shrink: 0;
-  width: 6rem;
   color: var(--yh-gray-dark);
   font-size: 0.82rem;
   white-space: nowrap;
@@ -853,12 +1020,26 @@ textarea {
 }
 
 .yh-article-row__time {
-  flex-shrink: 0;
-  width: 9rem;
   color: var(--yh-gray-mid);
   font-size: 0.78rem;
   white-space: nowrap;
   text-align: right;
+}
+
+/* SPEC-NEWS-REVISE-009 — the list row IS a grid (.yh-desk-row: 8 tracks 기사아이디/제목/작성자/수정자/
+   작성시간/수정시간/기사상태/LockYN). The flex-era fixed widths above (title flex:1, author/modifier 6rem,
+   time 9rem) fought the grid tracks — the 9rem time cell overflowed its 8.5rem track and pushed the
+   작성시간/수정시간 cells out of alignment with the header. In the grid context the TRACK must govern the
+   column, so neutralize the leftover flex sizing for every cell. min-width:0 lets cells ellipsize within
+   their track instead of expanding it. (The row always carries .yh-desk-row, so no standalone-flex
+   consumer is affected — ViewPage.jsx renders className="yh-article-row yh-desk-row".) */
+.yh-desk-row > .yh-article-row__title,
+.yh-desk-row > .yh-article-row__author,
+.yh-desk-row > .yh-article-row__modifier,
+.yh-desk-row > .yh-article-row__time {
+  flex: none;
+  width: auto;
+  min-width: 0;
 }
 
 /* ----------------------------------------------------------

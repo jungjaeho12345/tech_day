@@ -28,6 +28,49 @@ function embedTextBeforePoint(root, container, offset) {
 }
 
 /**
+ * SPEC-NEWS-REVISE-009 — body-text character offset of the inline embed span whose ordinal is
+ * `embedIndex` (span[data-embed-index="N"]): the number of body-text characters that precede that span
+ * in document order (embed-internal text excluded, mirroring getCaretCharOffset / setCaretCharOffset).
+ *
+ * Used by the Backspace embed-delete path to capture WHERE the embed sat BEFORE it is removed, so the
+ * repaint can restore the caret to that same text position (symmetric to the insert path's
+ * setCaretAfterEmbed). Without this, deleting a 0-char embed span leaves the caret on/inside a vanished
+ * node and getCaretCharOffset fails → caret jumps to document start.
+ * Returns null when root is null or no span matches `embedIndex`.
+ * @param {HTMLElement} root
+ * @param {number|null} embedIndex 0-based ordinal matching the span's data-embed-index
+ * @returns {number|null}
+ */
+export function embedTextOffset(root, embedIndex) {
+  if (root == null || embedIndex == null) return null;
+  const span = root.querySelector(`[data-embed-index="${embedIndex}"]`);
+  if (!span || !root.contains(span)) return null;
+  // Walk text nodes in document order, summing the lengths of those OUTSIDE any embed span, and stop as
+  // soon as a node lies at/after the target span. Mirrors getBodyTextFromDom's exclusion rule so the
+  // returned offset matches the bodyText model (embed-internal text contributes 0).
+  const doc = root.ownerDocument;
+  const before = (node) =>
+    (span.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+  const insideAnyEmbed = (node) => {
+    let p = node.parentNode;
+    while (p && p !== root) {
+      if (p.nodeType === 1 && p.hasAttribute && p.hasAttribute('data-embed-index')) return true;
+      p = p.parentNode;
+    }
+    return false;
+  };
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  let total = 0;
+  let n = walker.nextNode();
+  while (n) {
+    // Only count text nodes positioned strictly before the target span and not inside any embed.
+    if (before(n) && !insideAnyEmbed(n)) total += n.textContent.length;
+    n = walker.nextNode();
+  }
+  return total;
+}
+
+/**
  * Current caret character offset within `root` (text characters before the collapsed caret).
  * Returns null when there is no selection inside `root` (e.g. editor not focused).
  * SPEC-NEWS-REVISE-001: text inside inline embed spans ([data-embed-index]) is excluded so the offset
@@ -180,7 +223,7 @@ export function findEmbedIndexBeforeCaret(root) {
   if (!root.contains(range.startContainer)) return null;
 
   let node = range.startContainer;
-  let offset = range.startOffset;
+  const offset = range.startOffset;
 
   // If the caret is inside a text node past its start, a real character precedes it → normal backspace.
   if (node.nodeType === 3) {
