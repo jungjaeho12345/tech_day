@@ -164,7 +164,6 @@ function buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed) {
   if (embed.type === 'video') {
     span.setAttribute('data-testid', 'embed-video');
     span.classList.add('yh-embed', 'yh-embed--video');
-    // news.md 기사 에디터: 클립보드에서 붙여넣기한 이미지/유투브 크기는 에디터크기 기준 10%*10%.
     if (embed.source === 'clipboard') span.classList.add('yh-embed--clipboard');
     if (embed.thumbnailUrl) {
       const img = doc.createElement('img');
@@ -209,26 +208,15 @@ function buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed) {
   return span;
 }
 
-// @MX:NOTE: [AUTO] Render the editor contentEditable from a structured content (text blocks + inline
-// embeds). Inline embeds appear at their exact position between text blocks, satisfying news.md
-// "본문 커서 위치에 임베딩". DOM textContent EXACTLY equals bodyText (embed spans contribute no text),
-// so caret offsets and character counts remain byte-stable. Role-based coloring (제목/부제목/본문/(끝))
-// is computed from the global bodyText so line semantics survive embeds that split text blocks.
-//
-// SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE: paintEditor accepts an optional `onRemoveEmbed(index)` so
-// each embed renders an × affordance (D2-6 = C); pass `undefined` to keep the old read-only render.
 function paintEditor(el, content, onRemoveEmbed) {
   const doc = el.ownerDocument;
-  // Backwards-compatible: callers passing a plain string get the legacy text-only paint.
   const blocks = typeof content === 'string'
     ? [{ type: 'text', text: content }]
     : (content?.blocks ?? []);
   const bodyText = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
   const segments = buildColorSegments(bodyText);
 
-  // Map each embed block to its text-character position (sum of preceding text-block lengths).
-  // Also keep the embed's original order index for the data-embed-index attribute.
-  const embedAtPos = []; // { pos, embed, index }
+  const embedAtPos = [];
   let textPos = 0;
   let embedIndex = 0;
   for (const b of blocks) {
@@ -241,7 +229,7 @@ function paintEditor(el, content, onRemoveEmbed) {
   }
 
   const frag = doc.createDocumentFragment();
-  let pos = 0; // running text-character position across segments
+  let pos = 0;
   let nextEmbedIdx = 0;
 
   const emitEmbedsAt = (currentPos) => {
@@ -252,7 +240,6 @@ function paintEditor(el, content, onRemoveEmbed) {
     }
   };
 
-  // Flush embeds whose position lies at pos=0 before any segment.
   emitEmbedsAt(0);
 
   for (const seg of segments) {
@@ -264,7 +251,6 @@ function paintEditor(el, content, onRemoveEmbed) {
     }
     const segStart = pos;
     const segEnd = pos + seg.text.length;
-    // Any embeds whose position is strictly inside this segment split it.
     let cursor = segStart;
     while (nextEmbedIdx < embedAtPos.length && embedAtPos[nextEmbedIdx].pos < segEnd) {
       const target = embedAtPos[nextEmbedIdx].pos;
@@ -288,25 +274,14 @@ function paintEditor(el, content, onRemoveEmbed) {
     pos = segEnd;
     emitEmbedsAt(pos);
   }
-  // Trailing embeds beyond end of text (e.g. legacy append at end with empty body).
   while (nextEmbedIdx < embedAtPos.length) {
     const { embed, index } = embedAtPos[nextEmbedIdx];
     frag.appendChild(buildEmbedInlineSpan(doc, embed, index, onRemoveEmbed));
     nextEmbedIdx += 1;
   }
-  // Trailing-newline render padding (v0.3.0 Enter-2회 증상 보정): in a pre-wrap contentEditable a
-  // document-final '\n' does NOT create a visible line box, so Enter at the end of the body LOOKED
-  // like a no-op until pressed twice. A trailing <br> renders that last empty line; <br> contributes
-  // nothing to textContent, so bodyText/caret math is unaffected.
   if (bodyText.endsWith('\n')) {
     frag.appendChild(doc.createElement('br'));
   }
-  // SPEC-NEWS-REVISE-001 (첫 줄 점프 fix): when the editor ends with a contenteditable=false embed span,
-  // Chrome has NO editable caret position after it — a selection placed there is silently relocated and the
-  // next typed character lands at document start (the first-line-jump regression). A trailing <br> gives
-  // contentEditable a real final editable line, so a caret anchored just before it is a valid, typeable
-  // position right behind the embed. It contributes 0 characters to textContent, so bodyText and all
-  // char-offset math (getBodyTextFromDom / setCaretCharOffset, which only walk text nodes) stay byte-stable.
   if (frag.lastChild && frag.lastChild.nodeType === 1
       && frag.lastChild.hasAttribute?.('data-embed-index')) {
     const filler = doc.createElement('br');
@@ -316,20 +291,8 @@ function paintEditor(el, content, onRemoveEmbed) {
   el.replaceChildren(frag);
 }
 
-// @MX:NOTE: [AUTO] contentEditable body editor — typeable plain text (editor-body) plus a rendered list of
-// ordered inline embeds (REQ-EDIT-ADP/EMBED). The contentEditable text is uncontrolled to preserve the caret;
-// it is only written from props when the markup is loaded externally (length change without focus).
-// news.md 기사 에디터: lines are colored by role and Alt+Y appends a gold "(끝)". Korean IME safety: the editor
-// is NEVER recolored on keystroke/during composition (that breaks Hangul). Recoloring happens only on
-// compositionend, blur, and programmatic body-text changes — the caret is preserved by character offset.
-// Enter/Shift+Enter are intercepted on keydown to splice a model '\n' at the caret (the model is authoritative
-// for newlines), so the browser never inserts block markup that would desync the repaint and jump the caret.
 function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onCaretChange, onRemoveEmbed, pendingEmbedCaretRef, readOnly = false }) {
   const ref = useRef(null);
-  // SPEC-NEWS-REVISE-001 — embed model count seen at the last repaint, so the repaint effect can detect
-  // an embed INSERTION (count increase) and place the caret right after the new embed span instead of at
-  // the shared char-offset (which can land the caret BEFORE the 0-char embed). pendingEmbedCaretRef (from
-  // the parent) carries the inserted embed's caret offset; handlePaste sets it for the paste path.
   const prevEmbedCountRef = useRef((content?.blocks ?? []).filter((b) => b.type === 'embed').length);
   const composingRef = useRef(false);
   // SPEC-NEWS-REVISE-002 IME 보강 — composingRef 는 onCompositionEnd 맨 첫에 동기적으로 false 가 되어
@@ -340,13 +303,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // 음절의 compositionStart 또는 unmount 가 이 플래그/예약을 취소한다.
   const justComposedRef = useRef(false);
   const justComposedRafRef = useRef(null);
-  // Stable ref to onRemoveEmbed so paintWithCaret/recolor/insertNewline never close over a stale handler.
   const onRemoveEmbedRef = useRef(onRemoveEmbed);
   onRemoveEmbedRef.current = onRemoveEmbed;
-  // Korean IME 1-press Enter fix: when Enter commits an active composition, the IME consumes the
-  // keystroke and our handleEnter must NOT preventDefault (else the syllable is lost). We record the
-  // user's intent here and flush a single newline insertion on compositionend so a single Enter both
-  // commits the syllable AND breaks the line, instead of requiring a second Enter.
   const pendingEnterAfterIme = useRef(false);
   // SPEC-NEWS-REVISE 한글 IME 1-press Enter 보강 — 합성 중 Enter 를 compositionend 분기로 위임하지만,
   // Windows 한글 IME 에는 Enter keydown 이 isComposing/keyCode 229 를 보고하면서도 뒤따르는
@@ -355,26 +313,15 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // Enter 를 2~3 번 눐러야 하는 간헐 증상). 한 프레임 뒤 폴백을 예약해, compositionend 가 끝내 소비하지
   // 않으면(pendingEnterAfterIme 여전히 true) 직접 줄바꾸을 삽입한다. 예약 id 는 cancel 용으로 보관한다.
   const pendingEnterRafRef = useRef(null);
-  // Stable ref to current content so imperative paintEditor calls (insertNewline, Ctrl+D, recolor)
-  // can preserve inline embeds when only the text changes. Updated on every render.
   const contentRef = useRef(content);
   contentRef.current = content;
 
-  // Build a content snapshot with the given replacement bodyText, preserving existing embed blocks.
-  // The new bodyText becomes a single text block; trailing embeds (or originally interleaved embeds)
-  // are appended in their original relative order. This is a presentation-only helper used by the
-  // imperative paint paths; the controller (setBodyMarkup) will normalize the model on the next tick.
   const contentWithText = useCallback((text) => {
     const embedBlocks = (contentRef.current?.blocks ?? []).filter((b) => b.type === 'embed');
     const blocks = text === '' ? [...embedBlocks] : [{ type: 'text', text }, ...embedBlocks];
     return { blocks };
   }, []);
 
-  // Bug 1 fix — read the editor's live DOM into an ORDERED content document so the true interleave of
-  // text and inline embeds is preserved through a repaint. Embed descriptors are recovered from the
-  // model (contentRef) by their data-embed-index ordinal; a fallback minimal descriptor is used if an
-  // ordinal is missing. Unlike contentWithText (which placed all text before all embeds), this keeps a
-  // trailing embed ABOVE text typed after it — so pressing Enter never hoists the embed below the text.
   const orderedContentFromDom = useCallback((el) => {
     const embedBlocks = (contentRef.current?.blocks ?? []).filter((b) => b.type === 'embed');
     return readOrderedContentFromDom(el, (ordinal) => {
@@ -383,27 +330,21 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     });
   }, []);
 
-  // news.md 기사 에디터: 클립보드에서 복사하여 붙여넣기한 이미지/유투브를 본문에 임베딩한다. (10%x10% size
-  // comes from the existing .yh-embed CSS.) An image item -> read as a data URL and embed as an inline image;
-  // a YouTube URL in the pasted text -> embed as an inline video. Otherwise let normal plain-text paste proceed
-  // (do NOT preventDefault). Resilient to jsdom (clipboardData/items may be missing).
   const handlePaste = useCallback((e) => {
     const cd = e.clipboardData;
-    if (!cd) return; // no clipboard data -> normal paste
+    if (!cd) return;
     const imageFile = findClipboardImageFile(cd.items);
     if (imageFile) {
       e.preventDefault();
       readFileAsDataUrl(imageFile)
         .then((dataUrl) => {
-          // SPEC-NEWS-REVISE-001 — paste appends at body end (offset undefined): mark a pending insert so
-          // the repaint anchors the caret right after the new (trailing) embed span.
           if (pendingEmbedCaretRef) pendingEmbedCaretRef.current = { offset: undefined };
           onPasteEmbed({
             type: 'image', source: 'clipboard', title: '붙여넣은 이미지',
             url: dataUrl, thumbnailUrl: dataUrl,
           });
         })
-        .catch(() => { /* read failed -> nothing to embed */ });
+        .catch(() => {});
       return;
     }
     const text = cd.getData ? cd.getData('text') : '';
@@ -413,15 +354,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
       onPasteEmbed({ type: 'video', source: 'clipboard', title: '붙여넣은 영상', url: text.trim() });
       return;
     }
-    // Plain text (or anything else): do not preventDefault — let the browser paste the text normally.
   }, [onPasteEmbed]);
 
-  // Paint a content snapshot (or string) into the editor while preserving the caret by character
-  // offset (caret restored only when the editor is focused). Pure presentation — DOM textContent
-  // ends up exactly equal to the body text (embed spans contribute no text).
-  // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE — single source of truth for paint calls so EVERY repaint
-  // (initial mount, Enter, Ctrl+D, IME compositionEnd, paintWithCaret) consistently carries the latest
-  // onRemoveEmbed callback. Using a ref means React re-renders never produce a stale callback closure.
   const paintNow = useCallback((el, contentOrText) => {
     paintEditor(el, contentOrText, onRemoveEmbedRef.current);
   }, []);
@@ -438,33 +372,18 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     if (caret != null) setCaretCharOffset(el, caret);
   }, [paintNow]);
 
-  // Recolor the editor's CURRENT contents in place (compositionend/blur). Caret-preserving.
-  // Use the latest content (with existing embeds) reskinned with the live DOM text so inline embeds
-  // are preserved across recolor.
   const recolor = useCallback(() => {
     const el = ref.current;
     if (el) paintWithCaret(contentWithText(getBodyTextFromDom(el)));
   }, [paintWithCaret, contentWithText]);
 
-  // Make the MODEL authoritative for newlines (caret-jump bug fix). The browser's default Enter in a
-  // contentEditable inserts block markup (<div>/<br>) that does NOT match our '\n'-based colored model;
-  // the structural mismatch makes the sync repaint restore the caret to offset 0 (the first/제목 line).
-  // Instead we intercept Enter here, splice a literal '\n' into the body text at the caret ourselves, then
-  // paint + place the caret + push the model — so the browser never inserts block markup. Shared by Enter
-  // (insertParagraph) and Shift+Enter (insertLineBreak); both produce a single '\n' in this plain model.
   const insertNewline = useCallback((el) => {
-    // Source of truth is the colored model's `bodyText` prop, NOT el.textContent, so the splice stays
-    // consistent with what the recolor paints (null offset -> end of text).
     const offset = getCaretCharOffset(el);
     const next = insertNewlineAt(bodyText, offset);
     const caret = (offset == null ? bodyText.length : Math.min(offset, bodyText.length)) + 1;
-    // Bug 1 fix — splice the newline into the DOM-ORDERED content so a trailing embed stays ABOVE the
-    // text typed after it (the old contentWithText put all text before all embeds, hoisting the image
-    // below the typed line). insertNewlineIntoContent keeps every embed at its interleaved position.
     const nextContent = insertNewlineIntoContent(orderedContentFromDom(el), offset);
     paintNow(el, nextContent);
     setCaretCharOffset(el, caret);
-    // Push the ORDERED content (2nd arg) so the model/markup keeps the embed above the typed line.
     onChangeText(next, nextContent);
   }, [bodyText, onChangeText, orderedContentFromDom, paintNow]);
 
@@ -477,7 +396,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     const offset = getCaretCharOffset(el);
     const next = insertNewlineAt(text, offset);
     const caret = (offset == null ? text.length : Math.min(offset, text.length)) + 1;
-    // Bug 1 fix (same ordering preservation as insertNewline, for the IME-commit Enter path).
     const nextContent = insertNewlineIntoContent(orderedContentFromDom(el), offset);
     paintNow(el, nextContent);
     setCaretCharOffset(el, caret);
@@ -514,7 +432,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
       if (typeof requestAnimationFrame === 'function') {
         pendingEnterRafRef.current = requestAnimationFrame(runFallback);
       } else {
-        // rAF 미지원 환경(구형 jsdom 등) — justComposed 정리와 동일한 마이크로태스크 폴백 패턴.
         Promise.resolve().then(runFallback);
       }
       return true;
@@ -523,16 +440,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     return true;
   }, [insertNewline, insertNewlineFromDom]);
 
-  // Sync the body text from props into the (uncontrolled) contentEditable. This fires for:
-  //   - initial mount (paint empty/loaded text),
-  //   - programmatic changes: edit-load (?id=), embed insert, reset, and Alt+Y "(끝)" append.
-  // It deliberately repaints (with coloring) ONLY when el.textContent !== bodyText, i.e. when the DOM is
-  // out of sync with the model — which is true for programmatic changes but NOT for in-progress typing
-  // (where onInput already pushed the same text to the model). This is the IME-safety guarantee: ordinary
-  // keystrokes/composition never trigger a repaint here; coloring during typing only happens on
-  // compositionend/blur. The caret (when focused, e.g. Alt+Y) is preserved by paintWithCaret.
-  // SPEC-NEWS-REVISE-001 D-7: 합성(composition) 중에는 절대 repaint하지 않는다 — replaceChildren이
-  // IME 내부 상태를 파괴해 "1글자 지연" 증상을 유발한다.
   useEffect(() => {
     // SPEC-NEWS-REVISE-002 IME 보강 — composingRef(합성 중)밐 아니라 justComposedRef(직전 compositionend
     // 한 틱)도 가드한다. compositionend → 다음 compositionstart 사이의 짧은 윈도에서 이 passive effect 가
@@ -541,15 +448,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     if (composingRef.current || justComposedRef.current) return;
     const el = ref.current;
     if (!el) return;
-    // Repaint when DOM is out of sync with the model text OR when content (embed blocks) changes.
-    // Embeds contribute no text so we cannot rely on textContent alone; check embed count too.
     const embedDomCount = el.querySelectorAll('[data-embed-index]').length;
     const embedModelCount = (content?.blocks ?? []).filter((b) => b.type === 'embed').length;
     if (getBodyTextFromDom(el) !== bodyText || embedDomCount !== embedModelCount) {
-      // SPEC-NEWS-REVISE-001 — detect an embed INSERTION (count increased) with a pending insert marker
-      // (set by the button path in the parent or the paste path in handlePaste). After painting, anchor
-      // the caret right after the inserted embed span so the next keystroke lands behind the 0-char embed,
-      // not in front of it. Non-embed repaints (Alt+Y, edit-load, reset, Ctrl+D) keep the char-offset path.
       const inserted = embedModelCount > prevEmbedCountRef.current
         && pendingEmbedCaretRef?.current != null;
       if (inserted) {
@@ -557,8 +458,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         pendingEmbedCaretRef.current = null;
         const ordinal = embedOrdinalAtInsertOffset(content, offset);
         paintNow(el, content);
-        // Only steer the caret when the editor is focused; otherwise leave selection untouched (the
-        // button path blurs the editor, but focusing+placing the caret restores the expected typing point).
         if (ordinal != null) {
           el.focus?.();
           setCaretAfterEmbed(el, ordinal);
@@ -570,18 +469,14 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     prevEmbedCountRef.current = embedModelCount;
   }, [content, bodyText, paintWithCaret, paintNow, pendingEmbedCaretRef]);
 
-  // Initial mount: paint whatever the model currently holds so loaded/colored text shows immediately.
   useEffect(() => {
     const el = ref.current;
     if (el && el.textContent === '' && (bodyText !== '' || (content?.blocks ?? []).length > 0)) {
       paintNow(el, content);
     }
-    // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // IME 보강 — unmount 시 예약된 just-composed 클리어 rAF 를 취소해 언마운트된 컴포넌트의 ref 에
-  // 늦게 기록하는 stale 콜백을 막는다 (진단 risk (a) 완화).
   useEffect(() => () => {
     if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
       cancelAnimationFrame(justComposedRafRef.current);
@@ -613,8 +508,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           // 파괴해 입력 1글자가 지연된 듯 보이는 증상이 발생한다. 합성 결과는 compositionEnd에서
           // 한 번에 flush한다.
           if (composingRef.current) return;
-          // Bug 1 fix — push the DOM-ORDERED content so text typed AFTER a trailing embed keeps the
-          // embed above it in the model/markup (not just visually). Flat text alone reordered them.
           const el = e.currentTarget;
           onChangeText(getBodyTextFromDom(el), orderedContentFromDom(el));
           if (onCaretChange) {
@@ -653,16 +546,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           }
         }}
         onCompositionEnd={(e) => {
-          // Hangul composition finished: flush the text to state. SPEC-NEWS-REVISE-001 D-7:
-          // 절대 여기서 recolor()를 호출하지 않는다. 연속 한글 타이핑 시 한 음절의 compositionEnd
-          // 직후 다음 음절의 compositionStart가 동기적으로 fire되는데, 그 사이의 paintEditor는
-          // 새로 시작된 IME 합성을 파괴해 "1글자 지연" 증상을 만든다. 색칠은 onBlur, Enter(insertNewline),
-          // 기타 모델-주도 변경 시점에만 수행한다.
           composingRef.current = false;
-          // IME 보강 — composingRef 는 즉시 false 로 내려 onInput 게이팅을 종전대로 유지하되,
-          // "방금 합성을 끝냈다" 플래그를 한 틱(다음 프레임) 동안 켜 둔다. 그 사이에 다음 음절의
-          // compositionStart 가 오면 위에서 이 예약을 취소한다(연속 타이핑 = race 흡수). 타이핑이 실제로
-          // 멈추면 rAF 가 한 번 fire 되어 플래그를 내린다. cancelAnimationFrame 으로 중복 예약을 방지.
           if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
             cancelAnimationFrame(justComposedRafRef.current);
           }
@@ -673,14 +557,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               justComposedRafRef.current = null;
             });
           } else {
-            // rAF 미지원 환경(구형 jsdom 등) — 마이크로태스크로 폴백.
             Promise.resolve().then(() => { justComposedRef.current = false; });
           }
-          // Bug 1 fix — preserve text/embed interleave on IME commit too (ordered DOM snapshot).
           onChangeText(getBodyTextFromDom(e.currentTarget), orderedContentFromDom(e.currentTarget));
-          // If the composition was committed by Enter, also break the line here so the user does not
-          // need to press Enter a second time (Korean IME 1-press Enter fix). insertNewlineFromDom의
-          // paintEditor는 합성이 막 끝난(=새 합성이 아직 시작되지 않은) 안전한 순간에만 수행된다.
           if (pendingEnterAfterIme.current) {
             pendingEnterAfterIme.current = false;
             // 폴백 예약이 살아 있으면 취소한다 — 여기서 줄바꾸을 소비했으므로 폴백이 또 삽입하면 중복 '\n'.
@@ -694,9 +573,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         }}
         onBlur={() => { if (!composingRef.current) recolor(); }}
         onKeyDown={(e) => {
-          // SPEC-NEWS-REVISE-002 REQ-EMBED-DELETE (D2-6 = C) — Backspace on a focused embed node
-          // removes that embed (AC-EMB-DEL-1). The target may be the embed span itself or any of its
-          // children; walk up to the nearest [data-embed-index] ancestor.
           if (e.key === 'Backspace' && typeof onRemoveEmbedRef.current === 'function') {
             let node = e.target;
             while (node && node !== e.currentTarget) {
@@ -710,10 +586,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               }
               node = node.parentNode;
             }
-            // SPEC-NEWS-REVISE-003 — caret-adjacent Backspace: when the collapsed caret sits
-            // immediately AFTER an inline embed (no intervening text character), delete exactly that
-            // one embed (preventDefault + existing removal path). Delete key is out of scope; the
-            // inside-embed Backspace above and the × button are untouched.
             const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
             if (adjacentIdx != null) {
               e.preventDefault();
@@ -721,8 +593,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               return;
             }
           }
-          // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
-          // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
           if (handleEnter(e)) return;
           // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D -> 쫠랿이 위치한 라인(또는
           // 선택에 일부라도 걸친 모든 라인)을 라인 단위 round-up 삭제 (D-2 결정 잠금). preventDefault로
@@ -743,7 +613,6 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             onChangeText(next.value);
             return;
           }
-          // Alt+Y: append "(끝)" (골드색) to the end of the body. preventDefault so no 'y' is typed.
           if (e.altKey && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) {
             e.preventDefault();
             onAltY();
@@ -778,9 +647,6 @@ export function WritePage({ user }) {
   // 포커스가 BodyEditor를 떠난 뒤지만, 마지막으로 알려진 쫠랿 offset을 ref로 보존해 인라인 삽입한다.
   const lastCaretRef = useRef(null);
   const handleCaretChange = useCallback((off) => { lastCaretRef.current = off; }, []);
-  // SPEC-NEWS-REVISE-001 — shared "pending embed insert" channel between the button path (here) and the
-  // paste path (BodyEditor). Set to { offset } right before ctrl.embed so BodyEditor's repaint can place
-  // the caret right after the freshly inserted embed span. `offset === undefined` => append semantics.
   const pendingEmbedCaretRef = useRef(null);
   const insertEmbedAtCaret = useCallback((descriptor) => {
     const caret = lastCaretRef.current;
@@ -790,16 +656,12 @@ export function WritePage({ user }) {
 
   return (
     <main className="yh-write-layout">
-      {/* SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — lockError banner stays above the editor and is announced
-          assertively to screen readers (D2-1 = C, NFR-A11Y). The editor body is contentEditable=false
-          while lockError is set so the user cannot type into a locked article. */}
       {ctrl.lockError ? (
         <div role="alert" aria-live="assertive" className="yh-lock-banner">
           해당 기사는 다른 페이지/세션에서 편집 중입니다.
         </div>
       ) : null}
 
-      {/* Left: body editor (60%) — typeable text + ordered inline embeds (DP-F1 adapter behind ctrl). */}
       <section data-testid="editor-region" className="yh-editor-region" aria-label="에디터">
         <BodyEditor
           content={ctrl.content}
@@ -814,7 +676,6 @@ export function WritePage({ user }) {
         />
       </section>
 
-      {/* Right: metadata panel (40%) */}
       <section data-testid="metadata-region" className="yh-meta-region" aria-label="메타데이터">
         {/* 송고 / 보류 / KILL action buttons at the top (news.md 기사 작성 페이지 내 버튼).
             Visibility is gated by role + the editing article's status:
@@ -837,6 +698,14 @@ export function WritePage({ user }) {
             <button type="button" className="yh-btn yh-btn--kill"
               disabled={!!ctrl.lockError}
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+          ) : null}
+          {isDdh && (user.role === 'D' || user.role === 'Z') ? (
+            <>
+              <button type="button" className="yh-btn yh-btn--primary"
+                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+              <button type="button" className="yh-btn yh-btn--kill"
+                onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+            </>
           ) : null}
         </div>
 
