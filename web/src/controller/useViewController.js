@@ -66,11 +66,12 @@ function filterForMenu(menu, user, selectedDepartment) {
       // 기사만 나열한다"). Comma-separated multi-status expands to an IN clause in articleModel.query.
       return { status: 'RDS,DDH' };
     case '부서별 송고': {
-      // DPS-only (news.md: "부서별 송고페이지는 DPS기사만 조회"). Query only after a
-      // department is selected and 조회 is pressed (handled by caller).
-      // Multi-select: normalize array to comma-separated string.
+      // DPS-only (news.md §2.8: "부서별 송고페이지는 DPS기사만 조회"). '전체 = 부서 필터 없음, DPS 전체':
+      // 부서 미지정(전체)이면 department 키 없이 { status: 'DPS' } 로 전체 부서 DPS 를 조회한다 — 이로써
+      // 메뉴 진입 즉시 자동 조회가 가능하고, lastFilterRef 가 채워져 SSE lock/change 재조회(LockYN 실시간
+      // 갱신)가 동작한다. 특정 부서를 골라 조회를 누르면 { department, status: 'DPS' } 로 좁혀 재조회한다.
       const department = normalizeDepartments(selectedDepartment);
-      return department ? { department, status: 'DPS' } : null;
+      return department ? { department, status: 'DPS' } : { status: 'DPS' };
     }
     default:
       return null;
@@ -107,8 +108,9 @@ export function useViewController(user) {
     setArticles(sortByCreatedAtDesc(rows));
   }, [model]);
 
-  // Auto-query whenever a non-deferred menu becomes active (부서별 송고 defers to the 조회 button;
-  // 부서별 작성 auto-queries the logged-in user's department, REQ-FE-VIEW-005 v0.4.0).
+  // Auto-query whenever a menu becomes active. 부서별 작성 auto-queries the logged-in user's department
+  // (REQ-FE-VIEW-005 v0.4.0); 부서별 송고 auto-queries 전체 부서 DPS ({ status: 'DPS' }) on entry and
+  // re-queries the chosen department when 조회 is pressed.
   useEffect(() => {
     // Populate the department dropdown from the separated data-source (DP-F4), distinct.
     // Both department menus (부서별 작성 v0.4.0 + 부서별 송고) share the same Select source.
@@ -121,12 +123,9 @@ export function useViewController(user) {
         setDepartments(distinct);
       })();
     }
-    if (menu === '부서별 송고') {
-      // Deferred menu: clear the list AND the last filter so a realtime change signal arriving
-      // before 조회 cannot replay the previous menu's filter into this view.
-      runQuery(null);
-      return;
-    }
+    // 부서별 송고 도 진입 즉시 자동 조회한다 (filterForMenu 가 선택 부서 없으면 { status: 'DPS' } 반환):
+    // 진입 직후 전체 송고 기사가 즉시 나열된다. lastFilterRef 가 채워져 SSE lock/change 신호 재조회(LockYN
+    // 실시간 갱신)도 활성화된다. 부서를 골라 조회를 누르면 queryDepartment 가 그 부서로 재조회한다.
     runQuery(filterForMenu(menu, user));
   }, [menu, model, runQuery, user]);
 

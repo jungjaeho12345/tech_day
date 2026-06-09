@@ -78,33 +78,42 @@ describe('ViewPage realtime + status bar (REQ-FE-VIEW-001..003) [DP-F2]', () => 
     expect(screen.queryByText('구버전')).not.toBeInTheDocument();
   });
 
-  it('메뉴 전환 직전의 in-flight 재조회가 부서별 송고 빈 목록을 오염시키지 않는다 (seq 가드)', async () => {
+  it('메뉴 전환 직전의 in-flight 재조회가 부서별 송고 자동 조회 결과를 오염시키지 않는다 (seq 가드)', async () => {
     const resolvers = [];
     const queryArticles = vi.fn(() => new Promise((resolve) => { resolvers.push(resolve); }));
     const u = userEvent.setup();
     const { model } = renderView(createFakeModel({ queryArticles }));
     await act(async () => { resolvers[0]([{ articleId: 'A-0', title: '데스크 행', status: 'RDS' }]); });
     await screen.findByText('데스크 행');
-    // 데스크 미송고에서 신호 → 재조회 in-flight(pending) 상태로 둔다.
+    // 데스크 미송고에서 신호 → 재조회 in-flight(pending, resolvers[1]) 상태로 둔다.
     act(() => { model.__emit({ type: 'status', articleId: 'A-0' }); });
-    // 응답 도착 전에 부서별 송고(deferred)로 전환 — 목록과 필터가 비워진다.
+    // 부서별 송고로 전환 — 진입 자동 조회({ status: 'DPS' })가 새 in-flight(resolvers[2])로 발사된다.
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    expect(screen.queryByText('데스크 행')).not.toBeInTheDocument();
-    // 이제 늦은 데스크 응답 도착 — 폐기되어 빈 목록이 유지되어야 한다.
+    // 부서별 송고 자동 조회(최신 seq)가 먼저 도착 — DPS 목록이 표시된다.
+    await act(async () => { resolvers[2]([{ articleId: 'A-D', title: '송고 자동', status: 'DPS' }]); });
+    expect(await screen.findByText('송고 자동')).toBeInTheDocument();
+    // 이제 늦은 데스크 재조회 응답(이전 seq)이 도착 — seq 가드로 폐기되어 DPS 목록을 덮지 않는다.
     await act(async () => { resolvers[1]([{ articleId: 'A-9', title: '늦은 데스크 응답', status: 'RDS' }]); });
     expect(screen.queryByText('늦은 데스크 응답')).not.toBeInTheDocument();
+    expect(screen.getByText('송고 자동')).toBeInTheDocument();
   });
 
-  it('부서별 송고 조회 전에는 change 신호가 이전 메뉴 필터를 재생하지 않는다 (deferred 가드)', async () => {
+  it('부서별 송고 진입 시 전체 DPS 를 자동 조회하고, change 신호가 그 { status: DPS } 필터로 재조회한다', async () => {
     const u = userEvent.setup();
-    const queryArticles = vi.fn().mockResolvedValue([{ articleId: 'A-9', title: '누설 금지', status: 'DPS' }]);
+    const queryArticles = vi.fn()
+      .mockResolvedValueOnce([{ articleId: 'A-0', title: '데스크 기본', status: 'RDS' }]) // 데스크 미송고 초기
+      .mockResolvedValueOnce([{ articleId: 'A-9', title: '송고 전체', status: 'DPS' }]) // 부서별 송고 진입 자동 조회
+      .mockResolvedValueOnce([{ articleId: 'A-9', title: '송고 갱신', status: 'DPS' }]); // change 재조회
     const { model } = renderView(createFakeModel({ queryArticles }));
-    await screen.findByText('누설 금지'); // 데스크 미송고 초기 조회 결과
+    await screen.findByText('데스크 기본'); // 데스크 미송고 초기 조회 결과
     await u.click(screen.getByRole('button', { name: '부서별 송고' }));
-    expect(screen.queryByText('누설 금지')).not.toBeInTheDocument();
-    await act(async () => { model.__emit({ type: 'create', articleId: 'A-9' }); });
-    // 여전히 빈 목록: null 필터에서는 신호 기반 재조회를 억제한다.
-    expect(screen.queryByText('누설 금지')).not.toBeInTheDocument();
+    // 진입 즉시 전체 부서 DPS 자동 조회 (전체 = 부서 필터 없음, DPS 전체).
+    expect(await screen.findByText('송고 전체')).toBeInTheDocument();
+    expect(queryArticles.mock.calls.at(-1)[0]).toEqual({ status: 'DPS' });
+    // lastFilterRef 가 { status: 'DPS' } 로 채워져 SSE change 신호가 재조회를 트리거한다 (LockYN 실시간 갱신).
+    await act(async () => { model.__emit({ type: 'lock', articleId: 'A-9' }); });
+    expect(await screen.findByText('송고 갱신')).toBeInTheDocument();
+    expect(queryArticles.mock.calls.at(-1)[0]).toEqual({ status: 'DPS' });
   });
 });
 

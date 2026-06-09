@@ -1,9 +1,14 @@
-// Tests for the non-auth HTTP routes in server/index.js that the auth-wiring suite does not cover:
-//   - GET  /api/health
-//   - GET  /api/articles            (metadata query)
-//   - GET  /api/articles/search?q=  (full-text search)
+// Tests for HTTP routes in server/index.js that the auth-wiring suite does not cover:
+//   - GET  /api/health              (public)
+//   - GET  /api/articles            (metadata query, session-gated H-1)
+//   - GET  /api/articles/search?q=  (full-text search, session-gated H-2)
 //   - PUT  /api/articles/:id        (saveArticle, session-gated)
-//   - GET  /api/stream              (Server-Sent Events realtime bus)
+//   - GET  /api/stream              (Server-Sent Events realtime bus, session-gated H-4)
+//
+// H-1/H-2/H-4 security hardening: the read endpoints now require a valid x-session-id. These tests
+// seed + login an R session and send the header, preserving each test's original intent (verifying
+// the route's data behavior, not its anonymous reachability). Dedicated 401 boundary tests below
+// assert the new gates reject unauthenticated callers.
 //
 // Like serverAuthWiring.test.js these drive the real Express app over an ephemeral port
 // (app.listen(0)) with the built-in fetch client, and use an in-memory SQLite db so the
@@ -49,6 +54,19 @@ function loginSessionId(userId) {
   return controllers.auth.login(userId, 'pw').sessionId;
 }
 
+// Shared read-session for the session-gated GET routes (H-1/H-2/H-4). Seeded once on first use.
+let readSessionId;
+function readSession() {
+  if (readSessionId === undefined) {
+    seedUser('route-reader', 'R');
+    readSessionId = loginSessionId('route-reader');
+  }
+  return readSessionId;
+}
+function authGet(pathAndQuery) {
+  return fetch(`${base}${pathAndQuery}`, { headers: { 'x-session-id': readSession() } });
+}
+
 async function postAction(articleId, { sessionId, body } = {}) {
   const headers = { 'content-type': 'application/json' };
   if (sessionId !== undefined) headers['x-session-id'] = sessionId;
@@ -87,7 +105,7 @@ test('GET /api/health returns { ok: true }', async () => {
 test('GET /api/articles returns all articles as a plain array', async () => {
   const a = controllers.article.create({ title: 'list-one' });
   const b = controllers.article.create({ title: 'list-two' });
-  const res = await fetch(`${base}/api/articles`);
+  const res = await authGet('/api/articles');
   const body = await res.json();
   assert.ok(Array.isArray(body), 'the articles route must return a plain array (frontend contract)');
   const ids = body.map((r) => r.articleId);
@@ -99,11 +117,20 @@ test('GET /api/articles?author= AND-filters by metadata', async () => {
   const uniqueAuthor = 'route-author-XYZ';
   const target = controllers.article.create({ title: 'filtered', author: uniqueAuthor });
   controllers.article.create({ title: 'other', author: 'someone-else' });
-  const res = await fetch(`${base}/api/articles?author=${encodeURIComponent(uniqueAuthor)}`);
+  const res = await authGet(`/api/articles?author=${encodeURIComponent(uniqueAuthor)}`);
   const body = await res.json();
   assert.ok(Array.isArray(body));
   assert.equal(body.length, 1, 'only the matching author row must be returned');
   assert.equal(body[0].articleId, target.articleId);
+});
+
+// H-1 boundary: an unauthenticated list request is rejected with 401 (no roster leak).
+test('GET /api/articles without a session is rejected (401)', async () => {
+  const res = await fetch(`${base}/api/articles`);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, 'unauthenticated');
 });
 
 // --- GET /api/articles/search?q= ------------------------------------------
@@ -112,12 +139,21 @@ test('GET /api/articles/search?q= returns title/content text matches', async () 
   const needle = '고유검색어ZZZ';
   const hit = controllers.article.create({ title: `속보 ${needle}`, content: '본문' });
   const miss = controllers.article.create({ title: '관련없는기사', content: '무관한내용' });
-  const res = await fetch(`${base}/api/articles/search?q=${encodeURIComponent(needle)}`);
+  const res = await authGet(`/api/articles/search?q=${encodeURIComponent(needle)}`);
   const body = await res.json();
   assert.ok(Array.isArray(body), 'search must return a plain array');
   const ids = body.map((r) => r.articleId);
   assert.ok(ids.includes(hit.articleId), 'the matching article must be present');
   assert.ok(!ids.includes(miss.articleId), 'a non-matching article must be excluded');
+});
+
+// H-2 boundary: an unauthenticated search request is rejected with 401.
+test('GET /api/articles/search without a session is rejected (401)', async () => {
+  const res = await fetch(`${base}/api/articles/search?q=anything`);
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, 'unauthenticated');
 });
 
 // --- PUT /api/articles/:id (session-gated R/D/Z, lock-required) --------------
@@ -264,7 +300,11 @@ function parseFrame(raw) {
 
 async function openStream() {
   const ac = new AbortController();
-  const res = await fetch(`${base}/api/stream`, { signal: ac.signal });
+  // H-4: the stream is session-gated; open it with the shared read session.
+  const res = await fetch(`${base}/api/stream`, {
+    signal: ac.signal,
+    headers: { 'x-session-id': readSession() },
+  });
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -294,6 +334,17 @@ async function openStream() {
 
   return { nextFrame, close };
 }
+
+// H-4 boundary: an unauthenticated stream request gets a 401 JSON rejection, not an event stream.
+test('GET /api/stream without a session is rejected (401, no event stream)', async () => {
+  const res = await fetch(`${base}/api/stream`);
+  assert.equal(res.status, 401);
+  assert.ok(!(res.headers.get('content-type') ?? '').includes('text/event-stream'),
+    'an unauthenticated stream must not switch to the SSE content-type');
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, 'unauthenticated');
+});
 
 test('SSE: stream sends a ready frame then a change frame on article create', async () => {
   const stream = await openStream();

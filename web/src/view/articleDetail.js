@@ -2,6 +2,12 @@
 // 상세보기 클릭 시 새 창 — 상단에 공통정보 12개 필드(가로 나열), 하단에 제목/본문을 한 통합 영역에 함께.
 // Pure functions only — no DOM/window access here, so they are unit-testable in isolation.
 // The view layer (ViewPage) calls window.open and writes the returned HTML string.
+//
+// 과업 ③: '기사' 영역의 본문은 공통정보의 "내용"(a.content, 짧은 리드)이 아니라 실제 기사 본문
+// (a.markupVersion — 에디터 직렬화 JSON)을 파싱한 블록(텍스트 + 이미지/영상/기사 임베드)을 순서대로
+// 렌더한다. markupVersion 이 없거나 빈 레거시 기사는 escape 된 a.content 로 안전 폴백한다.
+
+import { deserializeContent } from '../model/editorContent.js';
 
 /**
  * Escape the five HTML-significant characters so dynamic article text cannot break
@@ -61,6 +67,74 @@ function buildCommonInfoRows(article) {
 }
 
 /**
+ * Render a single embed descriptor to a self-contained HTML fragment for the detail popup.
+ * 도메인 §2.4 크기 규약: 사진/영상 figure 폭 612px, 기사 참조 카드 480px. 기존 토큰만 재사용한다.
+ * 모든 동적 텍스트/URL 은 escapeHtml 로 이스케이프한다 (XSS 방지).
+ * @param {{type?: string, title?: string, url?: string, thumbnailUrl?: string, articleId?: string}} embed
+ * @returns {string}
+ */
+function renderEmbed(embed) {
+  if (!embed || typeof embed !== 'object') return '';
+  if (embed.type === 'image') {
+    const src = escapeHtml(embed.thumbnailUrl || embed.url || '');
+    const alt = escapeHtml(embed.title || '삽입 이미지');
+    return `<figure class="yh-detail__embed yh-detail__embed--image">`
+      + `<img src="${src}" alt="${alt}" /></figure>`;
+  }
+  if (embed.type === 'video') {
+    const thumb = embed.thumbnailUrl
+      ? `<img src="${escapeHtml(embed.thumbnailUrl)}" alt="${escapeHtml(embed.title || '영상')}" />`
+      : '';
+    const title = escapeHtml(embed.title || embed.url || '영상');
+    const link = embed.url
+      ? `<a class="yh-detail__embed-link" href="${escapeHtml(embed.url)}" rel="noreferrer">${escapeHtml(embed.url)}</a>`
+      : '';
+    return `<figure class="yh-detail__embed yh-detail__embed--video">`
+      + `${thumb}<figcaption class="yh-detail__embed-cap"><span class="yh-detail__embed-mark">영상</span>`
+      + `<span class="yh-detail__embed-title">${title}</span>${link}</figcaption></figure>`;
+  }
+  if (embed.type === 'article') {
+    const title = escapeHtml(embed.title || embed.articleId || '내부 기사');
+    return `<div class="yh-detail__embed yh-detail__embed--article">`
+      + `<span class="yh-detail__embed-mark">기사</span>`
+      + `<span class="yh-detail__embed-title">${title}</span></div>`;
+  }
+  return '';
+}
+
+/**
+ * Build the '기사' body HTML from a.markupVersion: deserialize to ordered blocks and render text blocks
+ * (escaped, white-space preserved) and embed blocks (image/video/article) IN ORDER. Block order — 본문
+ * 텍스트 → 임베드 → "(끝)" — is preserved exactly as stored. Legacy articles without markupVersion fall
+ * back to the escaped a.content so the popup never breaks.
+ * @param {Record<string, unknown>} article
+ * @returns {string}
+ */
+function buildBodyHtml(article) {
+  const markup = article?.markupVersion;
+  if (markup === undefined || markup === null || markup === '') {
+    // 레거시 폴백: markupVersion 이 없으면 공통정보 content 를 본문으로 (기존 동작과 동일, escape).
+    return escapeHtml(article?.content);
+  }
+  const { blocks } = deserializeContent(markup);
+  if (!blocks.length) {
+    return escapeHtml(article?.content);
+  }
+  return blocks
+    .map((b) => {
+      if (b.type === 'text') {
+        // 텍스트 블록은 escape 하되, .yh-detail__content 의 white-space:pre-wrap 이 개행을 보존한다.
+        return escapeHtml(b.text);
+      }
+      if (b.type === 'embed') {
+        return renderEmbed(b.embed);
+      }
+      return '';
+    })
+    .join('');
+}
+
+/**
  * Build a full standalone HTML document for the article-detail popup window.
  * Layout: 상단 공통정보(12 필드, 가로 나열) → 하단 통합 "기사" 영역(제목 → 본문 함께).
  * 블루/화이트 톤 (CLAUDE.md 디자인 규칙: 파란색과 흰색, 글자색은 파란색).
@@ -70,7 +144,8 @@ function buildCommonInfoRows(article) {
 export function buildArticleDetailHtml(article) {
   const a = article ?? {};
   const title = escapeHtml(a.title) || '(제목 없음)';
-  const body = escapeHtml(a.content);
+  // 과업 ③: 본문은 markupVersion 기반 실제 본문(텍스트 + 임베드, 순서 보존) — content 폴백 포함.
+  const body = buildBodyHtml(a);
   const commonRows = buildCommonInfoRows(a);
 
   return `<!DOCTYPE html>
@@ -166,6 +241,56 @@ export function buildArticleDetailHtml(article) {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     margin: 0;
+  }
+  /* 인라인 임베드 (도메인 §2.4): 사진/영상 figure 폭 612px, 기사 참조 카드 480px. 기존 토큰만 재사용. */
+  .yh-detail__embed {
+    display: block;
+    margin: 16px 0;
+  }
+  .yh-detail__embed--image,
+  .yh-detail__embed--video {
+    max-width: 612px;
+  }
+  .yh-detail__embed img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--yh-gray-line);
+    border-radius: 4px;
+  }
+  .yh-detail__embed-cap {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.95rem;
+    color: var(--yh-gray-mid);
+  }
+  .yh-detail__embed--article {
+    max-width: 480px;
+    padding: 12px 16px;
+    border: 1px solid var(--yh-gray-line);
+    border-left: 4px solid var(--yh-blue);
+    border-radius: 4px;
+    background: var(--yh-blue-soft);
+  }
+  .yh-detail__embed-mark {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--yh-blue);
+    border-radius: 4px;
+  }
+  .yh-detail__embed-title {
+    font-weight: 600;
+    color: var(--yh-ink);
+  }
+  .yh-detail__embed-link {
+    display: block;
+    margin-top: 4px;
+    color: var(--yh-blue);
+    overflow-wrap: anywhere;
   }
 </style>
 </head>

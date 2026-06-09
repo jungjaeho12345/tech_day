@@ -165,6 +165,12 @@ export function WriteWorkspace({ user }) {
 
   // 탭 닫기: 에디터 unmount(편집 잠금은 컨트롤러 cleanup 이 해제) + 그 탭의 보존 초안 폐기.
   // 마지막 탭을 닫으면 빈 '새 기사' 탭 1개를 유지한다 (writer.do 는 항상 에디터를 보여준다).
+  //
+  // SPEC-NEWS-REVISE-008 AC-REL-2 — 닫는 탭이 편집 탭이면, 그 컨트롤러의 unmount cleanup 이
+  // editTabSurvives 로 "탭이 아직 살아있는지"를 newsroom.editorTabs 에서 읽는다. 그 판정은 React 의
+  // passive 효과(writeStoredTabs)보다 먼저, 즉 unmount 커밋 시점에 일어나므로, 닫힌 탭을 sessionStorage
+  // 에서 **동기적으로** 먼저 제거해 둬야 컨트롤러가 해제를 수행한다(그러지 않으면 락이 남는다). 일반 조회
+  // 이동(이 함수를 거치지 않는 전체 unmount)에서는 탭 목록이 그대로라 락이 유지된다(AC-LOCK-1 과 대비).
   const closeTab = useCallback((tabId) => {
     removeStoredDraft(tabId);
     setState((s) => {
@@ -177,7 +183,10 @@ export function WriteWorkspace({ user }) {
         tabs = [{ id: `t${seq}`, editArticleId: null }];
       }
       const activeId = s.activeId === tabId ? tabs[Math.min(idx, tabs.length - 1)].id : s.activeId;
-      return { tabs, activeId, seq };
+      const next = { tabs, activeId, seq };
+      // 동기 영속 — unmount cleanup 의 editTabSurvives 가 닫힌 탭을 더는 못 보게 한다(AC-REL-2).
+      writeStoredTabs(next);
+      return next;
     });
   }, []);
 

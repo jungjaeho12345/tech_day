@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 import { createSchema, backfillContentsDepartmentFromAuthor } from '../src/db/schema.js';
 import { createControllers } from '../src/controllers/index.js';
@@ -32,6 +34,30 @@ export function createApp({ controllers, sessionService }) {
 
   const app = express();
   app.use(express.json());
+  // M-5: baseline security headers. CSP is tuned so the React+Vite SPA, its SSE stream, and
+  // external media thumbnails (YouTube/Google image search) keep working — not maximally strict.
+  //   - scriptSrc 'self' (the built SPA bundle is same-origin)
+  //   - imgSrc 'self' data: https: (search results return https thumbnails; data: for inline assets)
+  //   - connectSrc 'self' (fetch + EventSource /api/stream are same-origin)
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https:'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", 'data:'],
+        mediaSrc: ["'self'", 'https:'],
+        frameSrc: ["'self'", 'https:'],
+        // frameAncestors: block this app from being embedded elsewhere (clickjacking
+        // defense at the CSP level; modern browsers prefer this over X-Frame-Options).
+        frameAncestors: ["'self'"],
+      },
+    },
+    // The SPA fetches https media thumbnails cross-origin; the default require-corp would block them.
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(cors({
     origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
   }));
@@ -57,8 +83,19 @@ export function createApp({ controllers, sessionService }) {
   });
 
   // --- Auth -----------------------------------------------------------------
+  // M-6: brute-force throttle on the login endpoint ONLY (15m window, 10 attempts/IP).
+  // standardHeaders surfaces RateLimit-* so clients can back off; the body matches the app's
+  // { ok:false, reason } convention used by every other rejection.
+  const loginRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, reason: 'too-many-attempts' },
+  });
+
   // POST /api/login -> { ok, user?, sessionId? }. Client stores sessionId and sends it back.
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', loginRateLimiter, (req, res) => {
     const { userId, password } = req.body ?? {};
     const result = controllers.auth.login(userId, password, sessionIdOf(req));
     res.json(result);
@@ -97,12 +134,12 @@ export function createApp({ controllers, sessionService }) {
       const result = controllers.auth.manageUsers(sessionIdOf(req), 'query', req.query);
       return res.json(result.ok ? result.users : { ok: false, reason: result.reason });
     }
-    // Non-Z authenticated session: expose only department + identifying labels, never the full roster.
+    // Non-Z authenticated session: the frontend only reads u.department (useViewController populates
+    // the 부서별 작성/송고 dropdown from it). C-2 scope reduction — drop userId/departmentCode so the
+    // non-管理 path cannot enumerate the user roster's identifiers; expose only name + department.
     const minimal = controllers.user.query(req.query).map((u) => ({
-      userId: u.userId,
       name: u.name,
       department: u.department,
-      departmentCode: u.departmentCode,
     }));
     return res.json(minimal);
   });
@@ -129,13 +166,21 @@ export function createApp({ controllers, sessionService }) {
 
   // --- Articles -------------------------------------------------------------
   // GET /api/articles -> array. Query params are AND-combined metadata filters.
+  // H-1: session-gated — the article roster is not public (no unauthenticated leak).
   app.get('/api/articles', (req, res) => {
-    res.json(controllers.article.query(req.query));
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
+    return res.json(controllers.article.query(req.query));
   });
 
   // GET /api/articles/search?q= -> array of text-matched articles.
+  // H-2: same session gate as the list route.
   app.get('/api/articles/search', (req, res) => {
-    res.json(controllers.article.search(req.query.q ?? ''));
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
+    return res.json(controllers.article.search(req.query.q ?? ''));
   });
 
   // POST /api/articles/:id/action { action } -> { ok, status?, reason? }.
@@ -315,8 +360,12 @@ export function createApp({ controllers, sessionService }) {
   // 2026-06-06 directive (supersedes D2-8 fallback): type 'video' -> YouTube, 'image' -> Google
   // Image Search. Unknown/missing type normalizes to 'video'. No cross-provider fallback.
   app.get('/api/media/search', async (req, res) => {
+    // H-3: session-gated to stop unauthenticated abuse of the upstream (paid) media API keys.
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
     const type = req.query.type === 'image' ? 'image' : 'video';
-    res.json(await controllers.media.search(req.query.q ?? '', type));
+    return res.json(await controllers.media.search(req.query.q ?? '', type));
   });
 
   // --- Realtime (SSE) -------------------------------------------------------
@@ -324,6 +373,11 @@ export function createApp({ controllers, sessionService }) {
   // and edit-lock acquire/release (row-less invalidation signals; the client re-queries its filter).
   // Filtering is intentionally naive (send all) per the build spec; the client may filter.
   app.get('/api/stream', (req, res) => {
+    // H-4: validate the session BEFORE switching to the SSE content-type so an unauthenticated
+    // client gets a clean 401 JSON rejection rather than an open event stream.
+    if (sessionOf(req) === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -340,6 +394,19 @@ export function createApp({ controllers, sessionService }) {
     req.on('close', () => {
       bus.off('change', onChange);
     });
+  });
+
+  // M-7: global error handler (must be registered LAST, after all routes). Logs the full error
+  // server-side and returns only a generic { ok:false, reason } so stack traces / internals never
+  // reach the client. 4-arg signature is required for Express to treat this as an error handler.
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    // eslint-disable-next-line no-console
+    console.error('[unhandled-error]', err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    return res.status(500).json({ ok: false, reason: 'internal-error' });
   });
 
   return app;
