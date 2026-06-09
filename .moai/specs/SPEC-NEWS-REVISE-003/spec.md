@@ -149,6 +149,8 @@ related_specs:
 
 ### REQ-DETAIL-BODY-EMPHASIS — 상세보기 본문 폰트 > 제목 폰트 (Priority: Medium)
 
+[SUPERSEDED by SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지] 본 REQ 전체(본문 폰트 > 제목 폰트 회귀 가드 + AC-EMPH-1~4)는 더 이상 요구되지 않는다. 별도 제목 요소(`.yh-detail__title`/`aria-label="제목"` 섹션) 폐지로 폰트 비교 대상이 소멸한다. AC-EMPH-4 의 SPEC-NEWS-REVISE-001 분리 구조 회귀 단언 중 *제목 요소 존재* 부분은 폐지되고, 12 공통정보 dt / gray-line(#DDE3EC) / 공통정보-기사 두 섹션 형제 부분은 SPEC-NEWS-REVISE-010 AC-NOTITLE-4 로 계승된다.
+
 #### EARS 문장
 
 - **[Ubiquitous]** THE 시스템 SHALL 상세보기 새창의 본문 블록(`.yh-detail__content` 또는 `aria-label="본문"` 섹션) `font-size` 가 제목 블록(`.yh-detail__title` 또는 `aria-label="제목"` 섹션) `font-size` 보다 크게 렌더링한다 (시각적 우선순위: 본문 > 제목).

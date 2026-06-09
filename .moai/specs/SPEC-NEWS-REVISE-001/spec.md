@@ -159,6 +159,8 @@ related_specs:
 
 ### REQ-DETAIL-LAYOUT-SPLIT — 상세보기 새창의 제목/본문 분리 + 공통정보 12필드
 
+[SUPERSEDED by SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지] 본 REQ 의 *제목 블록/별도 제목 요소(제목 섹션·`<h1>`·빈 제목 placeholder 요소)* 부분은 더 이상 요구되지 않는다. 상세보기 본문(markupVersion)이 첫 줄에 제목을 이미 포함하므로 별도 제목 요소는 중복이다. 공통정보 12 필드 / XSS escape 부분은 SPEC-NEWS-REVISE-010 AC-NOTITLE-4 로 계승된다.
+
 #### EARS 문장
 
 - **[Event-Driven]** WHEN 사용자가 조회 페이지에서 우클릭 → "상세보기"를 선택하면, THE 시스템 SHALL 새 창(또는 새 문서)을 열고 `buildArticleDetailHtml(article)` 결과를 렌더링한다.
@@ -169,7 +171,7 @@ related_specs:
 
 #### Acceptance Criteria
 
-- **AC-DTL-1 (분리 구조)**
+- **AC-DTL-1 (분리 구조)** [SUPERSEDED by SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지: `aria-label="제목"` 섹션 존재 단언은 폐지. 제목 요소 부재(AC-NOTITLE-1)로 대체]
   - Given: 정상 article 객체 (`title`, `content`, 공통정보 12 필드 채워짐)
   - When: `buildArticleDetailHtml(article)`을 호출하여 HTML 문서 문자열을 받아 `JSDOM`/`DOMParser`로 파싱한다
   - Then: `aria-label="제목"`을 가진 섹션과 `aria-label="본문"`을 가진 섹션이 각각 정확히 1개씩 존재하고, 둘은 동일 부모의 형제 노드이며 사이에 다른 콘텐츠 섹션이 없다
@@ -184,7 +186,7 @@ related_specs:
   - When: HTML을 렌더링하고 상단 공통정보 섹션의 `<dt>` 노드를 enumerate 한다
   - Then: 다음 12개 label이 모두 정확히 한 번씩 등장한다 — 작성자, 공동작성, 내용, 지역, 속성, 키워드, 내부코멘트, 외부코멘트, 첨부파일, 자료파일, 엠바고, 2차 엠바고
 
-- **AC-DTL-4 (빈 제목 처리)**
+- **AC-DTL-4 (빈 제목 처리)** [SUPERSEDED by SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지: 빈 제목 시 `(제목 없음)` placeholder *요소* 유지 단언은 폐지. 제목 요소 자체가 부재하며 `(제목 없음)` 은 `<head><title>` 에만 잔존(AC-NOTITLE-3, EC-1)]
   - Given: `article.title`이 빈 문자열 또는 `null`
   - When: HTML을 렌더링한다
   - Then: 제목 섹션은 여전히 존재하고 그 안의 제목 텍스트는 `(제목 없음)` 이다. 본문 섹션은 별도로 분리되어 존재한다

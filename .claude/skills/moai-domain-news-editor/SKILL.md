@@ -57,6 +57,7 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-09 (v0.2.0): 상세보기 별도 제목 요소 폐지 동기화 (SPEC-NEWS-REVISE-010 REQ-DETAIL-NO-SEPARATE-TITLE) — 상세보기 새창 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`/`<h1>`)를 제거하고 본문(`.yh-detail__content`, markupVersion 첫 줄이 제목)만 렌더한다. 사용자 지시("제목은 이미 본문에서 같이 나오니 없애라") 기반. 기존 REQ-DETAIL-LAYOUT-SPLIT(001)·FONT-EMPHASIS(002)·BODY-EMPHASIS(003)의 제목-요소/폰트강조 전제는 supersede(마커 부착), gray-line `#DDE3EC`·12 공통정보 dt·공통정보→기사 형제 가드는 AC-NOTITLE-4 로 계승. `<head><title>`(빈 제목 시 `(제목 없음)`)은 유지. §2.3 반영, news.md "# 상세보기" 절 1줄 갱신. 구현: web/src/view/articleDetail.js (h1·CSS 제거), articleDetail.test.js (제목 단언 → AC-NOTITLE-*). 동반(별건): 에디터 임베드 Backspace 삭제 시 커서 점프 수정(editorCaret.embedTextOffset), 조회 작성/수정시간 컬럼 grid 정렬(yonhap.css).
 - 2026-06-08 (v0.1.9): 생애주기 신규 결정 동기화 — **최초 송고 = RDS**: 작성 페이지(writer.do) 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이 없이 RDS 저장만 한다 (useWriteController.submitAction 이 applyAction 을 부르지 않음). §1.3/§2.2 의 권한별 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고/보류/KILL 에만 적용된다. 보류/KILL 은 신규에서도 종전 전이 유지 (R→RRH/RRK, D→DDH/DDK). news.md 기사 생애주기 절에 결정 1줄 반영. 동반: 부서별 작성/송고의 부서 멀티셀렉트 체크박스 드롭다운(.yh-multi-select) 디자인 토큰 스타일 신설 (yonhap.css — 종전엔 무스타일이라 깨져 보였음).
 - 2026-06-06 (v0.1.8): 작성 에디터 멀티탭 동기화 — writer.do 는 WriteWorkspace(web/src/view/WriteWorkspace.jsx) 가 탭 스트립 + 탭별 WritePage 인스턴스(전부 mounted, 비활성 hidden)를 관리. 탭 메타 sessionStorage `newsroom.editorTabs`, 탭별 초안 키 `newsroom.writeDraft.<tabId>` (구 단일 키는 첫 진입 시 1회 이관). 조회(list.do) 편집/고침/포털고침 진입(?id=)은 **새 탭** 생성·활성화, 같은 기사 재진입은 기존 탭 활성화(잠금 자기충돌 방지 — D2-5 strict 정합). 편집 탭에서 송고/보류/KILL 성공 시 그 탭은 빈 '새 기사' 탭으로 전환(잠금 해제 + 주소창 ?id= 제거). 주소창은 활성 탭을 replaceState 로 비춘다. 동반 수정: 서버 POST /lock 이 sendBeacon 페이로드의 release:true 를 해제로 처리하도록 계약 복원 (종전엔 무시되어 언로드 해제가 잠금 재획득이 되는 기존 버그). news.md 기사 작성페이지 절(L60-62)에 규칙 3줄 반영.
 - 2026-06-06 (v0.1.7): 작성 초안 보존 동기화 — writer.do → list.do 이동 후 복귀 시 작성 내용(제목/본문/임베드/공통정보) 유지. sessionStorage 키 `newsroom.writeDraft` 영속(useWriteController, 블랭크-신규 컨텍스트 한정), 편집 진입(?id=)은 서버 ContentsVO 로드 우선(영속/복원 OFF), 송고/보류/KILL 성공 초기화 시 보존 draft 도 함께 제거. news.md 기사 작성페이지 절에 규칙 반영.
@@ -201,7 +202,7 @@ API 측면 (Source: news.md L101-105, L130-135):
 | 11 | 엠바고 | 시간 입력 |
 | 12 | 2차 엠바고 | 시간 입력 |
 
-상세보기 새창 레이아웃 (Source: news.md L89): 상단에 위 12 필드를 **가로로 나열**(flex wrap 카드형 셀, dt 위/dd 아래) → 하단에 단일 `기사` 영역(aria-label="기사")에서 **제목과 본문을 한번에 같이** 표시 (분리 섹션 폐지, 2026-06-06 구두 지시 → news.md 반영 완료), **본문이 제목보다 크게** 표현 (.yh-detail__title 1.3rem < .yh-detail__content 1.75rem).
+상세보기 새창 레이아웃 (Source: news.md "# 상세보기" / SPEC-NEWS-REVISE-010): 상단에 위 12 필드를 **가로로 나열**(flex wrap 카드형 셀, dt 위/dd 아래) → 하단에 단일 `기사` 영역(aria-label="기사")에서 **기사 본문만** 표시한다. **별도 제목 요소(`.yh-detail__title`/`<h1>`)는 두지 않는다** — 본문(`.yh-detail__content`, markupVersion 파싱)의 첫 줄이 곧 제목이므로 중복이다(SPEC-NEWS-REVISE-010 REQ-DETAIL-NO-SEPARATE-TITLE). 기존 "제목+본문 통합 표시"·"본문>제목 폰트 강조"(REQ-DETAIL-LAYOUT-SPLIT/FONT-EMPHASIS/BODY-EMPHASIS)는 supersede. 브라우저 탭 제목용 `<head><title>`(빈 제목 시 `(제목 없음)`)은 유지.
 
 ### 2.4 인라인 임베딩 계약
 

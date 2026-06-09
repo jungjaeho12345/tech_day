@@ -221,18 +221,8 @@ export function buildArticleDetailHtml(article) {
   .yh-detail__row--empty dd {
     color: var(--yh-gray-mid);
   }
-  /* 제목/본문을 하나의 통합 영역(.yh-detail__article)에서 제목 → 본문 순으로 함께 보여준다 (분리 2영역 폐지).
-     SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS 유지: body font-size > title font-size (시각적 강조). */
-  .yh-detail__title {
-    font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    line-height: 1.3;
-    color: var(--yh-blue-deep);
-    margin: 0 0 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--yh-gray-line);
-  }
+  /* SPEC-NEWS-REVISE-010 REQ-DETAIL-NO-SEPARATE-TITLE: 별도 제목 요소(.yh-detail__title) 폐지.
+     본문(.yh-detail__content) 첫 줄(markupVersion)이 제목 역할을 한다. 제목은 <head><title> 에만 남는다. */
   .yh-detail__content {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
     font-size: 1.75rem;
@@ -303,7 +293,6 @@ ${commonRows}
   </section>
   <section class="yh-detail__section yh-detail__article" aria-label="기사">
     <h2 class="yh-detail__section-title">기사</h2>
-    <h1 class="yh-detail__title">${title}</h1>
     <div class="yh-detail__content">${body}</div>
   </section>
 </body>
