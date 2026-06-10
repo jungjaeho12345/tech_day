@@ -527,3 +527,65 @@ test('AC-EDIT-LOCK-6: 락 보유자 본인의 action은 로그인 세션 id로 �
   assert.equal(result.ok, true);
   assert.equal(result.status, 'DPS', 'RDS|D|send → DPS (보유자 본인은 차단되지 않는다)');
 });
+
+// ---------------------------------------------------------------------------
+// SPEC-NEWS-REVISE-010 — AC-SESS-5 / EC-4 sliding-wiring regression guard.
+// A controlled clock proves that protected routes call touchSession (sliding refresh):
+// an action sent just before the idle deadline must keep the session alive past the
+// original deadline. A separate app/session pair with an injected `now` is used so the
+// shared file-level server (real clock) is untouched.
+// ---------------------------------------------------------------------------
+test('AC-SESS-5: a protected action refreshes the 1h sliding idle window (touchSession wiring)', async () => {
+  const ONE_HOUR_MS = 60 * 60 * 1000;
+  let clock = 0;
+  const slidingDb = new DatabaseSync(':memory:');
+  createSchema(slidingDb);
+  const slidingSessions = createSessionService({ ttlMs: ONE_HOUR_MS, now: () => clock });
+  const slidingControllers = createControllers(slidingDb, {
+    mediaSearch: { search: async () => ({ items: [], error: false }) },
+    sessionService: slidingSessions,
+  });
+  const slidingApp = createApp({ controllers: slidingControllers, sessionService: slidingSessions });
+  const srv = await new Promise((resolve) => {
+    const s = slidingApp.listen(0, () => resolve(s));
+  });
+  try {
+    const { port } = srv.address();
+    const slidingBase = `http://127.0.0.1:${port}`;
+    slidingControllers.user.create({ userId: 'd-slide', name: 'd-slide', password: 'pw', role: 'D' });
+    const sessionId = slidingControllers.auth.login('d-slide', 'pw').sessionId;
+    const { articleId } = slidingControllers.article.create({ title: 'slide' });
+
+    // Advance to 59분 (within the 1h window) and send a protected action → must touch (slide) the session.
+    clock = 59 * 60 * 1000;
+    const res = await fetch(`${slidingBase}/api/articles/${articleId}/action`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-session-id': sessionId },
+      body: JSON.stringify({ action: 'send' }),
+    });
+    const acted = await res.json();
+    assert.equal(acted.ok, true, 'the 59분 action succeeds (session still alive)');
+
+    // The action at 59분 slid the deadline to 59분 + 1h. At the ORIGINAL 1h deadline + a bit,
+    // the session must STILL validate — proving the route refreshed the window (not a fixed TTL).
+    clock = ONE_HOUR_MS + 30 * 60 * 1000; // 1h30m — past the original 1h deadline.
+    assert.ok(
+      slidingSessions.validateSession(sessionId),
+      'session survives past the original 1h deadline because the action refreshed the sliding window',
+    );
+
+    // EC-4: after logout the same id is rejected by a protected route (no slide can revive it).
+    slidingControllers.auth.logout(sessionId);
+    const afterLogout = await fetch(`${slidingBase}/api/articles/${articleId}/action`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-session-id': sessionId },
+      body: JSON.stringify({ action: 'send' }),
+    });
+    const rejected = await afterLogout.json();
+    assert.equal(rejected.ok, false, 'a logged-out session is rejected by the protected route');
+    assert.equal(rejected.reason, 'unauthenticated');
+  } finally {
+    srv.close();
+    slidingDb.close?.();
+  }
+});
