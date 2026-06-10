@@ -363,3 +363,37 @@ describe('forgetEditTab — 강제 해제 시 영속 편집 탭 제거 (SPEC-NEW
     expect(JSON.parse(sessionStorage.getItem('newsroom.editorTabs'))).toEqual(before);
   });
 });
+
+// 편집 탭 진입 시 브라우저 탭 제목(document.title)을 그 기사 articleId 로, 새 기사 탭/언마운트 시 기본 제목으로.
+describe('WriteWorkspace document.title — 편집 탭은 articleId, 새 기사/복귀는 기본 제목', () => {
+  beforeEach(() => {
+    try { sessionStorage.clear(); } catch { /* no storage */ }
+    window.history.replaceState({}, '', '/writer.do');
+    document.title = '기사 작성기';
+  });
+
+  it('편집 탭 진입(?id=) → document.title 이 그 articleId 가 된다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    renderWorkspace(modelWithArticle(EDIT_ROW));
+    await waitFor(() => expect(document.title).toBe('AKR-1'));
+  });
+
+  it('새 기사 탭만 있으면 기본 제목 유지, 언마운트 시 기본 제목으로 복원', () => {
+    const { unmount } = renderWorkspace();
+    expect(document.title).toBe('기사 작성기');
+    // 편집 탭으로 바꾼 뒤 언마운트하면 기본 제목으로 되돌아온다.
+    unmount();
+    expect(document.title).toBe('기사 작성기');
+  });
+
+  it('편집 탭을 × 로 닫으면 새 기사 탭으로 전환되어 기본 제목으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    renderWorkspace(modelWithArticle(EDIT_ROW));
+    await waitFor(() => expect(document.title).toBe('AKR-1'));
+
+    const editTab = tabStrip().getByRole('tab', { name: 'AKR-1' });
+    await user.click(within(editTab.closest('.yh-edit-tab')).getByRole('button', { name: /탭 닫기/ }));
+    await waitFor(() => expect(document.title).toBe('기사 작성기'));
+  });
+});

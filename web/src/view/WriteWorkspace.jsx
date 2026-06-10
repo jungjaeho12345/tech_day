@@ -19,6 +19,9 @@ import { ROUTES, pathForRoute } from '../app/routing.js';
 const TABS_STORAGE_KEY = 'newsroom.editorTabs';
 // 단일 에디터 시절의 초안 키 — 최초 진입 시 첫 탭의 초안으로 1회 이관한다 (기존 작성 내용 보존).
 const LEGACY_DRAFT_KEY = 'newsroom.writeDraft';
+// 브라우저 탭 제목 기본값(web/index.html <title> 와 동일). 편집 탭 활성 시 articleId 로 바꾸고,
+// 새 기사 탭/언마운트(조회 복귀) 시 이 값으로 복원한다.
+const DEFAULT_DOC_TITLE = '기사 작성기';
 
 function draftKeyFor(tabId) {
   return `${LEGACY_DRAFT_KEY}.${tabId}`;
@@ -160,6 +163,21 @@ export function WriteWorkspace({ user }) {
     } catch {
       // history unavailable — 주소창 동기화는 best effort.
     }
+  }, [state]);
+
+  // 브라우저 탭 제목 동기화 — 활성 탭이 편집 탭이면 document.title 을 그 articleId 로, 새 기사 탭이면
+  // 기본 제목으로 둔다. 탭 전환/closeTab/forgetEditTab(storage)/endEditContext(편집→새 기사) 모두 state
+  // 변화를 일으키므로 [state] 하나로 커버된다. 언마운트(조회 등으로 복귀) 시 기본 제목으로 복원한다.
+  useEffect(() => {
+    const active = state.tabs.find((t) => t.id === state.activeId);
+    try {
+      document.title = active?.editArticleId ? active.editArticleId : DEFAULT_DOC_TITLE;
+    } catch {
+      // document 없음(비브라우저) — best effort.
+    }
+    return () => {
+      try { document.title = DEFAULT_DOC_TITLE; } catch { /* best effort */ }
+    };
   }, [state]);
 
   // 뒤로/앞으로 가기로 writer.do?id=… 에 도달한 경우(라우트는 그대로 WRITE 라 App 이 remount 하지
