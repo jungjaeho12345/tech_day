@@ -23,7 +23,7 @@ function lineRoles(lines) {
   roles[0] = 'title';
   const rest = lines.slice(1);
   // First blank line within the rest bounds the subtitle (else the 4-line cap does).
-  let blankIndex = rest.findIndex((l) => l === '');
+  const blankIndex = rest.findIndex((l) => l === '');
   const subtitleEnd = blankIndex === -1
     ? Math.min(MAX_SUBTITLE_LINES, rest.length)
     : Math.min(blankIndex, MAX_SUBTITLE_LINES);

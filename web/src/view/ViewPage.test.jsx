@@ -454,3 +454,80 @@ describe('ViewPage click → new window detail (news.md 기사 조회페이지)'
     expect(screen.queryByRole('button', { name: '포털고침' })).not.toBeInTheDocument();
   });
 });
+
+describe('ViewPage 컬럼 설정 진입점 — 헤더 우클릭 → 설정 → 중앙 모달 (2026-06-10 진입점 이전)', () => {
+  const oneRow = [{ articleId: 'A-1', title: 'col art', status: 'RDS', createdAt: '2026-05-02T08:00:00Z' }];
+
+  function renderWithRow() {
+    const model = createFakeModel({ queryArticles: vi.fn().mockResolvedValue(oneRow) });
+    return renderView(model);
+  }
+
+  it('(a) 툴바 "컬럼 설정" 진입점은 제거되고, 헤더 행 우클릭 시 "설정" 항목 컨텍스트 메뉴가 열린다', async () => {
+    renderWithRow();
+    await screen.findByText('col art');
+    // 진입점 이전: 더 이상 툴바 드롭다운 트리거가 없다.
+    expect(screen.queryByRole('button', { name: /컬럼 설정/ })).not.toBeInTheDocument();
+    // 모달도 아직 닫혀 있다.
+    expect(screen.queryByRole('dialog', { name: '컬럼 설정' })).not.toBeInTheDocument();
+
+    // 헤더 행을 우클릭하면 '설정' 항목을 가진 컨텍스트 메뉴가 열린다.
+    fireEvent.contextMenu(screen.getByTestId('desk-header'), { clientX: 120, clientY: 40 });
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getByRole('menuitem', { name: '설정' })).toBeEnabled();
+  });
+
+  it('(b) "설정" 클릭 시 column-settings 패널이 중앙 모달(dialog)로 나타난다', async () => {
+    const u = userEvent.setup();
+    renderWithRow();
+    await screen.findByText('col art');
+    fireEvent.contextMenu(screen.getByTestId('desk-header'), { clientX: 120, clientY: 40 });
+    await u.click(screen.getByRole('menuitem', { name: '설정' }));
+
+    // 모달 다이얼로그 + 보존된 패널 testid.
+    const dialog = screen.getByRole('dialog', { name: '컬럼 설정' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByTestId('column-settings')).toBe(dialog);
+  });
+
+  it('(c) 모달 내 column-toggle-<key> 토글과 column-gap-slider 가 동작한다 (영속화 반영)', async () => {
+    const u = userEvent.setup();
+    renderWithRow();
+    await screen.findByText('col art');
+    fireEvent.contextMenu(screen.getByTestId('desk-header'), { clientX: 120, clientY: 40 });
+    await u.click(screen.getByRole('menuitem', { name: '설정' }));
+
+    // 기본 노출 컬럼(작성자) 토글 → 헤더에서 사라진다.
+    const authorToggle = screen.getByTestId('column-toggle-author');
+    expect(authorToggle).toBeChecked();
+    await u.click(authorToggle);
+    expect(authorToggle).not.toBeChecked();
+    expect(within(screen.getByTestId('desk-header')).queryByText('작성자')).not.toBeInTheDocument();
+
+    // 간격 슬라이더 변경 → 헤더 inline gap 에 반영된다.
+    const slider = screen.getByTestId('column-gap-slider');
+    fireEvent.change(slider, { target: { value: '20' } });
+    expect(slider).toHaveValue('20');
+    expect(screen.getByTestId('desk-header')).toHaveStyle({ gap: '20px' });
+  });
+
+  it('(d) 모달은 Escape 키와 backdrop 클릭으로 닫힌다', async () => {
+    const u = userEvent.setup();
+    renderWithRow();
+    await screen.findByText('col art');
+
+    // Escape 로 닫기.
+    fireEvent.contextMenu(screen.getByTestId('desk-header'), { clientX: 120, clientY: 40 });
+    await u.click(screen.getByRole('menuitem', { name: '설정' }));
+    expect(screen.getByRole('dialog', { name: '컬럼 설정' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '컬럼 설정' })).not.toBeInTheDocument();
+
+    // 다시 열고 backdrop 클릭으로 닫기.
+    fireEvent.contextMenu(screen.getByTestId('desk-header'), { clientX: 120, clientY: 40 });
+    await u.click(screen.getByRole('menuitem', { name: '설정' }));
+    expect(screen.getByRole('dialog', { name: '컬럼 설정' })).toBeInTheDocument();
+    await u.click(screen.getByTestId('column-settings-backdrop'));
+    expect(screen.queryByRole('dialog', { name: '컬럼 설정' })).not.toBeInTheDocument();
+  });
+});
