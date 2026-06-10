@@ -1023,7 +1023,15 @@ textarea {
   color: var(--yh-gray-mid);
   font-size: 0.78rem;
   white-space: nowrap;
-  text-align: right;
+  /* 작성시간/수정시간/송고시간 값을 셀 안에서 가운데 정렬 (사용자 요청). */
+  text-align: center;
+}
+
+/* 헤더의 시간 컬럼 라벨도 값과 맞춰 가운데 정렬 — 헤더 셀은 flex 이므로 라벨을 가로 가운데로 보낸다.
+   (datetime 포맷 컬럼 헤더에 yh-desk-header__cell--center 가 부여된다.) */
+.yh-desk-header__cell--center {
+  justify-content: center;
+  text-align: center;
 }
 
 /* SPEC-NEWS-REVISE-009 — the list row IS a grid (.yh-desk-row: 8 tracks 기사아이디/제목/작성자/수정자/

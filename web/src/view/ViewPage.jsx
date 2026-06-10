@@ -299,7 +299,7 @@ function ColumnHeader({ columns, gridStyle, onResize, onContextMenu }) {
       onContextMenu={onContextMenu}
     >
       {columns.map((col) => (
-        <span key={col.key} className="yh-desk-header__cell">
+        <span key={col.key} className={`yh-desk-header__cell${col.format === 'datetime' ? ' yh-desk-header__cell--center' : ''}`}>
           <span className="yh-desk-header__label">{col.label}</span>
           {/* The flex (title) column has no fixed width to drag, so it carries no resizer. */}
           {col.flex ? null : (
