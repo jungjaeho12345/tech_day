@@ -8,6 +8,7 @@ import { ROUTES } from '../app/routing.js';
 import { buildArticleDetailHtml } from './articleDetail.js';
 import { ContextMenu } from './ContextMenu.jsx';
 import { TopBar } from './TopBar.jsx';
+import { forgetEditTab } from './WriteWorkspace.jsx';
 import {
   COLUMN_POOL,
   MIN_GAP,
@@ -199,67 +200,62 @@ function ArticleRow({ article, columns, gridStyle, onContextMenu }) {
   );
 }
 
-// Column-settings panel: a "컬럼 설정" toggle button opening a checkbox dropdown for show/hide and a
-// gap slider. Styled with the existing .yh-multi-select / .yh-btn families for visual consistency with
-// the department filter. Closes on outside mousedown (matching DeptMultiSelect's AC-MULTI behavior).
-function ColumnSettings({ state, onToggle, onGapChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
+// Column-settings as a CENTERED MODAL (2026-06-10 진입점 변경): the entry point moved from a toolbar
+// dropdown to the article list's first-row right-click "설정" item (사용자 요청 — 기사 리스트 첫 행 우클릭).
+// Controlled by the parent (rendered only while open); shows the same show/hide checkboxes + gap slider
+// over a backdrop, and closes on Escape or backdrop click. Testids (column-settings / column-toggle-<key>
+// / column-gap-slider / column-settings-backdrop) and the role="dialog" name 컬럼 설정 are preserved so
+// existing behavior assertions keep working.
+function ColumnSettings({ state, onToggle, onGapChange, onClose }) {
   useEffect(() => {
-    if (!open) return undefined;
-    const handleOutside = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [open]);
-
-  const visibleCount = COLUMN_POOL.filter((c) => state.visible[c.key]).length;
+    const onKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   return (
-    <div className="yh-multi-select yh-col-settings" data-testid="column-settings" ref={ref}>
-      <button
-        type="button"
-        className="yh-multi-select__trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+    <div
+      className="yh-modal__backdrop"
+      data-testid="column-settings-backdrop"
+      onClick={onClose}
+    >
+      <div
+        className="yh-modal__panel yh-col-settings"
+        data-testid="column-settings"
+        role="dialog"
+        aria-modal="true"
+        aria-label="컬럼 설정"
+        onClick={(e) => e.stopPropagation()}
       >
-        컬럼 설정 ({visibleCount})
-      </button>
-      {open ? (
-        <div className="yh-multi-select__menu yh-col-settings__panel" role="dialog" aria-label="컬럼 설정">
-          <ul className="yh-col-settings__list">
-            {COLUMN_POOL.map((col) => (
-              <li key={col.key} className="yh-multi-select__item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={!!state.visible[col.key]}
-                    onChange={() => onToggle(col.key)}
-                    data-testid={`column-toggle-${col.key}`}
-                  />
-                  {col.label}
-                </label>
-              </li>
-            ))}
-          </ul>
-          <div className="yh-col-settings__gap">
-            <label htmlFor="yh-col-gap">컬럼 간격</label>
-            <input
-              id="yh-col-gap"
-              type="range"
-              min={MIN_GAP}
-              max={MAX_GAP}
-              value={state.gap}
-              onChange={(e) => onGapChange(Number(e.target.value))}
-              data-testid="column-gap-slider"
-            />
-            <span className="yh-col-settings__gap-val">{state.gap}px</span>
-          </div>
+        <ul className="yh-col-settings__list">
+          {COLUMN_POOL.map((col) => (
+            <li key={col.key} className="yh-multi-select__item">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!!state.visible[col.key]}
+                  onChange={() => onToggle(col.key)}
+                  data-testid={`column-toggle-${col.key}`}
+                />
+                {col.label}
+              </label>
+            </li>
+          ))}
+        </ul>
+        <div className="yh-col-settings__gap">
+          <label htmlFor="yh-col-gap">컬럼 간격</label>
+          <input
+            id="yh-col-gap"
+            type="range"
+            min={MIN_GAP}
+            max={MAX_GAP}
+            value={state.gap}
+            onChange={(e) => onGapChange(Number(e.target.value))}
+            data-testid="column-gap-slider"
+          />
+          <span className="yh-col-settings__gap-val">{state.gap}px</span>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -267,7 +263,8 @@ function ColumnSettings({ state, onToggle, onGapChange }) {
 // Shared header: renders the ordered visible columns with a drag resizer handle between fixed-width
 // columns. Pointer-based resize (works for mouse/touch/pen) with a per-column minimum width guard.
 // The header carries the SAME grid-template-columns + gap as every row (gridStyle), keeping them synced.
-function ColumnHeader({ columns, gridStyle, onResize }) {
+// Right-clicking the header row opens the 컬럼 설정 entry-point context menu (onContextMenu).
+function ColumnHeader({ columns, gridStyle, onResize, onContextMenu }) {
   // Begin a pointer-drag resize on a column boundary. Captures the pointer so the drag continues even
   // if the cursor leaves the handle; reports px deltas to onResize until pointerup/cancel.
   const startResize = useCallback((col, e) => {
@@ -295,7 +292,12 @@ function ColumnHeader({ columns, gridStyle, onResize }) {
   }, [onResize]);
 
   return (
-    <div className="yh-desk-header" style={gridStyle} data-testid="desk-header">
+    <div
+      className="yh-desk-header"
+      style={gridStyle}
+      data-testid="desk-header"
+      onContextMenu={onContextMenu}
+    >
       {columns.map((col) => (
         <span key={col.key} className="yh-desk-header__cell">
           <span className="yh-desk-header__label">{col.label}</span>
@@ -456,6 +458,19 @@ export function ViewPage({ user, nav }) {
     setColumnState(loadColumnState(ctrl.menu));
   }, [ctrl.menu]);
 
+  // SPEC-NEWS-REVISE-014 — 강제 해제(forced:true) SSE 를 list.do 도 구독해, 단일 브라우저 흐름에서 writer.do
+  // 가 unmount 된 동안 해제된 기사를 영속 편집 탭 목록에서 제거한다(forgetEditTab). writer.do 로 돌아왔을 때
+  // 그 기사가 다시 열리지 않고 "편집기에서 닫힌" 상태로 복원된다. WritePage 가 마운트돼 있는 다른 창은 자기
+  // 구독으로 즉시 alert+종료하고, 이 창의 변경은 storage 이벤트로 그 창의 WriteWorkspace 에도 전파된다.
+  useEffect(() => {
+    const sub = model.subscribe(undefined, (payload) => {
+      if (payload?.type === 'unlock' && payload.forced && payload.articleId) {
+        forgetEditTab(payload.articleId);
+      }
+    });
+    return () => sub.unsubscribe();
+  }, [model]);
+
   // Persist + apply a column-state change for the active menu. saveColumnState sanitizes the payload,
   // so we adopt its returned (normalized) value as the next state.
   const commitColumnState = useCallback((next) => {
@@ -485,8 +500,41 @@ export function ViewPage({ user, nav }) {
   const cols = visibleColumns(columnState);
   const gridStyle = { gridTemplateColumns: buildGridTemplate(columnState), gap: `${columnState.gap}px` };
 
+  // SPEC (2026-06-10): 컬럼 설정 중앙 모달 — 컬럼 헤더 행 우클릭 컨텍스트 메뉴의 "설정" 항목으로 연다
+  // (원안 복원). 모달이 열리면 컨텍스트 메뉴는 닫는다. Escape/backdrop 클릭으로 닫힌다(ColumnSettings 내부).
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+  const openColumnSettings = useCallback(() => {
+    setContextMenu(null);
+    setColumnSettingsOpen(true);
+  }, []);
+
+  // 헤더 행 우클릭 → "설정" 한 항목만 가진 컨텍스트 메뉴를 연다(기사 행 메뉴와 동일 ContextMenu 재사용).
+  const openHeaderContextMenu = (e) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, header: true });
+  };
+
+  // 컨텍스트 메뉴 항목: 헤더 메뉴는 "설정" 한 항목, 기사 행 메뉴는 기존 buildContextItems 결과.
+  const menuItems = contextMenu?.header
+    ? [{ label: '설정', onSelect: openColumnSettings }]
+    : (contextMenu ? buildContextItems({
+        article: contextMenu.article,
+        menu: ctrl.menu,
+        role: user.role,
+        navigate,
+        onForceUnlock: (articleId) => model.forceUnlockArticle(articleId),
+      }) : []);
+
   return (
     <>
+      {columnSettingsOpen ? (
+        <ColumnSettings
+          state={columnState}
+          onToggle={toggleColumn}
+          onGapChange={changeGap}
+          onClose={() => setColumnSettingsOpen(false)}
+        />
+      ) : null}
       <TopBar statusBar={<RealtimeStatus connected={ctrl.connected} />} />
       {nav}
       <div className="yh-view-wrap">
@@ -521,19 +569,19 @@ export function ViewPage({ user, nav }) {
             </div>
           ) : null}
 
-          {/* Column show/hide + gap controls (SPEC-NEWS-COLCONFIG). Right-aligned so it does not
-              collide with the department filter on the left. */}
-          <ColumnSettings
-            state={columnState}
-            onToggle={toggleColumn}
-            onGapChange={changeGap}
-          />
+          {/* 컬럼 설정 진입점은 툴바 드롭다운에서 기사 리스트 첫 행 우클릭 메뉴 "설정"으로 이동했다
+              (2026-06-10, 사용자 요청). 위 컬럼 설정 모달 + 아래 컨텍스트 메뉴 참조. */}
         </div>
 
         {/* Shared header for ALL four menus — columns + order + widths + gap from the active config
             (REQ-FE-VIEW-011 v0.5.0 base; SPEC-NEWS-COLCONFIG show/hide + DnD resize). */}
         {pageItems.length > 0 && cols.length > 0 ? (
-          <ColumnHeader columns={cols} gridStyle={gridStyle} onResize={resizeColumn} />
+          <ColumnHeader
+            columns={cols}
+            gridStyle={gridStyle}
+            onResize={resizeColumn}
+            onContextMenu={openHeaderContextMenu}
+          />
         ) : null}
 
         {/* Dense newspaper-index list (news.md: 한 줄에 조밀하게 표시), 10 articles per page. */}
@@ -574,13 +622,7 @@ export function ViewPage({ user, nav }) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={buildContextItems({
-            article: contextMenu.article,
-            menu: ctrl.menu,
-            role: user.role,
-            navigate,
-            onForceUnlock: (articleId) => model.forceUnlockArticle(articleId),
-          })}
+          items={menuItems}
           onClose={closeContextMenu}
         />
       ) : null}

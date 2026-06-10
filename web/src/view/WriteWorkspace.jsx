@@ -51,6 +51,30 @@ function removeStoredDraft(tabId) {
   }
 }
 
+// SPEC-NEWS-REVISE-014 — 강제 해제(forced) 통지를 list.do(ViewPage)가 받았을 때, 다른 화면(또는 unmount 된
+// writer.do)의 해당 편집 탭을 영속 메타데이터에서 제거해 둔다. WritePage 가 마운트돼 있으면 자기 SSE 구독이
+// 즉시 alert+closeTab 하지만, 단일 브라우저에서 list.do 로 이동해 강제 해제하면 그 사이 WriteWorkspace 는
+// unmount 상태라 살아있는 구독이 없다. 이 함수가 영속 탭 목록에서 그 기사를 지워, writer.do 로 돌아왔을 때
+// 그 기사가 다시 열리지 않고(요구: "편집기에서 닫힌다") 닫힌 상태로 복원되게 한다. 마운트된 WriteWorkspace 는
+// storage 이벤트로 이 변화를 반영한다(아래 effect). 순수/가드 — 비브라우저·없는 키에서 무해.
+// 이 모듈 외부(ViewPage)에서 호출하는 순수 함수라 컴포넌트와 함께 export 한다(HMR 경고는 무해 — 상태 없음).
+// eslint-disable-next-line react-refresh/only-export-components
+export function forgetEditTab(articleId) {
+  const stored = readStoredTabs();
+  if (!stored || !Array.isArray(stored.tabs)) return;
+  const target = stored.tabs.find((t) => t && t.editArticleId === articleId);
+  if (!target) return;
+  removeStoredDraft(target.id);
+  let tabs = stored.tabs.filter((t) => t.id !== target.id);
+  let seq = Number.isFinite(stored.seq) ? stored.seq : tabs.length;
+  if (tabs.length === 0) {
+    seq += 1;
+    tabs = [{ id: `t${seq}`, editArticleId: null }];
+  }
+  const activeId = tabs.some((t) => t.id === stored.activeId) ? stored.activeId : tabs[0].id;
+  writeStoredTabs({ tabs, activeId, seq });
+}
+
 function urlEditId() {
   try {
     return new URLSearchParams(window.location.search).get('id') || null;
@@ -148,6 +172,31 @@ export function WriteWorkspace({ user }) {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // SPEC-NEWS-REVISE-014 — 다른 창의 list.do 가 강제 해제(forced)를 받아 forgetEditTab 으로 영속 탭 목록을
+  // 줄이면, 이 창의 storage 이벤트로 그 변화를 반영해 사라진 편집 탭을 닫는다(cross-tab 강제 종료). 같은
+  // 창에서 일어난 변경(WritePage 자기 구독의 closeTab)은 storage 이벤트를 발생시키지 않으므로 이중 처리 없음.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== null && e.key !== TABS_STORAGE_KEY) return;
+      const stored = readStoredTabs();
+      if (!stored || !Array.isArray(stored.tabs)) return;
+      const liveIds = new Set(stored.tabs.map((t) => t.editArticleId));
+      setState((s) => {
+        // 영속 목록에서 사라진 편집 탭만 제거한다(강제 해제로 forgetEditTab 된 기사). 빈 목록이면 새 기사 탭 유지.
+        const removed = s.tabs.filter((t) => t.editArticleId && !liveIds.has(t.editArticleId));
+        if (removed.length === 0) return s;
+        const removedIds = new Set(removed.map((t) => t.id));
+        let tabs = s.tabs.filter((t) => !removedIds.has(t.id));
+        let seq = s.seq;
+        if (tabs.length === 0) { seq += 1; tabs = [{ id: `t${seq}`, editArticleId: null }]; }
+        const activeId = tabs.some((t) => t.id === s.activeId) ? s.activeId : tabs[0].id;
+        return { tabs, activeId, seq };
+      });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   // ＋ 버튼: 빈 '새 기사' 탭을 추가하고 활성화.
