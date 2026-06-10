@@ -1,6 +1,6 @@
 // Article-view page (REQ-FE-VIEW-001..011). Realtime status bar + four menus sharing one 8-column list
 // (기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN, REQ-FE-VIEW-011 v0.5.0 — 기사상태
-// 컨럼 추가) + a right-click context menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
+// 콘럼 추가) + a right-click context menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
 import { useState, useEffect, useRef } from 'react';
 import { useViewController, MENUS } from '../controller/useViewController.js';
 import { useSession } from '../app/context.js';
@@ -66,8 +66,8 @@ function buildContextItems({ article, menu, role, navigate }) {
       { label: '매핑', ...DISABLED },
       { label: '후속기사작성', ...DISABLED },
       { label: '계속기사작성', ...DISABLED },
-      dpsEditItem('고치(포털제외)'),
-      dpsEditItem('포털고치'),
+      dpsEditItem('고침(포털제외)'),
+      dpsEditItem('포털고침'),
       { label: '삭제요청', ...DISABLED },
       { label: '재송', ...DISABLED },
     ];
@@ -83,8 +83,8 @@ function buildContextItems({ article, menu, role, navigate }) {
     { label: '매핑', ...DISABLED },
     { label: '후속기사작성', ...DISABLED },
     { label: '계속기사작성', ...DISABLED },
-    dpsEditItem('고치(포털제외)'),
-    dpsEditItem('포털고치'),
+    dpsEditItem('고침(포털제외)'),
+    dpsEditItem('포털고침'),
     { label: '삭제요청', ...DISABLED },
     { label: '재송', ...DISABLED },
   ];
@@ -239,9 +239,9 @@ export function ViewPage({ user, nav }) {
   }, [ctrl.menu, user.department]);
 
   // 부서별 송고 기본값 "전체": 부서 목록(비동기 로드)이 도착했고 선택이 아직 초기 상태([])일 때만
-  // 전체 선택을 시드한다. 사용자가 이미 손댄 선택은 덮어쓰지 않는다(함수형 업데이트 + 빈 배열 가드).
+  // 전체 선택을 시드한다. 사용자가 이미 손댓은 선택은 덮어쓰지 않는다(함수형 업데이트 + 빈 배열 가드).
   // 진입 즉시 조회는 컨트롤러가 { status: 'DPS' }(전체 = 부서 필터 없음, DPS 전체)로 자동 수행하며, 이
-  // 멀티셀렉트 시드는 표시용 기본값(전체 체크)만 맞춘다. 사용자가 부서를 좁혀 조회를 누르면 그 부서로 재조회한다.
+  // 멀티셀렉트 시드는 표시용 기본값(전체 체크)만 맞춘다. 사용자가 부서를 좌혀 조회를 누르면 그 부서로 재조회한다.
   // ctrl.departments 는 메뉴 진입 시 1회 setDepartments 로 고정되므로 이 effect 는 로드 후 1회만 돈다.
   useEffect(() => {
     if (ctrl.menu !== '부서별 송고' || ctrl.departments.length === 0) return;
