@@ -10,9 +10,9 @@ import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { buildColorSegments } from './editorColoring.js';
 import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, getBodyTextFromDom, findEmbedIndexBeforeCaret, readOrderedContentFromDom, embedTextOffset } from './editorCaret.js';
-import { embedOrdinalAtInsertOffset, insertNewlineIntoContent } from '../model/editorContent.js';
+import { embedOrdinalAtInsertOffset, insertNewlineIntoContent, contentToText } from '../model/editorContent.js';
 import { insertNewlineAt } from './editorNewline.js';
-import { deleteCurrentLine } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
 
 const TABS = ['공통정보', '이미지', '영상', '글기사'];
@@ -597,7 +597,17 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           el.focus?.();
           setCaretAfterEmbed(el, ordinal);
         }
+      } else if (pendingDeleteCaretRef.current != null
+        && embedModelCount < prevEmbedCountRef.current) {
+        // SPEC-NEWS-REVISE-009 ① 임베드 삭제 커서 — Backspace 로 임베드를 지운 직후의 재페인트.
+        // 삭제 전 캡처한 본문 텍스트 오프셋으로 캐럿을 복원해, 0글자 임베드가 사라져 캐럿이 문서 시작으로
+        // 점프하던 회귀를 막는다. 연속 Backspace 로 여러 임베드를 지워도 같은 자리에서 순차 삭제된다.
+        const restoreOffset = pendingDeleteCaretRef.current;
+        pendingDeleteCaretRef.current = null;
+        paintNow(el, content);
+        if (el.ownerDocument.activeElement === el) setCaretCharOffset(el, restoreOffset);
       } else {
+        pendingDeleteCaretRef.current = null;
         paintWithCaret(content);
       }
     }
@@ -738,6 +748,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
                 const idx = Number(node.getAttribute('data-embed-index'));
                 if (Number.isFinite(idx)) {
                   e.preventDefault();
+                  // SPEC-NEWS-REVISE-009 ① 임베드 삭제 커서 — 삭제 직전 그 임베드가 있던 본문 텍스트
+                  // 오프셋을 캡처해, 재페인트 후 캐럿을 그 자리에 복원한다(문서 시작 점프 방지).
+                  pendingDeleteCaretRef.current = embedTextOffset(e.currentTarget, idx);
                   onRemoveEmbedRef.current(idx);
                   return;
                 }
@@ -751,6 +764,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
             if (adjacentIdx != null) {
               e.preventDefault();
+              // 같은 이유로 삭제 직전 오프셋을 캡처해 둔다.
+              pendingDeleteCaretRef.current = embedTextOffset(e.currentTarget, adjacentIdx);
               onRemoveEmbedRef.current(adjacentIdx);
               return;
             }
@@ -772,9 +787,13 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               selectionStart: caret.start,
               selectionEnd: caret.end,
             });
-            paintNow(el, contentWithText(next.value));
+            // 라인 삭제 + 그 라인 범위에 걸친 인라인 임베드(이미지/유투브/기사)도 함께 제거한다.
+            // DOM-ORDERED content 를 source 로 써 임베드의 실제 인터리브 위치 기준으로 범위를 판정한다.
+            const nextContent = applyLineDeleteToContent(orderedContentFromDom(el), next);
+            paintNow(el, nextContent);
             setCaretCharOffset(el, next.selectionStart);
-            onChangeText(next.value);
+            // 모델에는 ORDERED content 와 그로부터 파생한 본문 텍스트를 함께 push (남은 임베드 보존).
+            onChangeText(contentToText(nextContent), nextContent);
             return;
           }
           // Alt+Y: append "(끝)" (골드색) to the end of the body. preventDefault so no 'y' is typed.

@@ -8,7 +8,7 @@
 // 라인은 '\n'으로 구분된다. 선택 영역에 *일부*라도 걸친 모든 라인을 라인 단위 round-up하여 제거한다
 // (VSCode Ctrl+Shift+K 스타일 — D-2 결정 잠금).
 import { describe, it, expect } from 'vitest';
-import { deleteCurrentLine } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent } from './editorShortcuts.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 import { END_MARKER } from '../model/editorContent.js';
 import { buildColorSegments } from './editorColoring.js';
@@ -96,6 +96,61 @@ describe('deleteCurrentLine (REQ-EDITOR-EMBED-AND-CTRL-D)', () => {
     expect(r.value).toBe('');
     expect(r.selectionStart).toBe(0);
     expect(r.selectionEnd).toBe(0);
+  });
+
+  it('deletedStart/deletedEnd — 중간 라인 삭제 시 trailing newline 포함 범위', () => {
+    // "AAA\nBBB\nCCC" — BBB 라인 캐럿(offset 5). 살아남는 CCC 가 있으므로 [4, 8) 제거.
+    const r = deleteCurrentLine({ value: 'AAA\nBBB\nCCC', selectionStart: 5, selectionEnd: 5 });
+    expect(r.deletedStart).toBe(4);
+    expect(r.deletedEnd).toBe(8);
+  });
+
+  it('deletedStart/deletedEnd — 마지막 라인 삭제 시 선행 newline 포함 범위', () => {
+    // "AAA\nBBB" — BBB 끝(offset 7). 앞 라인이 있고 뒤가 없으므로 [3, 7) 제거(선행 \n 포함).
+    const r = deleteCurrentLine({ value: 'AAA\nBBB', selectionStart: 7, selectionEnd: 7 });
+    expect(r.deletedStart).toBe(3);
+    expect(r.deletedEnd).toBe(7);
+  });
+});
+
+// SPEC-NEWS-REVISE — Ctrl+D 라인 삭제 시 그 라인 범위에 걸친 인라인 임베드도 함께 제거 (applyLineDeleteToContent).
+// 임베드는 본문 텍스트 0글자 → 오프셋 = 앞선 text 블록 길이 합. del.[deletedStart,deletedEnd] 범위 판정.
+describe('applyLineDeleteToContent — Ctrl+D 가 라인의 임베드도 함께 삭제', () => {
+  const img = { type: 'image', url: 'x' };
+  const vid = { type: 'video', url: 'y' };
+
+  it('삭제 라인에 놓인 임베드는 제거되고, 다른 라인의 임베드는 보존된다', () => {
+    // 블록: "AAA\n"(0..4) [임베드@4] "BBB"(4..7) [임베드@7]
+    // 마지막 라인(BBB + 그 뒤 임베드) 삭제 → del=[3,7). 첫 임베드(offset 4)는 범위 내 → 제거.
+    const content = {
+      blocks: [
+        { type: 'text', text: 'AAA\n' },
+        { type: 'embed', embed: img },
+        { type: 'text', text: 'BBB' },
+        { type: 'embed', embed: vid },
+      ],
+    };
+    const del = deleteCurrentLine({ value: 'AAA\nBBB', selectionStart: 7, selectionEnd: 7 });
+    const out = applyLineDeleteToContent(content, del);
+    // 남은 텍스트는 "AAA", 임베드는 모두 마지막 라인 범위(offset 4,7)에 속해 제거된다.
+    expect(out.blocks.filter((b) => b.type === 'embed')).toHaveLength(0);
+    expect(out.blocks.filter((b) => b.type === 'text').map((b) => b.text).join('')).toBe('AAA');
+  });
+
+  it('첫 라인 삭제 시 다음 라인 시작의 임베드는 보존된다', () => {
+    // "AAA\n"(0..4) [임베드@4] "BBB"(4..7). 첫 라인(AAA) 삭제 → del=[0,4). 임베드 offset 4 == deletedEnd
+    // 이고 뒤에 살아남는 라인이 있으므로 보존.
+    const content = {
+      blocks: [
+        { type: 'text', text: 'AAA\n' },
+        { type: 'embed', embed: img },
+        { type: 'text', text: 'BBB' },
+      ],
+    };
+    const del = deleteCurrentLine({ value: 'AAA\nBBB', selectionStart: 1, selectionEnd: 1 });
+    const out = applyLineDeleteToContent(content, del);
+    expect(out.blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
+    expect(out.blocks.filter((b) => b.type === 'text').map((b) => b.text).join('')).toBe('BBB');
   });
 });
 
