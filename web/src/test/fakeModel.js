@@ -57,6 +57,11 @@ export function createFakeModel(overrides = {}) {
     async unlockArticle(_articleId) {
       return { ok: true, released: true };
     },
+    // SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — default succeed so unrelated tests still pass; tests that
+    // assert the force-unlock path override via createFakeModel({ forceUnlockArticle }).
+    async forceUnlockArticle(_articleId) {
+      return { ok: true };
+    },
     async logout() {
       // Default: end the session successfully (no real HTTP transport wired).
       return { ok: true };

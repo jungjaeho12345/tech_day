@@ -95,7 +95,7 @@ related_specs:
 ### 3.2 시나리오 B — 회귀 검증
 
 - CI 또는 개발자가 `/news verify SPEC-NEWS-REVISE-001` 호출.
-- → `evaluator-active`만 단독 실행. `npm test --prefix web` 종료코드 0 + AC-Z-1/AC-DTL-1/AC-EMB-1 등 모든 AC 매핑 검증 + `vite build` 종료코드 0. [SUPERSEDED by SPEC-NEWS-REVISE-010: AC-DTL-1(제목 섹션 존재)은 제목 요소 폐지로 AC-NOTITLE-1(제목 요소 부재)로 매핑 대체]
+- → `evaluator-active`만 단독 실행. `npm test --prefix web` 종료코드 0 + AC-Z-1/AC-DTL-1/AC-EMB-1 등 모든 AC 매핑 검증 + `vite build` 종료코드 0. [SUPERSEDED by SPEC-NEWS-REVISE-013: AC-DTL-1(제목 섹션 존재)은 제목 요소 폐지로 AC-NOTITLE-1(제목 요소 부재)로 매핑 대체]
 - → 결과를 Slack에 보고. PASS면 한 줄 요약, FAIL이면 실패 AC 목록과 다음 액션 제안.
 
 ### 3.3 시나리오 C — `news.md`에서 자동 시작
@@ -426,7 +426,7 @@ related_specs:
 ### 8.2 런타임 dry-run (Pilot)
 
 - plan.md 단계 5: SPEC-NEWS-REVISE-001 대상으로 `/news verify` 1회 실행.
-- 기대: `npm test --prefix web` 종료코드 0, `npm run build --prefix web` 종료코드 0, AC-Z-1~5 / AC-DTL-1~6 / AC-EMB-1~3 / AC-CTRL-D-1~5의 매핑 테스트 모두 통과, Slack 또는 fallback 알림 1회 전송. [SUPERSEDED by SPEC-NEWS-REVISE-010: AC-DTL-1/4 의 제목 요소 존재 전제는 AC-NOTITLE-1/3/EC-1 로 대체; AC-DTL-2/3/5/6 의 12 필드·이스케이프·시각 분리는 AC-NOTITLE-4 로 계승]
+- 기대: `npm test --prefix web` 종료코드 0, `npm run build --prefix web` 종료코드 0, AC-Z-1~5 / AC-DTL-1~6 / AC-EMB-1~3 / AC-CTRL-D-1~5의 매핑 테스트 모두 통과, Slack 또는 fallback 알림 1회 전송. [SUPERSEDED by SPEC-NEWS-REVISE-013: AC-DTL-1/4 의 제목 요소 존재 전제는 AC-NOTITLE-1/3/EC-1 로 대체; AC-DTL-2/3/5/6 의 12 필드·이스케이프·시각 분리는 AC-NOTITLE-4 로 계승]
 
 ### 8.3 회귀 가드
 

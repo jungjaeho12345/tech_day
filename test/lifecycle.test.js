@@ -54,9 +54,13 @@ test('AC-Z-LC-3: RDS + Z + kill -> DDK (D-mirror)', () => {
   assert.deepEqual(transition('RDS', 'Z', 'kill'), { ok: true, status: 'DDK' });
 });
 
-test('AC-Z-LC-4: non-RDS source + Z is still rejected (only RDS-source defined)', () => {
-  assert.equal(transition('DPS', 'Z', 'send').ok, false);
+test('AC-Z-LC-4: 미정의 source + Z is still rejected (RRH/RRK/DDK 등 막다른 상태)', () => {
+  // SPEC-NEWS-REVISE-011 (2026-06-10 사용자 승인): DPS-출발 송고/보류 전이가 신규 정의되어
+  // `transition('DPS','Z','send')` 는 더 이상 거부가 아니다(→DPS). 따라서 본 케이스의 DPS|Z|send
+  // 단언은 신규 승인 동작과 모순되어 제거하고, 여전히 미정의인 막다른 상태로 단언을 좁힌다.
   assert.equal(transition('RRH', 'Z', 'hold').ok, false);
+  assert.equal(transition('RRK', 'Z', 'send').ok, false);
+  assert.equal(transition('DDK', 'Z', 'send').ok, false);
 });
 
 test('AC-11: rejected transition carries no status (caller leaves status unchanged)', () => {

@@ -1,72 +1,144 @@
-# SPEC-NEWS-REVISE-010 — Acceptance Criteria
+---
+id: SPEC-NEWS-REVISE-010
+version: 0.2.0
+status: Completed
+created: 2026-06-10
+updated: 2026-06-10
+author: manager-spec
+priority: high
+issue_number: 0
+related_specs:
+  - SPEC-FRONTEND-UI-001
+  - SPEC-AUTH-001
+  - SPEC-EDIT-LOCK-001
+  - SPEC-UI-EDITOR-001
+---
 
-상세보기 별도 제목 요소 폐지 (본문 첫 줄이 제목). 모든 시나리오는 `web/src/view/articleDetail.js` 의 `buildArticleDetailHtml(article)` 출력 HTML 문자열을 `JSDOM`/`DOMParser` 로 파싱하여 검증한다 (Run 단계 구현 기준; 본 문서는 Plan 단계 명세).
+# SPEC-NEWS-REVISE-010 — 인수 기준 (Acceptance Criteria)
+
+> 모든 AC 는 **실제 테스트 레이아웃** 기준으로 검증 가능하다.
+> - 프런트엔드: `web/src/view/*.test.jsx` → `npm run test:web` (vitest, `--root web`)
+> - 백엔드: `test/*.test.js` → `npm test` (node test runner)
+> - 빌드: `npm run build` (vite build web)
+>
+> 본 SPEC 은 Brownfield Δ-only(회귀 잠금)이므로, 각 AC 는 **이미 구현된 동작**을 단언한다.
 
 ---
 
-## §1. REQ-DETAIL-NO-SEPARATE-TITLE — 별도 제목 요소 폐지
+## §1. REQ-LIST-PAGINATION — 조회 목록 4메뉴 10개/페이지
 
-### AC-NOTITLE-1 (제목 요소 부재)
+검증 위치: `web/src/view/ViewPage.test.jsx` (`npm run test:web`)
 
-- **Given**: 정상 article 객체 (`title`, `markupVersion`, 공통정보 12 필드 채워짐)
-- **When**: `buildArticleDetailHtml(article)` 결과를 파싱하여 `section[aria-label="기사"]` 내부를 검사한다
-- **Then**: `section[aria-label="기사"]` 안에 `.yh-detail__title` 클래스 요소와 `<h1>` 요소가 **하나도 존재하지 않는다** (`querySelector('section[aria-label="기사"] .yh-detail__title')` === null AND `querySelector('section[aria-label="기사"] h1')` === null)
+### AC-PAGE-1 — 페이지당 10개 표시
+- **Given** 임의 메뉴(예: 데스크 미송고)에서 23건의 기사가 조회된 상태
+- **When** 조회 페이지가 렌더링된다
+- **Then** 첫 페이지에 정확히 10개 행만 표시된다
+- **And** 페이지 지시자(`data-testid="page-indicator"`)가 `1 / 3` 을 표시한다
 
-### AC-NOTITLE-2 (본문 요소 존재)
+### AC-PAGE-2 — 다음/이전 이동
+- **Given** 23건 조회로 3페이지가 존재하는 상태
+- **When** "다음"(`data-testid="page-next"`)을 누른다
+- **Then** 2페이지 구간(11~20번째)의 10개 행이 표시되고 지시자가 `2 / 3` 으로 갱신된다
+- **And** 마지막 페이지(3페이지)에서는 나머지 3개 행만 표시된다
+- **And** 1페이지에서 "이전"(`data-testid="page-prev"`)은 비활성(`disabled`)이다
 
-- **Given**: 위 AC-NOTITLE-1 컨텍스트
-- **When**: 같은 `section[aria-label="기사"]` 내부를 검사한다
-- **Then**: `.yh-detail__content` 본문 요소가 정확히 1개 존재하고, 그 안에는 markupVersion 으로부터 렌더된 본문(첫 줄=제목 포함, 임베드, `(끝)`)이 순서대로 들어 있다 (markupVersion 파싱·순서 회귀 없음)
+### AC-PAGE-3 — 10개 이하일 때 페이지 컨트롤 미노출
+- **Given** 조회된 기사가 10건 이하인 상태
+- **When** 조회 페이지가 렌더링된다
+- **Then** 페이지 이동 컨트롤(`yh-pagination`)이 노출되지 않는다
 
-### AC-NOTITLE-3 (head title 유지)
+### AC-PAGE-4 — 메뉴 전환/조회 시 1페이지 리셋
+- **Given** 사용자가 3페이지를 보고 있는 상태
+- **When** 다른 메뉴로 전환하거나 부서별 조회 버튼을 누른다
+- **Then** 현재 페이지가 1페이지로 리셋된다
 
-- **Given**: (a) `article.title` 이 채워진 경우, (b) `article.title` 이 빈 문자열 또는 `null` 인 경우 — 두 케이스
-- **When**: 출력 HTML 의 `<head>` 영역을 검사한다
-- **Then**: (a) 의 경우 `<title>` 텍스트 === escape 된 `article.title`; (b) 의 경우 `<title>` 텍스트 === `(제목 없음)`. 어느 경우에도 `<head><title>` 은 존재한다
+### AC-PAGE-5 — 페이지 초과 시 마지막 페이지 보정
+- **Given** 사용자가 3페이지를 보고 있고, 목록이 실시간 갱신으로 8건(1페이지 분량)으로 축소된 상태
+- **When** 목록이 갱신된다
+- **Then** 현재 페이지가 마지막 유효 페이지(1페이지)로 보정된다
 
-### AC-NOTITLE-4 (회귀 — 공통정보 12 dt / gray-line / 섹션 순서)
-
-- **Given**: 공통정보 12 필드가 모두 채워진 article 객체
-- **When**: 출력 HTML 을 파싱하고 (1) 공통정보 섹션의 `<dt>` 노드를 enumerate, (2) `--yh-gray-line` 토큰 값을 검사, (3) 두 `<section>`(공통정보, 기사)의 문서 순서를 검사한다
-- **Then**:
-  - (1) 다음 12 label 이 모두 정확히 한 번씩 등장한다 — 작성자, 공동작성, 내용, 지역, 속성, 키워드, 내부코멘트, 외부코멘트, 첨부파일, 자료파일, 엠바고, 2차 엠바고 (가로 나열 레이아웃 회귀 없음)
-  - (2) `--yh-gray-line: #DDE3EC` 정확 토큰 매치 (대소문자 무시; `/--yh-gray-line:\s*#DDE3EC/i`) — SPEC-NEWS-REVISE-004 AC-GRAY-1 계승
-  - (3) 공통정보 섹션이 기사 섹션보다 먼저 등장한다 (공통정보 → 기사 순서), 두 섹션은 동일 부모의 형제 노드다 — SPEC-NEWS-REVISE-004 AC-GRAY-3 의 두 섹션 형제 가드 계승
-
----
-
-## §2. 엣지 케이스 (Edge Cases)
-
-### EC-1 (빈 제목 — 본문 placeholder 요소 미생성)
-
-- **Given**: `article.title` === `''`, `article.markupVersion` 은 정상 본문 보유
-- **When**: 출력 HTML 의 `section[aria-label="기사"]` 내부를 검사한다
-- **Then**: `(제목 없음)` 텍스트를 담은 `.yh-detail__title`/`<h1>` placeholder 요소가 **생성되지 않는다**. 본문 영역(`.yh-detail__content`)은 markupVersion 본문만 렌더한다. (`(제목 없음)` 은 `<head><title>` 에만 잔존 — AC-NOTITLE-3 참조)
-
-### EC-2 (레거시 — markupVersion 없음)
-
-- **Given**: `article.markupVersion` 이 비어 있고 `article.content` 폴백만 존재
-- **When**: 출력 HTML 을 검사한다
-- **Then**: `section[aria-label="기사"]` 에 별도 제목 요소는 여전히 없으며, 본문(`.yh-detail__content`)은 escape 된 `article.content` 폴백을 렌더한다 (기존 레거시 폴백 동작 유지, 제목 요소만 부재)
-
-### EC-3 (XSS escape 회귀)
-
-- **Given**: `article.title` = `<script>alert(1)</script>`, `article.content` / markupVersion 텍스트에 `<img src=x onerror=alert(1)>`
-- **When**: 출력 HTML 을 파싱한다
-- **Then**: `<head><title>` 의 title 은 escape 되어 텍스트로만 표시되고, 본문의 위험 토큰도 escape 되어 실행 가능한 `<script>`/`<img onerror>` 노드가 DOM 에 생성되지 않는다 (escape 정책 회귀 없음)
+### AC-PAGE-6 — 4메뉴 8컬럼 무변경 (회귀 가드)
+- **Given** 페이징이 적용된 4개 메뉴 각각
+- **When** 목록 행이 렌더링된다
+- **Then** 각 행은 SPEC-FRONTEND-UI-001 REQ-FE-VIEW-011 의 8컬럼(기사아이디/제목/작성자/수정자/작성시간/수정시간/기사상태/LockYN) 구성을 유지한다
 
 ---
 
-## §3. 품질 게이트 (Quality Gate)
+## §2. REQ-SESSION-SLIDING — 세션 1시간 sliding idle 만료
 
-- [ ] AC-NOTITLE-1~4 모두 GREEN
-- [ ] EC-1~3 모두 GREEN
-- [ ] SPEC-NEWS-REVISE-001/002/003/004 의 폐지 대상 단언(제목 요소 존재 / 본문 폰트 > 제목 폰트)이 테스트에서 제거되거나 AC-NOTITLE-* 로 대체됨 (제목 요소 부재와 모순되는 잔존 단언 없음)
-- [ ] `npm test` 전체 통과, `npm run build` 무경고
-- [ ] TRUST 5 게이트 통과
+검증 위치: `test/sessionService.test.js`, `test/serverAuthWiring.test.js` (`npm test`)
+
+> [HARD] 모든 시간 의존 AC 는 `createSessionService({ ttlMs, now })` 의 **`now`(또는 `ttlMs`)를 명시적으로 주입** 하여 검증한다. 실시간 시계에 의존하면 미래 시점/CI 에서 비결정적으로 깨진다.
+
+### AC-SESS-1 — 활동 시 sliding 갱신 (1시간 임계)
+- **Given** `createSessionService({ ttlMs: 60*60*1000, now: () => clock })` 로 세션을 생성하고 `clock` 을 제어하는 상태
+- **When** 만료 직전(예: 59분 시점)에 `touchSession(sessionId)` 을 호출한다
+- **Then** 만료 시점이 현재 `clock` 기준 1시간 뒤로 갱신되어, 그 시점부터 다시 1시간 동안 세션이 유효하다
+- **And** 갱신 후 `clock` 을 추가 59분 진행시켜 `validateSession` 하면 여전히 유효하다
+
+### AC-SESS-2 — 1시간 무동작 만료
+- **Given** `ttlMs: 60*60*1000`, `now` 주입으로 세션을 생성한 상태
+- **When** 마지막 활동 이후 `clock` 을 60분 이상(예: 60분 1ms) 진행시킨다
+- **Then** `validateSession(sessionId)` 가 `undefined`(미인증) 를 반환한다
+- **And** `getSession(sessionId)` 도 만료 세션을 읽지 못한다 (SPEC-AUTH-001 REQ-AUTH-GUARD-003 정합)
+
+### AC-SESS-3 — 활동 미만 시 유지
+- **Given** `now` 주입 세션
+- **When** 마지막 활동 이후 경과 시간이 1시간 미만(예: 59분 59초)인 상태에서 `validateSession` 한다
+- **Then** 세션이 유효(인증됨)로 유지된다
+
+### AC-SESS-4 — 로그아웃 즉시 무효화 (sliding 무관)
+- **Given** 활동으로 갱신되어 만료 시점이 1시간 뒤로 미뤄진 유효 세션
+- **When** 사용자가 로그아웃하여 세션을 무효화한다
+- **Then** 남은 sliding 시간과 무관하게 세션이 즉시 무효가 되어 `validateSession` 이 `undefined` 를 반환한다 (SPEC-AUTH-001 REQ-AUTH-SESS-004 정합)
+
+### AC-SESS-5 — 새로고침/요청/액션/저장이 활동으로 갱신 (와이어링 회귀 가드)
+- **Given** 서버 보호 경로(요청 검증, 송고/보류/KILL 액션, 기사 저장)가 와이어링된 상태 (`test/serverAuthWiring.test.js`)
+- **When** 인증된 보호 요청(새로고침 포함)·액션·저장 경로가 호출된다
+- **Then** 각 경로가 `touchSession` 을 호출하여 세션 만료 시점을 갱신한다(`server/index.js` 의 sliding 와이어링 회귀 가드)
 
 ---
 
-## Definition of Done (요약)
+## §3. REQ-ROW-CLICK-DETAIL — 행 클릭 상세 새창
 
-상세보기 새창의 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`/`<h1>`)가 완전히 제거되고, 본문(`.yh-detail__content`)·공통정보 12 필드·gray-line 토큰·섹션 순서·XSS escape·`<head><title>` 폴백은 회귀 없이 유지된다.
+검증 위치: `web/src/view/ViewPage.test.jsx` (`npm run test:web`)
+
+### AC-ROW-1 — 행 클릭 시 새 창 상세
+- **Given** 조회 목록에 기사 행이 표시된 상태
+- **When** 사용자가 기사 행을 (좌)클릭한다
+- **Then** `window.open` 이 호출되어 새 창이 열리고, 그 창에 해당 기사의 제목/본문/공통정보가 표시된다
+
+### AC-ROW-2 — 우클릭 상세보기와 동일 렌더 경로 (일관성 회귀 가드)
+- **Given** 동일 기사에 대해 (a) 행 클릭과 (b) 우클릭 → 상세보기 두 진입점이 존재
+- **When** 두 진입점 각각으로 상세를 연다
+- **Then** 두 경로 모두 동일한 상세 렌더 경로(`articleDetail.js` `buildArticleDetailHtml`)를 사용하여 동일 콘텐츠를 표시한다 (SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT / SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS 와 정합)
+
+---
+
+## §4. 엣지 케이스 (Edge Cases)
+
+- **EC-1 — 정확히 10건**: 조회 결과가 정확히 10건이면 단일 페이지로 표시되고 페이지 컨트롤은 노출되지 않는다(AC-PAGE-3 경계).
+- **EC-2 — 0건**: 조회 결과가 0건이면 빈 목록 안내가 표시되고 페이지 컨트롤은 노출되지 않으며 페이지 지시자는 `1 / 1` 경계에서 오류 없이 처리된다.
+- **EC-3 — 만료 직전 활동의 경계**: 마지막 활동 후 정확히 ttl 경계(예: 60분 0ms)에서의 판정이 결정론적이다(`now` 고정으로 검증, `>=` vs `>` 경계 명시).
+- **EC-4 — 로그아웃 후 재요청**: 로그아웃으로 무효화된 세션 식별자로 보호 요청 시 미인증으로 거부된다(AC-SESS-4 + SPEC-AUTH-001 EC 정합).
+
+---
+
+## §5. 품질 게이트 (Quality Gate)
+
+- [ ] `npm run test:web` (vitest) — §1, §3 AC 전부 GREEN
+- [ ] `npm test` (node test runner) — §2 AC 전부 GREEN, 모든 세션 시간 테스트가 `now`/`ttlMs` 주입 사용
+- [ ] `npm run build` (vite build web) 성공
+- [ ] 4메뉴 8컬럼 회귀 무손상(AC-PAGE-6)
+- [ ] 행 클릭/우클릭 상세 진입점 콘텐츠 일관성(AC-ROW-2)
+- [ ] 세션 만료 vs 편집 잠금(lockYN) 해제 혼동 없음(Exclusion 준수)
+
+---
+
+## §6. Definition of Done
+
+- [ ] REQ-LIST-PAGINATION / REQ-SESSION-SLIDING / REQ-ROW-CLICK-DETAIL 의 모든 AC 가 회귀 잠금 테스트로 등재되고 GREEN
+- [ ] 신규 동작 추가 없음 — 기존 구현의 명세 잠금만 수행됨을 확인(Δ-only)
+- [ ] spec.md / plan.md / acceptance.md 3종 version 0.2.0 동기화 유지
+- [ ] 작업 완료 후 Slack tech-day 채널 보고(CLAUDE.md HARD)
+- [ ] DB 변경 없음, 코드 동작 변경 없음(명세–코드 정합 단언만) 확인

@@ -221,7 +221,7 @@ export function buildArticleDetailHtml(article) {
   .yh-detail__row--empty dd {
     color: var(--yh-gray-mid);
   }
-  /* SPEC-NEWS-REVISE-010 REQ-DETAIL-NO-SEPARATE-TITLE: 별도 제목 요소(.yh-detail__title) 폐지.
+  /* SPEC-NEWS-REVISE-013 REQ-DETAIL-NO-SEPARATE-TITLE: 별도 제목 요소(.yh-detail__title) 폐지.
      본문(.yh-detail__content) 첫 줄(markupVersion)이 제목 역할을 한다. 제목은 <head><title> 에만 남는다. */
   .yh-detail__content {
     font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;

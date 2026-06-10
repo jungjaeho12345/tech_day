@@ -820,9 +820,9 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
   // SPEC-NEWS-REVISE-009 lineage-Y — DDH(데스크 보류) 기사: role D|Z 에게 송고/KILL 만 노출(보류 없음),
   // role R 은 아무 버튼도 없음. RDS 분기와 배타적으로 동작한다 (status 가 정확히 하나여서 겹치지 않음).
   const isDdh = ctrl.status === 'DDH';
-  // KILL 노출 게이트: 편집 컨텍스트(잠긴 기존 기사)이거나 articleId 가 생성된 경우만 KILL 대상이 존재한다.
-  // 신규 초안 탭(editArticleId 없음 + A-DRAFT)에서는 KILL 을 숨긴다 (존재하지 않는 기사는 KILL 불가).
-  const killTargetExists = !ctrl.isDraft || !!editArticleId;
+  // SPEC-NEWS-REVISE-011 — DPS(배부 대상) 기사를 고침/포털고침으로 연 작성 페이지: R/D/Z 에게 송고/보류만
+  // 노출(KILL 비표시). 게이트는 로드된 기사 상태값(ctrl.status)으로만 판정 — 모드 플래그 무도입(SPEC-007 정합).
+  const isDps = ctrl.status === 'DPS';
   // SPEC-NEWS-REVISE-001 — 본문 커서 위치 임베드 (Phase C): 메타 패널의 "삽입" 버튼을 클릭하면
   // 포커스가 BodyEditor를 떠난 뒤지만, 마지막으로 알려진 캐럿 offset을 ref로 보존해 인라인 삽입한다.
   const lastCaretRef = useRef(null);
@@ -884,7 +884,7 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
                 onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
             </>
           ) : null}
-          {(user.role === 'R' || user.role === 'Z') && isRds && killTargetExists ? (
+          {(user.role === 'R' || user.role === 'Z') && isRds && !ctrl.isDraft ? (
             <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
@@ -896,6 +896,16 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
                 onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
               <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
                 onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+            </>
+          ) : null}
+          {/* SPEC-NEWS-REVISE-011 — DPS 고침/포털고침: R/D/Z 에게 송고/보류만 노출(KILL 비표시). 기존 RDS
+              블록과 동일 클래스·확인창·lockError disabled·송고 가드(ctrl.send 내부 "(끝)"/제목 가드)를 재사용한다. */}
+          {isDps && (user.role === 'R' || user.role === 'D' || user.role === 'Z') ? (
+            <>
+              <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+              <button type="button" className="yh-btn yh-btn--hold" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
             </>
           ) : null}
         </div>

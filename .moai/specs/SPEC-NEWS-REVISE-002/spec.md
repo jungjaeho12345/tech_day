@@ -185,14 +185,14 @@ related_specs:
 
 ### REQ-DETAIL-FONT-EMPHASIS — 상세보기 본문 폰트 > 제목 폰트 (Priority: Medium)
 
-[SUPERSEDED by SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지] 본 REQ 전체(본문 폰트 > 제목 폰트 비교 + AC-FONT-1~4)는 더 이상 요구되지 않는다. 상세보기 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`)가 폐지되어 비교 대상 자체가 소멸한다. SPEC-NEWS-REVISE-001 AC-DTL-1~6 충족 요구(아래 EARS 마지막 줄)도 제목 요소 부재로 AC-NOTITLE-* 로 대체된다.
+[SUPERSEDED by SPEC-NEWS-REVISE-013 — 상세보기 별도 제목 요소 폐지] 본 REQ 전체(본문 폰트 > 제목 폰트 비교 + AC-FONT-1~4)는 더 이상 요구되지 않는다. 상세보기 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`)가 폐지되어 비교 대상 자체가 소멸한다. SPEC-NEWS-REVISE-001 AC-DTL-1~6 충족 요구(아래 EARS 마지막 줄)도 제목 요소 부재로 AC-NOTITLE-* 로 대체된다.
 
 #### EARS 문장
 
 - **[Ubiquitous]** THE 시스템 SHALL 상세보기 새창의 본문 블록(`.yh-detail__content`) `font-size`를 제목 블록(`.yh-detail__title`) `font-size`보다 크게 설정한다.
 - **[Unwanted]** THE 시스템 SHALL NOT 본문 폰트 사이즈가 제목 폰트 사이즈와 같거나 작은 상태를 허용하지 않는다 (시각 회귀 금지).
 - **[State-Driven]** WHILE `article.title`이 비어 있어 제목 자리에 `(제목 없음)` 플레이스홀더가 들어가는 경우라도, THE 시스템 SHALL 본문 폰트 사이즈가 제목 폰트 사이즈보다 큰 관계를 유지한다.
-- **[Ubiquitous]** THE 시스템 SHALL SPEC-NEWS-REVISE-001 AC-DTL-1~6 (분리 구조, 12 필드, 이스케이프, 회귀 가드)를 그대로 충족한다. [SUPERSEDED by SPEC-NEWS-REVISE-010: AC-DTL-1/4 의 제목 요소 존재 전제는 폐지. 12 필드/이스케이프는 AC-NOTITLE-4 로 계승]
+- **[Ubiquitous]** THE 시스템 SHALL SPEC-NEWS-REVISE-001 AC-DTL-1~6 (분리 구조, 12 필드, 이스케이프, 회귀 가드)를 그대로 충족한다. [SUPERSEDED by SPEC-NEWS-REVISE-013: AC-DTL-1/4 의 제목 요소 존재 전제는 폐지. 12 필드/이스케이프는 AC-NOTITLE-4 로 계승]
 
 #### Acceptance Criteria 포인터
 

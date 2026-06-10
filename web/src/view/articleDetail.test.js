@@ -17,7 +17,7 @@ describe('escapeHtml', () => {
 // news.md "# 상세보기":
 //   상단 = 공통정보(작성자, 공동작성, 내용, 지역, 속성, 키워드, 내부코멘트, 외부코멘트,
 //                   첨부파일, 자료파일, 엠바고 시간, 2차 엠바고 시간)
-//   하단 = 기사 (본문만; SPEC-NEWS-REVISE-010 으로 별도 제목 요소 폐지, 본문 첫 줄이 제목)
+//   하단 = 기사 (본문만; SPEC-NEWS-REVISE-013 으로 별도 제목 요소 폐지, 본문 첫 줄이 제목)
 describe('buildArticleDetailHtml (news.md 상세보기)', () => {
   const fullArticle = {
     articleId: 'A-1',
@@ -43,7 +43,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('기사 본문 내용입니다.');
   });
 
-  // SPEC-NEWS-REVISE-010 AC-NOTITLE-4(3): 별도 제목 요소(<h1>) 폐지 후, 섹션 순서는
+  // SPEC-NEWS-REVISE-013 AC-NOTITLE-4(3): 별도 제목 요소(<h1>) 폐지 후, 섹션 순서는
   // 공통정보 섹션이 기사 섹션보다 먼저 옴으로 단언한다 (이전 <h1> 위치 기준 비교를 대체).
   it('renders the 공통정보 section before the 기사 section', () => {
     const html = buildArticleDetailHtml(fullArticle);
@@ -94,7 +94,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('yh-detail__row--empty');
   });
 
-  // SPEC-NEWS-REVISE-010 AC-NOTITLE-1/2: 별도 제목 요소(.yh-detail__title/<h1>)를 폐지하고,
+  // SPEC-NEWS-REVISE-013 AC-NOTITLE-1/2: 별도 제목 요소(.yh-detail__title/<h1>)를 폐지하고,
   // 기사 섹션은 본문(.yh-detail__content)만 렌더한다 (본문 첫 줄이 제목 역할).
   it('renders 본문 only in the 기사 section with NO separate title element', () => {
     const html = buildArticleDetailHtml(fullArticle);
@@ -127,7 +127,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('a&amp;b');
   });
 
-  // SPEC-NEWS-REVISE-010 AC-NOTITLE-1/3 (002 AC-FONT-1 폐지 대체): 본문>제목 폰트 비교 폐지.
+  // SPEC-NEWS-REVISE-013 AC-NOTITLE-1/3 (002 AC-FONT-1 폐지 대체): 본문>제목 폰트 비교 폐지.
   // 별도 제목 요소가 없음을 단언하고, 본문(.yh-detail__content) 존재만 확인한다.
   it('AC-NOTITLE: 별도 제목 요소가 없고 본문 요소만 존재한다 (002 AC-FONT-1 대체)', () => {
     const html = buildArticleDetailHtml(fullArticle);
@@ -139,7 +139,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(article.querySelector('.yh-detail__content')).not.toBeNull();
   });
 
-  // SPEC-NEWS-REVISE-010 AC-NOTITLE-3 (002 AC-FONT-3 폐지 대체): 빈 제목 시 placeholder
+  // SPEC-NEWS-REVISE-013 AC-NOTITLE-3 (002 AC-FONT-3 폐지 대체): 빈 제목 시 placeholder
   // 요소를 생성하지 않으며, (제목 없음) 은 <head><title> 에만 잔존한다.
   it('AC-NOTITLE-3: 빈/누락 제목 시 placeholder 제목 요소 미생성, <head><title>=(제목 없음) (002 AC-FONT-3 대체)', () => {
     for (const blank of ['', null, undefined]) {
@@ -159,7 +159,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
 });
 
 // SPEC-NEWS-REVISE-001 — REQ-DETAIL-LAYOUT-SPLIT
-// [SUPERSEDED by SPEC-NEWS-REVISE-010] 별도 제목 요소 폐지. 제목 요소 존재 단언은
+// [SUPERSEDED by SPEC-NEWS-REVISE-013] 별도 제목 요소 폐지. 제목 요소 존재 단언은
 // AC-NOTITLE-* 로 대체했고, 공통정보 12 dt / 섹션 순서 / escape 회귀 가드는 유지한다.
 describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
   const fullArticle = {
@@ -262,7 +262,7 @@ describe('REQ-DETAIL-LAYOUT-SPLIT (SPEC-NEWS-REVISE-001)', () => {
 });
 
 // SPEC-NEWS-REVISE-003 — REQ-DETAIL-BODY-EMPHASIS (토픽 B)
-// [SUPERSEDED by SPEC-NEWS-REVISE-010] 본문>제목 폰트 강조 비교 폐지(별도 제목 요소 제거).
+// [SUPERSEDED by SPEC-NEWS-REVISE-013] 본문>제목 폰트 강조 비교 폐지(별도 제목 요소 제거).
 // 제목 요소 부재 + 본문 존재 회귀 가드로 대체하고, gray-line/12 dt/형제 구조 가드는 유지한다.
 describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
   const fullArticle = {
@@ -557,8 +557,8 @@ describe('REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드
   });
 });
 
-// SPEC-NEWS-REVISE-010 회귀 가드 — 별도 제목 요소 폐지 불변식.
-describe('SPEC-NEWS-REVISE-010 REQ-DETAIL-NO-SEPARATE-TITLE 회귀 가드', () => {
+// SPEC-NEWS-REVISE-013 회귀 가드 — 별도 제목 요소 폐지 불변식.
+describe('SPEC-NEWS-REVISE-013 REQ-DETAIL-NO-SEPARATE-TITLE 회귀 가드', () => {
   const fullArticle = {
     articleId: 'A-1',
     title: '속보 제목',

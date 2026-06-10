@@ -87,11 +87,13 @@ test('AC-LIFE-4: /api/articles 하위 라우트는 알려진 action/lock/unlock/
   // - PUT    /api/articles/:id        (편집 = articleUpdate; assertLockHolder 게이트, status 직접변경 아님)
   // - POST   /api/articles/:id/lock   (락 획득; 신설계 holder = 로그인 세션 id)
   // - POST   /api/articles/:id/unlock (락 해제; DELETE /lock 폐기 → POST /unlock)
+  // - POST   /api/articles/:id/force-unlock (SPEC-NEWS-REVISE-012 강제 해제; 락 컬럼만 변경, status 불변)
   const ALLOWED = [
     'GET /api/articles',
     'GET /api/articles/search',
     'POST /api/articles',
     'POST /api/articles/:id/action',
+    'POST /api/articles/:id/force-unlock',
     'POST /api/articles/:id/lock',
     'POST /api/articles/:id/unlock',
     'PUT /api/articles/:id',

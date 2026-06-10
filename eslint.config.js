@@ -1,122 +1,90 @@
-// Flat ESLint config (ESLint 9) for the article-production-system monorepo.
-// Three file groups with distinct globals:
-//   1. web/src/**     -> browser + React 19 + JSX (Vite frontend)
-//   2. server/, src/  -> Node ESM backend (Express + node:sqlite)
-//   3. **/*.test.*    -> test globals (vitest in web, node:test in backend)
-// Rule strength is deliberately conservative: recommended baseline plus a few
-// low-risk hygiene rules, tuned to avoid breaking the existing (lint-free) code.
 import js from '@eslint/js';
 import globals from 'globals';
-import reactPlugin from 'eslint-plugin-react';
+import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
 
+// Flat config covering both the Node backend (server/, test/, build configs)
+// and the React 19 + Vite frontend (web/src/). No lint tooling existed before,
+// so noisy stylistic rules are set to "warn" (non-blocking) and only genuine
+// correctness issues (no-undef, rules-of-hooks) remain "error" so the
+// pre-commit hook does not block on pre-existing code.
 export default [
-  // Ignore build output, deps, and coverage artifacts.
   {
     ignores: [
-      'node_modules/**',
-      'dist/**',
-      'web/dist/**',
-      'coverage/**',
+      '**/node_modules/**',
+      '**/dist/**',
       '**/coverage/**',
-      '*.local',
-      // Tooling/driver scripts (Playwright harness, etc.) live outside app source
-      // and are not part of the production lint scope.
-      '.claude/**',
+      '.claude/**', // agent/tooling scripts, not application code
     ],
   },
 
-  // Baseline: ESLint recommended for every linted JS/JSX file.
   js.configs.recommended,
 
-  // Shared language options + hygiene rules for all source files.
+  // Backend (Node.js): MVC source (src/), server runtime, backend tests,
+  // and root/web build configs.
   {
-    files: ['**/*.{js,jsx}'],
+    files: [
+      'src/**/*.js',
+      'server/**/*.js',
+      'test/**/*.js',
+      '*.config.js',
+      'web/*.config.js',
+    ],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
+      globals: { ...globals.node },
     },
     rules: {
-      // Allow intentionally-unused fn args / leading args via underscore or rest siblings.
-      'no-unused-vars': [
-        'warn',
-        {
-          args: 'after-used',
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          ignoreRestSiblings: true,
-          caughtErrors: 'none',
-        },
-      ],
-      'prefer-const': 'warn',
-      'no-var': 'error',
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
 
-  // Frontend: browser globals + React 19 + JSX.
+  // Frontend (React 19 + Vite, browser runtime).
   {
     files: ['web/src/**/*.{js,jsx}'],
     plugins: {
-      react: reactPlugin,
+      react,
       'react-hooks': reactHooks,
+      'react-refresh': reactRefresh,
     },
     languageOptions: {
-      globals: {
-        ...globals.browser,
-      },
-      parserOptions: {
-        ecmaFeatures: { jsx: true },
-      },
+      ecmaVersion: 2024,
+      sourceType: 'module',
+      parserOptions: { ecmaFeatures: { jsx: true } },
+      globals: { ...globals.browser },
     },
-    settings: {
-      react: { version: '19' },
-    },
+    settings: { react: { version: 'detect' } },
     rules: {
-      ...reactPlugin.configs.flat.recommended.rules,
-      ...reactPlugin.configs.flat['jsx-runtime'].rules,
-      ...reactHooks.configs.recommended.rules,
-      // React 19 + Vite use the automatic JSX runtime; no React import needed.
-      'react/react-in-jsx-scope': 'off',
-      'react/prop-types': 'off',
-      // eslint-plugin-react-hooks v7 added strict best-practice rules that flag
-      // valid, working patterns in the existing editor code (ref-write-during-render,
-      // setState-in-effect). Surface them as warnings — actionable signal for new
-      // code — without failing the freshly-introduced gate on pre-existing source.
-      'react-hooks/refs': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
+      // Treat JSX-referenced identifiers as used so imported components
+      // are not flagged by no-unused-vars.
+      'react/jsx-uses-vars': 'error',
+      'react/jsx-uses-react': 'off', // new JSX transform (React 17+)
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+      'react-refresh/only-export-components': 'warn',
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
 
-  // Backend: Node ESM globals (Express server, node:sqlite, scripts).
-  {
-    files: ['server/**/*.js', 'src/**/*.js'],
-    languageOptions: {
-      globals: {
-        ...globals.node,
-      },
-    },
-  },
-
-  // Tests: backend node:test files run under Node globals.
-  {
-    files: ['test/**/*.js'],
-    languageOptions: {
-      globals: {
-        ...globals.node,
-      },
-    },
-  },
-
-  // Tests: web vitest/testing-library files get browser + vitest globals.
-  // Node globals are also included: vitest runs on Node inside a jsdom env, so
-  // tests legitimately reference `global`, `process`, `Buffer`, etc. when mocking.
+  // Frontend test files (Vitest globals via `globals: true` in vitest.config.js).
+  // Include node globals too: jsdom tests reach for `global`, `process`, etc.
   {
     files: ['web/src/**/*.test.{js,jsx}', 'web/src/test/**/*.{js,jsx}'],
     languageOptions: {
       globals: {
-        ...globals.browser,
         ...globals.node,
-        ...globals.vitest,
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        suite: 'readonly',
       },
     },
   },

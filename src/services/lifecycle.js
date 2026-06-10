@@ -18,6 +18,22 @@ const TRANSITIONS = Object.freeze({
   'RDS|Z|send': 'DPS',
   'RDS|Z|hold': 'DDH',
   'RDS|Z|kill': 'DDK',
+  // @MX:NOTE: [AUTO] DPS-출발 고침/포털고침 재송고·보류 전이 (SPEC-NEWS-REVISE-011, 2026-06-10 사용자 승인).
+  // DPS(배부 대상) 기사를 고침/포털고침으로 연 작성 페이지에서 송고=재송고(DPS 유지), 보류=데스크 보류(DDH).
+  // DPS|*|kill 은 의도적으로 미정의(거부) — 신규 델타줄은 송고/보류만 명시.
+  'DPS|R|send': 'DPS',
+  'DPS|D|send': 'DPS',
+  'DPS|Z|send': 'DPS',
+  'DPS|R|hold': 'DDH',
+  'DPS|D|hold': 'DDH',
+  'DPS|Z|hold': 'DDH',
+  // @MX:NOTE: [AUTO] DDH-출발 재송고·KILL 전이 (SPEC-NEWS-REVISE-008 REQ-DDH-LIFECYCLE, SPEC-011 L146 정합).
+  // 데스크 보류(DDH) 기사는 D/Z 가 재송고(→DPS)·KILL(→DDK) 할 수 있다. DDH|R|* 및 DDH|*|hold 는
+  // 미정의(거부) — SPEC-008 의 "R 전버튼 비표시 + 보류 비표시" 와 정합.
+  'DDH|D|send': 'DPS',
+  'DDH|Z|send': 'DPS',
+  'DDH|D|kill': 'DDK',
+  'DDH|Z|kill': 'DDK',
 });
 
 const ROLES = Object.freeze(new Set(['R', 'D', 'Z']));

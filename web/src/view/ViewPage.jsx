@@ -3,7 +3,7 @@
 // 컬럼 추가) + a right-click context menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useViewController, MENUS } from '../controller/useViewController.js';
-import { useSession } from '../app/context.js';
+import { useSession, useModel } from '../app/context.js';
 import { ROUTES } from '../app/routing.js';
 import { buildArticleDetailHtml } from './articleDetail.js';
 import { ContextMenu } from './ContextMenu.jsx';
@@ -51,24 +51,38 @@ function copyToClipboard(text) {
 // the full 연합 menu but only wire up what works). A disabled item has no onSelect.
 const DISABLED = Object.freeze({ disabled: true });
 
+// SPEC-NEWS-REVISE-012 — 행 데이터 lockYN==='Y' 일 때만(메뉴 종류 무관) "Lock해제" 항목을 만든다.
+// 권한: D/Z 활성, R show-but-disabled(기존 비허용 항목 패턴 일관, Z=D-mirror). lockYN!='Y' 이면 null
+// 을 반환해 호출부가 메뉴에서 항목 자체를 제외한다(데이터-주도 노출).
+function buildForceUnlockItem({ article, role, onForceUnlock }) {
+  if (article.lockYN !== 'Y') return null;
+  if (role === 'D' || role === 'Z') {
+    return { label: 'Lock해제', onSelect: () => onForceUnlock(article.articleId) };
+  }
+  return { label: 'Lock해제', ...DISABLED };
+}
+
 // Build the context-menu item list for an article under the active menu (ctrl.menu).
 // 데스크 미송고 has an 편집 entry (and 본문복사/제목만복사); the other three menus share a longer
 // send-history/translate/etc. set where 상세보기/본문복사/제목만복사 are functional and, on a DPS
 // article, 고침(포털제외)/포털고침 are enabled for role D only (REQ-FE-VIEW-009/010 v0.4.0) —
 // selecting either navigates to the write page in edit context (news.md 기사 제어 권한).
-function buildContextItems({ article, menu, role, navigate }) {
+function buildContextItems({ article, menu, role, navigate, onForceUnlock }) {
   const detail = { label: '상세보기', onSelect: () => openArticleDetail(article) };
   const copyBody = { label: '본문복사', onSelect: () => copyToClipboard(article.content) };
   const copyTitle = { label: '제목만복사', onSelect: () => copyToClipboard(article.title) };
+  const forceUnlock = buildForceUnlockItem({ article, role, onForceUnlock });
+  // 노출 조건이 행 데이터(lockYN)이므로 4개 메뉴 공통으로, lockYN='Y' 일 때만 항목을 덧붙인다.
+  const withForceUnlock = (items) => (forceUnlock ? [...items, forceUnlock] : items);
 
   if (menu === '데스크 미송고') {
-    return [
+    return withForceUnlock([
       { label: '편집', onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) },
       detail,
       { label: '이력보기', ...DISABLED },
       copyBody,
       copyTitle,
-    ];
+    ]);
   }
 
   // DPS-edit gating (REQ-FE-VIEW-009/010 v0.4.0): enabled only for role D on a DPS article.
@@ -80,7 +94,7 @@ function buildContextItems({ article, menu, role, navigate }) {
   // 부서별 송고 (SPEC-NEWS-REVISE-007 REQ-FWD-ENTRYPOINTS): 편집 항목은 권한과 무관하게 항상 활성
   // (AC-FWD-1/AC-REV-3). 고침/포털고침은 role D + DPS 기사에만 활성 (AC-FWD-2).
   if (menu === '부서별 송고') {
-    return [
+    return withForceUnlock([
       { label: '편집', onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) },
       detail,
       { label: '이력보기', ...DISABLED },
@@ -95,11 +109,11 @@ function buildContextItems({ article, menu, role, navigate }) {
       dpsEditItem('포털고침'),
       { label: '삭제요청', ...DISABLED },
       { label: '재송', ...DISABLED },
-    ];
+    ]);
   }
 
   // 부서별 작성 / 개인별 수정
-  return [
+  return withForceUnlock([
     detail,
     { label: '이력보기', ...DISABLED },
     { label: '송고이력보기', ...DISABLED },
@@ -113,7 +127,7 @@ function buildContextItems({ article, menu, role, navigate }) {
     dpsEditItem('포털고침'),
     { label: '삭제요청', ...DISABLED },
     { label: '재송', ...DISABLED },
-  ];
+  ]);
 }
 
 function RealtimeStatus({ connected }) {
@@ -386,6 +400,7 @@ function DeptMultiSelect({ departments, selectedDepts, onChange }) {
 export function ViewPage({ user, nav }) {
   const ctrl = useViewController(user);
   const session = useSession();
+  const model = useModel();
   const navigate = session?.navigate;
   const [selectedDepts, setSelectedDepts] = useState([]);
   const [page, setPage] = useState(1);
@@ -553,7 +568,13 @@ export function ViewPage({ user, nav }) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={buildContextItems({ article: contextMenu.article, menu: ctrl.menu, role: user.role, navigate })}
+          items={buildContextItems({
+            article: contextMenu.article,
+            menu: ctrl.menu,
+            role: user.role,
+            navigate,
+            onForceUnlock: (articleId) => model.forceUnlockArticle(articleId),
+          })}
           onClose={closeContextMenu}
         />
       ) : null}

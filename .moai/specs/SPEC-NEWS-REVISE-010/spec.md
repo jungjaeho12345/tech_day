@@ -1,31 +1,28 @@
 ---
 id: SPEC-NEWS-REVISE-010
-version: 0.1.0
-status: Plan
-created: 2026-06-09
-updated: 2026-06-09
+version: 0.2.0
+status: Completed
+created: 2026-06-10
+updated: 2026-06-10
 author: manager-spec
 priority: high
 issue_number: 0
 related_specs:
-  - SPEC-NEWS-REVISE-001
-  - SPEC-NEWS-REVISE-002
-  - SPEC-NEWS-REVISE-003
-  - SPEC-NEWS-REVISE-004
   - SPEC-FRONTEND-UI-001
+  - SPEC-AUTH-001
+  - SPEC-EDIT-LOCK-001
   - SPEC-UI-EDITOR-001
-supersedes:
-  - "SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT (제목 블록/별도 제목 요소 부분)"
-  - "SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS"
-  - "SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS"
-  - "SPEC-NEWS-REVISE-004 AC-GRAY-1 / AC-GRAY-3 (제목 요소 전제 부분)"
 ---
 
-# SPEC-NEWS-REVISE-010 — 상세보기 별도 제목 요소 폐지 (본문 첫 줄이 제목)
+# SPEC-NEWS-REVISE-010 — news.md 미흡수 항목 1급 명세화 (조회 목록 페이징 / 세션 sliding 만료 / 행 클릭 상세 새창)
 
 ## HISTORY
 
-- 2026-06-09 (v0.1.0): 최초 작성. 사용자 구두 지시(승인됨) — "기사 상세보기 새창에서 별도 '제목' 표시를 없앤다. 본문(`기사` 영역)이 markupVersion 첫 줄=제목을 이미 포함하므로 중복이다." 를 정식 명세화한다. 에디터 본문 구조상 첫째 줄이 제목이며(`moai-domain-news-editor` §2.5), 상세보기 본문은 `web/src/view/articleDetail.js` `buildBodyHtml` 이 `a.markupVersion` 을 파싱해 첫 줄(제목) 포함 전체를 렌더한다. 따라서 `section[aria-label="기사"]` 안의 별도 `<h1 class="yh-detail__title">` 요소는 제목 중복이다. 본 SPEC 은 별도 제목 요소를 폐지하고, 이로 인해 더 이상 성립하지 않는 폰트 강조 비교(본문 폰트 > 제목 폰트)를 폐지한다. SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT 의 제목 블록/별도 제목 요소 부분, SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS, SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS, SPEC-NEWS-REVISE-004 AC-GRAY-1/3 의 제목 요소 전제 부분을 supersede 한다 (해당 SPEC 본문은 이력 보존을 위해 삭제하지 않고 supersession 마커만 부착). (manager-spec)
+- 2026-06-10 (v0.2.0): Build+Evaluate 완료 — AC 17건 전수 회귀 잠금 테스트 등재(ViewPage.test.jsx +195, sessionService.test.js +52, serverAuthWiring.test.js +62), evaluator-active PASS 0.855(Must-Pass 3종 통과: vitest 489/489, node 251/251, build 무경고). status Plan→Completed. (MoAI)
+- 2026-06-10 (v0.1.0): 최초 작성. `news.md` 전 항목을 기존 SPEC(SPEC-NEWS-REVISE-001~009, SPEC-FRONTEND-UI-001, SPEC-UI-EDITOR-001, SPEC-AUTH-001, SPEC-BACKEND-CORE-001, SPEC-EDIT-LOCK-001, SPEC-DB-FOUNDATION-001)의 REQ/HISTORY와 대조한 결과, **1급(first-class) EARS REQ로 명세되지 않고 보조 참조/Exclusion으로만 다뤄진** 3개 항목을 식별하여 흡수한다. 세 항목 모두 이미 코드에 구현되어 동작 중이므로 **Brownfield Δ-only — 회귀 가드 + 명세 잠금**으로 정식 등재한다. 새 동작을 추가하지 않으며, 구현된 동작의 회귀를 막는 명세 잠금만 추가한다. (manager-spec)
+  - **REQ-LIST-PAGINATION** ← `news.md` L92 "기사는 10개씩 보여주며 페이징 처리 해줘". 미반영 근거: `SPEC-FRONTEND-UI-001` REQ-FE-VIEW-008/011 은 목록의 **컬럼 구성**만 1급으로 규정하고 페이징은 침묵. `SPEC-BACKEND-CORE-001` L206, `SPEC-NEWS-REVISE-002` L403, `SPEC-NEWS-REVISE-003` L91/L416 은 **"글기사 탭(검색 결과) 페이징"** 을 Exclusion(Run 단계 소관)으로만 언급 — 이는 조회 목록 4메뉴의 페이징과 무관한 별개 영역이다. 구현체: `web/src/view/ViewPage.jsx`(`PAGE_SIZE = 10`, `slice`, `data-testid="page-prev"/"page-next"/"page-indicator"`).
+  - **REQ-SESSION-SLIDING** ← `news.md` L101~104 "세션 정책"(1시간 무동작 만료 + sliding 갱신 + 로그아웃 전까지 유지 + F5 생존). 미반영 근거: `SPEC-AUTH-001` REQ-AUTH-GUARD-003 은 **"만료된 세션을 미인증으로 취급"** 한다는 결과만 1급으로 규정하고, **1시간 idle 임계값 · 활동 기반 sliding 갱신 · 새로고침 생존** 의 구체 정책은 EARS REQ로 명세되지 않았다(REQ-AUTH-SESS-001~004 도 생성/쿠키/로그아웃만 다룸). `SPEC-EDIT-LOCK-001` 의 30분 TTL 은 **편집 잠금(lock)** 의 idle 만료이지 **세션** 만료가 아니다. 구현체: `server/index.js`(`touchSession` — "1h sliding idle window" 주석 L74~75/193/224), `src/services/sessionService.js`(`createSessionService({ ttlMs, now })`, `touchSession`, `validateSession`).
+  - **REQ-ROW-CLICK-DETAIL** ← `news.md` L91 "기사를 클릭하면 새로운 창에서 기사의 제목, 내용, 공통정보 내용을 볼 수 있다". 미반영 근거: `SPEC-NEWS-REVISE-001`(REQ-DETAIL-LAYOUT-SPLIT) 과 `SPEC-NEWS-REVISE-003`(REQ-DETAIL-BODY-EMPHASIS) 은 **우클릭 → 상세보기** 새창의 *레이아웃/폰트*만 1급으로 규정한다. **목록 행 자체를 클릭하는 진입점**(우클릭 컨텍스트 메뉴와 별개)은 어떤 SPEC 에도 1급 REQ 가 없다. 구현체: `web/src/view/ViewPage.jsx`(`openArticleDetail` → `window.open`, 행 `onClick={openDetail}`).
 
 ---
 
@@ -34,166 +31,119 @@ supersedes:
 | 항목 | 값 |
 |------|---|
 | SPEC ID | SPEC-NEWS-REVISE-010 |
-| 제목 | 상세보기 별도 제목 요소 폐지 (본문 첫 줄이 제목) |
-| 상태 | Plan |
-| 생성일 | 2026-06-09 |
+| 제목 | news.md 미흡수 항목 1급 명세화 (조회 목록 페이징 / 세션 sliding 만료 / 행 클릭 상세 새창) |
+| 상태 | Completed |
+| 생성일 | 2026-06-10 |
 | 라이프사이클 | spec-anchored (구현과 함께 유지) |
-| 관련 SPEC | SPEC-NEWS-REVISE-001/002/003/004, SPEC-FRONTEND-UI-001, SPEC-UI-EDITOR-001 |
-| supersede 대상 | 위 frontmatter `supersedes` 참조 |
-| 영향 페이지 | 상세보기 새창 (`web/src/view/articleDetail.js`) |
+| 관련 SPEC | SPEC-FRONTEND-UI-001, SPEC-AUTH-001, SPEC-EDIT-LOCK-001, SPEC-UI-EDITOR-001 |
+| 영향 페이지 | `list.do` (기사 조회 — 4메뉴 목록 + 행 클릭 상세 새창), 서버 세션 계층 |
 | 개발 방법론 | TDD (`.moai/config/sections/quality.yaml` 기준) |
-| 작업 모드 | Brownfield 정정 (제목 요소 폐지) |
-| 인코딩 | UTF-8 |
+| 작업 모드 | Brownfield 확장 (Δ-only, 회귀 가드 + 명세 잠금) |
 
 ---
 
 ## 1. 목적 (Goal)
 
-상세보기 새창의 `기사` 영역에서 **본문과 별개로 출력되던 제목 요소(`.yh-detail__title` / `<h1>`)를 폐지**한다.
+`news.md`(시스템 source-of-truth)의 다음 3개 동작 규칙은 **이미 코드에 구현되어 동작 중**이나, 기존 SPEC 군에서 **1급 EARS 요구사항으로 잠겨 있지 않다**(보조 참조 또는 별개 영역 Exclusion 으로만 언급됨). 명세 공백 상태에서 회귀가 발생하면 source-of-truth 위반을 탐지할 1급 단언이 없으므로, 본 SPEC 은 그 공백을 EARS 형식으로 정식 잠금한다.
 
-배경/문제:
+1. **조회 목록 페이징 (10개/페이지)** — 기사 조회 페이지 4개 메뉴(데스크 미송고/부서별 작성/부서별 송고/개인별 수정) 목록은 한 페이지에 10개씩 표시하고 페이지 이동 컨트롤을 제공한다.
+2. **세션 sliding idle 만료 정책** — 인증 세션은 1시간 무동작 시 만료되며, 인증된 활동(요청/액션/저장/새로고침)이 있을 때마다 만료 시점이 갱신(sliding)되어 활동이 있는 한 무한 유지된다. 로그아웃 전까지(활동이 있는 한) 세션이 유지되고, 새로고침(F5)은 활동으로 간주되어 세션을 끊지 않는다.
+3. **행 클릭 상세 새창** — 조회 목록의 기사 행 자체를 클릭하면(우클릭 상세보기와 동일한 진입 콘텐츠) 새 창에서 제목/본문/공통정보를 표시한다.
 
-- 에디터 본문은 **첫째 줄이 제목**이다 (`moai-domain-news-editor` §2.5: "첫째 줄: 제목").
-- 저장 시 본문은 `a.markupVersion` (에디터 직렬화 JSON) 으로 보관되며, 첫 줄(제목)을 포함한 전체가 직렬화된다.
-- 상세보기 본문은 `web/src/view/articleDetail.js` `buildBodyHtml(article)` 이 `a.markupVersion` 을 deserialize 하여 첫 줄(제목)부터 임베드·`(끝)` 까지 순서대로 렌더한다.
-- 그런데 같은 `section[aria-label="기사"]` 안에 `<h1 class="yh-detail__title">${title}</h1>` 가 본문 위에 별도로 출력되어 **제목이 두 번** 보인다 (h1 의 `${title}` = `a.title`, 본문 첫 줄 = markupVersion 첫 줄 = 동일 제목).
-- 따라서 별도 제목 요소는 중복이며 사용자 지시에 따라 폐지한다.
-
-`why`: 제목 중복은 사용자 혼동을 유발하고, 기존 SPEC(001/002/003/004)의 "제목 블록/제목 폰트" 요구사항은 이 폐지와 정면충돌한다. 품질 게이트(LLM)가 "제목 요소는 이제 요구되지 않는다"를 명확히 인식하도록 본 SPEC 이 신규 요구사항으로 기존 요구사항을 supersede 한다.
+`why`: 본 SPEC 은 신규 기능을 도입하지 않는다. 이미 구현·검증된 동작이 `news.md` 와 정합함을 1급 EARS 로 고정하여, 향후 리팩터링/회귀가 source-of-truth 를 깨뜨릴 때 테스트가 즉시 적발하도록 만든다(명세 잠금).
 
 ---
 
 ## 2. 범위 (Scope)
 
-### 2.1 포함 (In Scope)
+### 본 SPEC 이 잠그는 것 (IN)
 
-- 상세보기 새창 `section[aria-label="기사"]` 에서 별도 제목 요소(`.yh-detail__title` / `<h1>`) 제거.
-- 제거에 따른 불필요 CSS(`.yh-detail__title` 룰) 정리 — 본문(`.yh-detail__content`) 렌더는 유지.
-- 브라우저 탭 제목용 `<head><title>` 유지 (`a.title` 또는 빈 값 시 `(제목 없음)`).
-- 빈 제목(`a.title` 비어있음) 상태에서 본문 영역이 markupVersion 본문만 렌더하고 별도 제목 placeholder 요소를 만들지 않음을 보장.
+- `list.do` 조회 목록 4메뉴 공통 페이징 동작(페이지 크기 10, 페이지 이동 컨트롤, 메뉴/조회 전환 시 1페이지 리셋, 페이지 수 경계 보정).
+- 인증 세션의 1시간 sliding idle 만료 정책(만료 임계, 활동 기반 갱신, 새로고침 생존).
+- 조회 목록 행 클릭 → 상세 새창 진입점(우클릭 상세보기와 동일 콘텐츠).
 
-### 2.2 제외 (Out of Scope)
-
-- 공통정보 12 필드의 추가/삭제/순서/라벨 변경 (그대로 유지).
-- 공통정보 12 필드 **가로 나열**(flex wrap) 레이아웃 변경 (그대로 유지).
-- gray-line 디자인 토큰 값(`--yh-gray-line: #DDE3EC`) 변경 (그대로 유지).
-- 섹션 순서(공통정보 → 기사) 변경 (그대로 유지).
-- markupVersion 본문 파싱/임베드 렌더 순서(본문 텍스트 → 임베드 → `(끝)`) 변경 (그대로 유지).
-- XSS escape 정책 변경 (그대로 유지).
-- 에디터 본문 구조 파싱(제목/부제목/본문 결정) 알고리즘 변경 (SPEC-UI-EDITOR-001 소관).
-- 수집/배부 시스템 (기사 작성기만).
-- DB 데이터 삭제 (CLAUDE.md HARD).
-- 코드/테스트 구현 (본 SPEC 은 Plan 단계 문서만; Run 단계에서 구현).
+### 본 SPEC 이 잠그지 않는 것 (OUT — 아래 `## Exclusions` 참조)
 
 ---
 
-## 3. 요구사항 (Requirements — EARS)
+## 3. 사용자 시나리오 (User Scenarios)
 
-### REQ-DETAIL-NO-SEPARATE-TITLE — 상세보기 별도 제목 요소 폐지 (Priority: High)
+### 3.1 조회 목록 페이징 — 11건 이상일 때 페이지 분할
+- 사용자가 `list.do` 의 임의 메뉴(예: 데스크 미송고)에 진입한다. 해당 메뉴의 기사가 23건 조회된다.
+- 시스템은 첫 페이지에 10건만 표시하고, 페이지 이동 컨트롤(이전/다음 + 현재/전체 표시)을 노출한다.
+- 사용자가 "다음" 을 누르면 다음 10건이, 마지막 페이지에서는 나머지 3건이 표시된다.
+- 사용자가 다른 메뉴로 전환하거나 부서별 조회 버튼을 누르면 페이지가 1로 리셋된다.
 
-#### EARS 문장
+### 3.2 세션 sliding 만료 — 활동 중 유지 / 1시간 무동작 시 만료
+- 로그인한 사용자가 50분 동안 작업하다가 요청(또는 송고/보류/KILL/저장)을 보낸다 → 만료 시점이 현재로부터 다시 1시간 뒤로 갱신된다(sliding).
+- 사용자가 새로고침(F5)을 누른다 → 새로고침도 인증된 요청이므로 활동으로 간주되어 세션이 유지되고 만료 시점이 갱신된다.
+- 사용자가 마지막 활동 이후 1시간 동안 아무 동작도 하지 않는다 → 다음 보호 요청에서 세션이 만료된 것으로 판정되어 미인증으로 취급된다.
 
-- **[Ubiquitous]** THE 시스템 SHALL 상세보기 새창의 `기사` 영역(`section[aria-label="기사"]`)에 섹션 헤더(`기사`)와 본문(`.yh-detail__content`)만 렌더하고, **별도 제목 요소(`.yh-detail__title` / `<h1>`)를 두지 않는다**.
-- **[Unwanted]** THE 시스템 SHALL NOT 본문과 별개의 제목 요소를 출력한다 (제목 중복 금지).
-- **[Ubiquitous]** THE 시스템 SHALL 브라우저 탭 제목용 `<head><title>` 은 기존대로 유지한다 (`article.title`, 빈 값일 때 `(제목 없음)`).
-- **[State-Driven]** WHILE `article.title` 이 비어 있어도, THE 시스템 SHALL 상세보기 본문 영역에 markupVersion 본문만 렌더하며, 별도 제목 placeholder 요소(예: `(제목 없음)` 을 담는 `.yh-detail__title`/`<h1>`)를 만들지 않는다.
-- **[Ubiquitous]** THE 시스템 SHALL 공통정보 12 필드의 가로 나열, gray-line 토큰(`--yh-gray-line: #DDE3EC`), XSS escape, 섹션 순서(공통정보 → 기사)를 그대로 유지한다.
-
-#### Acceptance Criteria 포인터
-
-- AC-NOTITLE-1 (제목 요소 부재), AC-NOTITLE-2 (본문 요소 존재), AC-NOTITLE-3 (head title 유지), AC-NOTITLE-4 (공통정보 12 dt / gray-line / 섹션 순서 회귀 없음) — acceptance.md §1
-
----
-
-## 4. 비기능 요건 (Non-Functional Requirements)
-
-### 4.1 디자인 토큰 (스타일)
-
-- 신규 CSS 변수 도입 없음. 기존 토큰(`--yh-blue`, `--yh-blue-deep`, `--yh-gray-line` `#DDE3EC`, `--yh-serif`, `--yh-sans`) 재사용.
-- `.yh-detail__title` CSS 룰은 별도 제목 요소 폐지에 따라 제거 가능(본문 `.yh-detail__content` 룰은 유지). 제거하더라도 다른 토큰/룰에 영향이 없어야 한다.
-
-### 4.2 접근성 (Accessibility)
-
-- `section[aria-label="기사"]` 의 aria-label 은 유지. 섹션 헤더 `<h2>기사</h2>` 는 유지.
-- 본문(`.yh-detail__content`) 은 markupVersion 본문(첫 줄=제목 포함)을 그대로 노출하므로, 문서상 제목 정보는 본문 첫 줄 + `<head><title>` 로 보존된다.
-
-### 4.3 회귀 방지
-
-- 공통정보 12 필드 가로 나열, gray-line 토큰(`#DDE3EC`), 공통정보 → 기사 섹션 순서, markupVersion 본문 파싱·임베드 순서, XSS escape 회귀 없음.
-- 본 SPEC 으로 폐지되는 검증(별도 제목 요소 존재 / 본문 폰트 > 제목 폰트 비교)은 제목 요소 부재로 더 이상 성립하지 않으므로 제거 또는 AC-NOTITLE-1 로 대체된다 (§6 참조).
-
-### 4.4 인코딩
-
-- 모든 문서/소스/테스트는 UTF-8 (CLAUDE.md HARD 규칙).
+### 3.3 행 클릭 상세 새창
+- 사용자가 조회 목록에서 기사 행을 (좌)클릭한다.
+- 시스템은 새 창을 열어 그 기사의 제목/본문/공통정보를 표시한다(우클릭 → 상세보기와 동일 콘텐츠).
 
 ---
 
-## 5. 영향 영역 (Affected Files)
+## 4. 요구사항 (EARS Requirements)
 
-- `web/src/view/articleDetail.js` — `buildArticleDetailHtml` 의 `section[aria-label="기사"]` 에서 `<h1 class="yh-detail__title">${title}</h1>` 제거. `<head><title>${title}</title>` 유지. `.yh-detail__title` CSS 룰 정리. (Run 단계 구현)
-- `web/src/view/articleDetail.test.js` — 별도 제목 요소 존재 단언 / 본문 폰트 > 제목 폰트 비교 단언 제거, AC-NOTITLE-1~4 가드 추가. (Run 단계 구현)
+> 표기: 본 SPEC 의 3개 REQ 는 모두 **이미 구현된 동작의 회귀 잠금(Δ-only)** 이다. 신규 동작 추가 없음.
 
-> 본 SPEC(Plan) 단계에서는 위 파일을 수정하지 않는다.
+### REQ-LIST-PAGINATION — 조회 목록 4메뉴 10개/페이지 페이징 (Priority: High)
 
----
+- **[Ubiquitous]** THE 시스템 SHALL 기사 조회 페이지(`list.do`)의 4개 메뉴(데스크 미송고, 부서별 작성, 부서별 송고, 개인별 수정) 목록을 **한 페이지당 정확히 10개** 까지만 표시한다.
+- **[Event-Driven]** WHEN 조회된 기사 수가 10개를 초과하면, THE 시스템 SHALL 페이지 이동 컨트롤(이전/다음 버튼 + `현재페이지 / 전체페이지` 지시자)을 노출한다.
+- **[Event-Driven]** WHEN 사용자가 다음/이전 페이지로 이동하면, THE 시스템 SHALL 해당 페이지 구간의 기사(최대 10개)만 표시하고 페이지 지시자를 갱신한다.
+- **[Event-Driven]** WHEN 사용자가 메뉴를 전환하거나 부서별 조회 버튼을 누르면, THE 시스템 SHALL 현재 페이지를 1페이지로 리셋한다.
+- **[State-Driven]** WHILE 현재 페이지 번호가 (목록 축소로 인해) 전체 페이지 수를 초과한 상태가 되면, THE 시스템 SHALL 현재 페이지를 마지막 유효 페이지로 보정한다.
+- **[Ubiquitous]** THE 시스템 SHALL 페이징 적용 후에도 각 행의 컬럼 구성(SPEC-FRONTEND-UI-001 REQ-FE-VIEW-011 의 8컬럼)을 변경 없이 유지한다(회귀 가드).
 
-## 6. 폐지되는 기존 자산 (Superseded Assets)
+### REQ-SESSION-SLIDING — 세션 1시간 sliding idle 만료 정책 (Priority: High)
 
-별도 제목 요소가 사라지면서 다음 GREEN 자산/비교는 더 이상 성립하지 않으므로 폐지(또는 AC-NOTITLE-* 로 대체)된다. 기존 SPEC 본문은 이력 보존을 위해 삭제하지 않고 supersession 마커만 부착한다.
+- **[Ubiquitous]** THE 시스템 SHALL 인증 세션의 idle 만료 임계값을 **1시간(무동작)** 으로 적용한다.
+- **[Event-Driven]** WHEN 인증된 사용자의 활동(보호 요청, 송고/보류/KILL 액션, 기사 저장, 새로고침 포함)이 발생하면, THE 시스템 SHALL 해당 세션의 만료 시점을 현재 시각 기준 1시간 뒤로 갱신한다(sliding expiration).
+- **[State-Driven]** WHILE 마지막 활동 이후 경과 시간이 1시간 미만인 동안, THE 시스템 SHALL 세션을 유효(인증됨)로 유지한다.
+- **[Unwanted]** IF 마지막 활동 이후 1시간 이상 무동작이 지속되면, THEN THE 시스템 SHALL 후속 보호 요청에서 세션을 만료로 판정하고 미인증으로 취급한다(SPEC-AUTH-001 REQ-AUTH-GUARD-003 와 정합).
+- **[Event-Driven]** WHEN 사용자가 로그아웃하면, THE 시스템 SHALL 활동 여부와 무관하게 세션을 즉시 무효화한다(SPEC-AUTH-001 REQ-AUTH-SESS-004 와 정합 — sliding 갱신은 로그아웃을 연장하지 않는다).
 
-| 폐지 대상 | 출처 | 폐지 사유 |
-|-----------|------|----------|
-| 제목 섹션·`<h1>` 존재 단언 (AC-DTL-1/4) | SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT | 별도 제목 요소 폐지 → 제목 섹션/h1 부재 |
-| 빈 제목 시 `(제목 없음)` placeholder *요소* 유지 (AC-DTL-4) | SPEC-NEWS-REVISE-001 | 제목 요소 자체 부재. `(제목 없음)` 은 `<head><title>` 에만 잔존 |
-| 본문 폰트 > 제목 폰트 (AC-FONT-1~4) | SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS | 제목 요소 부재 → 비교 대상(`.yh-detail__title` font-size) 소멸 |
-| 본문 폰트 > 제목 폰트 회귀 가드 (AC-EMPH-1~4) | SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS | 동일 — 제목 폰트 비교 폐지 |
-| 제목 요소 전제의 가드 (AC-GRAY-1/3 의 제목-요소 전제 부분) | SPEC-NEWS-REVISE-004 | gray-line 토큰 단언(#DDE3EC)·공통정보 12 dt·공통정보/기사 두 섹션 형제 가드는 AC-NOTITLE-4 로 계승. 단 제목 요소 존재를 전제하던 부분은 폐지 |
+> 정합 노트: 새로고침(F5)은 인증된 요청이므로 위 "활동" 정의에 포함되어 세션이 유지된다. `news.md` L104 의 "탭/브라우저 닫힘 시 세션 종료" 는 클라이언트 생애주기 이벤트로, 본 SPEC 의 서버측 idle 만료와 별개이며 **SPEC-NEWS-REVISE-008**(편집 잠금 해제 시점 — `lockYN` 규칙)에서 다룬다. 본 SPEC 은 서버측 1시간 sliding idle 만 잠근다.
 
-주의 — AC-GRAY-1/3 의 gray-line 토큰(`#DDE3EC`) 정확 매치 단언과 공통정보 12 dt 단언, 그리고 **공통정보 섹션 ↔ 기사 섹션** 두 형제 구조 가드는 본 SPEC 에서도 그대로 유효하며 AC-NOTITLE-4 로 계승된다. 폐지되는 것은 "제목 요소(`.yh-detail__title`/`<h1>`)가 존재한다"는 전제뿐이다.
+### REQ-ROW-CLICK-DETAIL — 조회 목록 행 클릭 상세 새창 (Priority: Medium)
 
----
-
-## 7. Exclusions (What NOT to Build) — 명시적 비목표
-
-- 수집/배부 시스템 (기사 작성기만).
-- 공통정보 12 필드 목록/순서/라벨/가로 나열 레이아웃 변경.
-- gray-line 디자인 토큰 값(`#DDE3EC`) 변경.
-- 섹션 순서(공통정보 → 기사) 변경.
-- markupVersion 본문 파싱·임베드 렌더 순서(본문 텍스트 → 임베드 → `(끝)`) 변경.
-- XSS escape 정책 변경.
-- `<head><title>` 의 `(제목 없음)` 폴백 제거 (탭 제목 폴백은 유지).
-- 에디터 본문 구조 파싱(제목/부제목/본문 결정) 알고리즘 변경.
-- 본문(`.yh-detail__content`) 렌더 또는 폰트 사이즈 절대값 변경 (제목 비교만 폐지; 본문 자체 스타일은 유지).
-- DB 데이터 삭제.
-- 코드/테스트 구현 (본 SPEC 은 Plan 단계 문서만).
+- **[Event-Driven]** WHEN 사용자가 조회 목록의 기사 행을 클릭하면, THE 시스템 SHALL 새 창(별도 브라우저 창)을 열어 그 기사의 제목/본문/공통정보 내용을 표시한다.
+- **[Ubiquitous]** THE 시스템 SHALL 행 클릭으로 여는 상세 콘텐츠를 우클릭 → 상세보기(SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT / SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS) 와 동일한 렌더 경로로 표시한다(두 진입점의 콘텐츠 일관성 — 회귀 가드).
 
 ---
 
-## 8. 종속성 및 cross-reference (Cross-References)
+## 5. 비기능 요구사항 (NFR)
 
-- **SPEC-NEWS-REVISE-001 REQ-DETAIL-LAYOUT-SPLIT** — 제목 블록/별도 제목 요소(제목 섹션·`<h1>`·빈 제목 placeholder 요소) 부분을 본 SPEC 이 supersede. 단 상단 공통정보 12 필드 / 섹션 분리 시각·gray-line 구분선 / XSS escape 부분은 본 SPEC AC-NOTITLE-4 로 계승. (참고: 001 spec.md 는 "분리 2섹션 aria-label=제목/본문"으로 적혀 있으나 현 코드·도메인 스킬 v0.1.5 는 이미 "분리 폐지 → 단일 `aria-label=기사` 섹션에 h1 제목 + 본문 통합"으로 진화 — 본 SPEC 은 그 위에서 h1 제목 요소까지 폐지한다.)
-- **SPEC-NEWS-REVISE-002 REQ-DETAIL-FONT-EMPHASIS** — 본문 폰트 > 제목 폰트 비교를 본 SPEC 이 supersede(제목 요소 부재로 비교 폐지).
-- **SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS** — 동일 폰트 강조 회귀 가드를 본 SPEC 이 supersede.
-- **SPEC-NEWS-REVISE-004 AC-GRAY-1/3** — 제목 요소 전제 부분만 본 SPEC 이 supersede. gray-line 토큰 정확 매치(#DDE3EC) / 12 dt / 공통정보-기사 두 섹션 형제 가드는 AC-NOTITLE-4 로 계승.
-- **SPEC-FRONTEND-UI-001** — 상세보기 새창 호출/레이아웃. 본 SPEC 은 그 안에서 별도 제목 요소만 제거.
-- **SPEC-UI-EDITOR-001** — 에디터 어댑터·markupVersion 직렬화. 본 SPEC 은 본문 파싱 계약을 변경하지 않는다(첫 줄=제목 규약 그대로 사용).
+- **5.1 결정론/테스트 가능성**: 세션 만료 판정은 주입 가능한 시각(`now`)과 임계(`ttlMs`)에 의존하는 순수 로직으로 검증한다. 테스트는 **반드시 `now`(또는 `ttlMs`)를 명시적으로 주입** 하여 실시간 시계 의존을 제거한다(시계 고정 없이 작성하면 미래 시점에 비결정적으로 깨진다).
+- **5.2 페이지 크기 상수**: 페이지 크기 10 은 단일 상수(`PAGE_SIZE`)로 표현되어 4메뉴에 동일 적용된다.
+- **5.3 회귀 무손상**: 본 SPEC 의 잠금은 SPEC-FRONTEND-UI-001 / SPEC-AUTH-001 / SPEC-EDIT-LOCK-001 의 기존 동작을 변경하지 않는다.
 
 ---
 
-## 9. Definition of Done
+## Exclusions (What NOT to Build)
 
-- [ ] `buildArticleDetailHtml` 출력의 `section[aria-label="기사"]` 안에 `.yh-detail__title`/`<h1>` 이 존재하지 않음 (AC-NOTITLE-1 GREEN)
-- [ ] 같은 섹션에 `.yh-detail__content`(본문)가 존재함 (AC-NOTITLE-2 GREEN)
-- [ ] `<head><title>` 이 title(또는 `(제목 없음)`) 을 유지함 (AC-NOTITLE-3 GREEN)
-- [ ] 공통정보 12 dt / gray-line `#DDE3EC` / 공통정보 → 기사 섹션 순서 회귀 없음 (AC-NOTITLE-4 GREEN)
-- [ ] SPEC-NEWS-REVISE-001/002/003/004 의 폐지 대상 AC(제목 요소 존재·본문>제목 폰트)는 제거되거나 AC-NOTITLE-* 로 대체됨
-- [ ] `npm test` 전체 통과, `npm run build` 무경고
-- [ ] TRUST 5 게이트(Tested / Readable / Unified / Secured / Trackable) 통과
-- [ ] 기존 SPEC 4개에 supersession 마커가 부착되어 품질 게이트가 제목 요소 부재를 인식
-- [ ] Slack `tech-day` 채널 작업 완료 보고 (CLAUDE.md HARD 규칙)
+> [HARD] 본 SPEC 은 이미 구현된 3개 동작의 **명세 잠금(회귀 가드)** 만 다룬다. 아래는 명시적으로 범위 밖이다.
+
+- **글기사 탭(검색 결과) 페이징/정렬 정책**: SPEC-NEWS-REVISE-002/003 Exclusion 및 SPEC-BACKEND-CORE-001(REQ-SRCH-* 영역)의 Run 단계 소관. 본 SPEC 의 페이징은 **조회 목록 4메뉴** 에만 적용된다.
+- **페이지 크기(10) 변경/사용자 설정/무한 스크롤**: 현재 고정값 10 만 잠근다. 변경 가능 페이지 크기는 별도 SPEC.
+- **세션 저장소/쿠키 구현 세부(쿠키 속성, 서버 세션 스토어 종류, 클러스터 공유)**: SPEC-AUTH-001(REQ-AUTH-SESS-*) 및 Run 단계 소관. 본 SPEC 은 **idle 만료 임계 + sliding 갱신 정책** 만 잠근다.
+- **편집 잠금(lockYN) 해제 시점 / 탭·브라우저 닫힘 처리**: SPEC-EDIT-LOCK-001 및 SPEC-NEWS-REVISE-008 소관. 본 SPEC 은 세션 만료와 잠금 해제를 혼동하지 않는다.
+- **상세 새창의 레이아웃/폰트/공통정보 12필드 구성**: SPEC-NEWS-REVISE-001(REQ-DETAIL-LAYOUT-SPLIT) / SPEC-NEWS-REVISE-003(REQ-DETAIL-BODY-EMPHASIS) 소관. 본 SPEC 은 **행 클릭 진입점** 과 두 진입점의 콘텐츠 일관성만 잠근다.
+- **우클릭 컨텍스트 메뉴의 미구현 항목**(이력보기/송고이력/번역/매핑/후속기사/계속기사/재송/삭제요청 등): 다수가 미구현 기능 후보로, 본 SPEC 범위 밖. 별도 feature SPEC 으로 다룬다.
+- **디자인 토큰(레드 #C8102E 등)**: SPEC-NEWS-REVISE-002 NFR 에서 `--yh-blue #0A4DA6` 유지로 의도적 미적용 결정됨(상충 해소 완료). 본 SPEC 은 디자인을 다루지 않는다.
 
 ---
 
-Version: 0.1.0
-Status: Plan
-Last Updated: 2026-06-09
+## 참조 (References)
+
+- 원천 명세: `news.md` L91(행 클릭 상세), L92(목록 페이징), L101~104(세션 정책)
+- 의존 SPEC: `.moai/specs/SPEC-FRONTEND-UI-001/spec.md`(조회 페이지 4메뉴/8컬럼 — REQ-FE-VIEW-004~011)
+- 의존 SPEC: `.moai/specs/SPEC-AUTH-001/spec.md`(세션 만료 미인증 취급 — REQ-AUTH-GUARD-003, 로그아웃 — REQ-AUTH-SESS-004)
+- 정합 SPEC: `.moai/specs/SPEC-EDIT-LOCK-001/spec.md`(락 TTL ≠ 세션 만료 — 구분), `.moai/specs/SPEC-NEWS-REVISE-008/spec.md`(탭/브라우저 닫힘 시 잠금 해제)
+- 상세 새창 레이아웃: `.moai/specs/SPEC-NEWS-REVISE-001/spec.md`(REQ-DETAIL-LAYOUT-SPLIT), `.moai/specs/SPEC-NEWS-REVISE-003/spec.md`(REQ-DETAIL-BODY-EMPHASIS)
+- 도메인 사실 단일 출처: `Skill("moai-domain-news-editor")`(권한 매트릭스/생애주기/12 공통정보/단축키/임베딩/디자인 토큰)
+- 구현체(회귀 잠금 대상): `web/src/view/ViewPage.jsx`(페이징·행 클릭 상세), `server/index.js` + `src/services/sessionService.js`(세션 sliding)
+- 프로젝트 HARD 규칙: `CLAUDE.md`(UTF-8, DB 삭제 금지, 작업 완료 시 Slack tech-day 보고)

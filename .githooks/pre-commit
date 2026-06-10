@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-commit gate: run ESLint over web (React 19 + Vite) and the Node backend
+# (src/, server/, test/). Warnings are non-blocking; only ESLint errors abort
+# the commit. Shared via `git config core.hooksPath .githooks`.
+#
+# Requires node/npm on PATH at commit time. If your shell does not expose node
+# (e.g. a bare git-bash login shell on Windows), prepend it before committing:
+#   export PATH="/c/Program Files/nodejs:$PATH"
+
+echo "[pre-commit] Running ESLint..."
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[pre-commit] npm not found on PATH. Skipping lint is not allowed." >&2
+  echo "[pre-commit] Add node to PATH, e.g. export PATH=\"/c/Program Files/nodejs:\$PATH\"" >&2
+  exit 1
+fi
+
+npm run --silent lint
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo "[pre-commit] ESLint reported errors. Commit aborted." >&2
+  echo "[pre-commit] Fix them, or auto-fix with: npm run lint:fix" >&2
+  exit 1
+fi
+
+echo "[pre-commit] ESLint passed (no errors)."
+exit 0
