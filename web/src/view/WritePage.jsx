@@ -46,7 +46,7 @@ function CommonInfoPanel({ common, updateCommon }) {
 
 // '이미지' tab embeds images; '영상' tab embeds video references (REQ-EDIT-EMBED-002/003).
 function MediaPanel({ tabName, embedType, onEmbed }) {
-  const { results, state, search } = useMediaSearch();
+  const { results, state, search } = useMediaSearch(embedType);
   const [query, setQuery] = useState('');
   return (
     <div data-testid={`panel-${tabName}`} role="tabpanel" className="yh-tabpanel">
@@ -99,6 +99,28 @@ function TextArticlePanel({ onEmbed }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING: 8 ContentsVO fields displayed read-only in the metadata panel.
+const READONLY_META_LABELS = {
+  articleId: '기사아이디', modifier: '수정자', sender: '송고자',
+  department: '부서', departmentCode: '부서코드', createdAt: '작성시간',
+  editedAt: '편집시간', sentAt: '송고시간',
+};
+const READONLY_META_KEYS = [
+  'articleId', 'modifier', 'sender', 'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
+];
+function ReadonlyMetaPanel({ meta }) {
+  return (
+    <div data-testid="readonly-meta" className="yh-readonly-meta">
+      {READONLY_META_KEYS.map((key) => (
+        <div key={key} className="yh-field-row">
+          <span className="yh-field-label">{READONLY_META_LABELS[key]}</span>
+          <span className="yh-field-value">{meta[key] || ''}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -490,144 +512,143 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   }, []);
 
   return (
-    <>
-      <label htmlFor="editor-body">본문</label>
-      <div
-        id="editor-body"
-        data-testid="editor-body"
-        className="yh-editor-body"
-        role="textbox"
-        aria-multiline="true"
-        aria-label="본문"
-        contentEditable={!readOnly}
-        suppressContentEditableWarning
-        ref={ref}
-        onInput={(e) => {
-          // SPEC-NEWS-REVISE-001 D-7: 합성 중에는 state를 갱신하지 않는다 — onChangeText가 호울되면
-          // 부모가 re-render되고 useEffect의 repaint 가드(또는 paintEditor)가 IME 합성 노드를
-          // 파괴해 입력 1글자가 지연된 듯 보이는 증상이 발생한다. 합성 결과는 compositionEnd에서
-          // 한 번에 flush한다.
-          if (composingRef.current) return;
-          const el = e.currentTarget;
-          onChangeText(getBodyTextFromDom(el), orderedContentFromDom(el));
-          if (onCaretChange) {
-            const off = getCaretCharOffset(el);
-            if (off != null) onCaretChange(off);
-          }
-        }}
-        onKeyUp={(e) => {
-          if (onCaretChange) {
-            const off = getCaretCharOffset(e.currentTarget);
-            if (off != null) onCaretChange(off);
-          }
-        }}
-        onMouseUp={(e) => {
-          if (onCaretChange) {
-            const off = getCaretCharOffset(e.currentTarget);
-            if (off != null) onCaretChange(off);
-          }
-        }}
-        onPaste={handlePaste}
-        onCompositionStart={() => {
-          composingRef.current = true;
-          // 다음 음절이 시작됨다 — 직전 compositionend 가 예약한 "just-composed" 클리어를 취소하고
-          // 플래그를 내려, 이 합성 동안 repaint useEffect 가 정상 가드(composingRef)로만 동작하게 한다.
-          justComposedRef.current = false;
-          if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
-            cancelAnimationFrame(justComposedRafRef.current);
+    <div
+      id="editor-body"
+      data-testid="editor-body"
+      className="yh-editor-body"
+      role="textbox"
+      aria-multiline="true"
+      aria-label="본문"
+      contentEditable={!readOnly}
+      suppressContentEditableWarning
+      ref={ref}
+      onInput={(e) => {
+        // SPEC-NEWS-REVISE-001 D-7: 합성 중에는 state를 갱신하지 않는다 — onChangeText가 호울되면
+        // 부모가 re-render되고 useEffect의 repaint 가드(또는 paintEditor)가 IME 합성 노드를
+        // 파괴해 입력 1글자가 지연된 듯 보이는 증상이 발생한다. 합성 결과는 compositionEnd에서
+        // 한 번에 flush한다.
+        if (composingRef.current) return;
+        const el = e.currentTarget;
+        onChangeText(getBodyTextFromDom(el), orderedContentFromDom(el));
+        if (onCaretChange) {
+          const off = getCaretCharOffset(el);
+          if (off != null) onCaretChange(off);
+        }
+      }}
+      onKeyUp={(e) => {
+        if (onCaretChange) {
+          const off = getCaretCharOffset(e.currentTarget);
+          if (off != null) onCaretChange(off);
+        }
+      }}
+      onMouseUp={(e) => {
+        if (onCaretChange) {
+          const off = getCaretCharOffset(e.currentTarget);
+          if (off != null) onCaretChange(off);
+        }
+      }}
+      onPaste={handlePaste}
+      onCompositionStart={() => {
+        composingRef.current = true;
+        // 다음 음절이 시작됨다 — 직전 compositionend 가 예약한 "just-composed" 클리어를 취소하고
+        // 플래그를 내려, 이 합성 동안 repaint useEffect 가 정상 가드(composingRef)로만 동작하게 한다.
+        justComposedRef.current = false;
+        if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(justComposedRafRef.current);
+          justComposedRafRef.current = null;
+        }
+        // IME 보강 — 다음 음절이 시작됐으므로 직전 Enter 폴백 예약을 취소한다. 그래야 정상적으로
+        // 이어질 compositionend 가 줄바꾸을 처리할 기회를 갖고, 연속 타이핑 race 에서 폴백이 잘못
+        // 끼어들지 않는다. (pendingEnterAfterIme 플래그 자체는 그대로 둔 compositionend 가 소비한다.)
+        if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(pendingEnterRafRef.current);
+          pendingEnterRafRef.current = null;
+        }
+      }}
+      onCompositionEnd={(e) => {
+        composingRef.current = false;
+        if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(justComposedRafRef.current);
+        }
+        justComposedRef.current = true;
+        if (typeof requestAnimationFrame === 'function') {
+          justComposedRafRef.current = requestAnimationFrame(() => {
+            justComposedRef.current = false;
             justComposedRafRef.current = null;
-          }
-          // IME 보강 — 다음 음절이 시작됐으므로 직전 Enter 폴백 예약을 취소한다. 그래야 정상적으로
-          // 이어질 compositionend 가 줄바꾸을 처리할 기회를 갖고, 연속 타이핑 race 에서 폴백이 잘못
-          // 끼어들지 않는다. (pendingEnterAfterIme 플래그 자체는 그대로 둔 compositionend 가 소비한다.)
+          });
+        } else {
+          Promise.resolve().then(() => { justComposedRef.current = false; });
+        }
+        onChangeText(getBodyTextFromDom(e.currentTarget), orderedContentFromDom(e.currentTarget));
+        if (pendingEnterAfterIme.current) {
+          pendingEnterAfterIme.current = false;
+          // 폴백 예약이 살아 있으면 취소한다 — 여기서 줄바꾸을 소비했으므로 폴백이 또 삽입하면 중복 '\n'.
+          // (플래그를 이미 false 로 내렸으므로 폴백 콜백 가드도 막아주지만, 예약 자체를 정리해 둔다.)
           if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
             cancelAnimationFrame(pendingEnterRafRef.current);
             pendingEnterRafRef.current = null;
           }
-        }}
-        onCompositionEnd={(e) => {
-          composingRef.current = false;
-          if (justComposedRafRef.current != null && typeof cancelAnimationFrame === 'function') {
-            cancelAnimationFrame(justComposedRafRef.current);
-          }
-          justComposedRef.current = true;
-          if (typeof requestAnimationFrame === 'function') {
-            justComposedRafRef.current = requestAnimationFrame(() => {
-              justComposedRef.current = false;
-              justComposedRafRef.current = null;
-            });
-          } else {
-            Promise.resolve().then(() => { justComposedRef.current = false; });
-          }
-          onChangeText(getBodyTextFromDom(e.currentTarget), orderedContentFromDom(e.currentTarget));
-          if (pendingEnterAfterIme.current) {
-            pendingEnterAfterIme.current = false;
-            // 폴백 예약이 살아 있으면 취소한다 — 여기서 줄바꾸을 소비했으므로 폴백이 또 삽입하면 중복 '\n'.
-            // (플래그를 이미 false 로 내렸으므로 폴백 콜백 가드도 막아주지만, 예약 자체를 정리해 둔다.)
-            if (pendingEnterRafRef.current != null && typeof cancelAnimationFrame === 'function') {
-              cancelAnimationFrame(pendingEnterRafRef.current);
-              pendingEnterRafRef.current = null;
-            }
-            insertNewlineFromDom(e.currentTarget);
-          }
-        }}
-        onBlur={() => { if (!composingRef.current) recolor(); }}
-        onKeyDown={(e) => {
-          if (e.key === 'Backspace' && typeof onRemoveEmbedRef.current === 'function') {
-            let node = e.target;
-            while (node && node !== e.currentTarget) {
-              if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-embed-index')) {
-                const idx = Number(node.getAttribute('data-embed-index'));
-                if (Number.isFinite(idx)) {
-                  e.preventDefault();
-                  onRemoveEmbedRef.current(idx);
-                  return;
-                }
+          insertNewlineFromDom(e.currentTarget);
+        }
+      }}
+      onBlur={() => { if (!composingRef.current) recolor(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Backspace' && typeof onRemoveEmbedRef.current === 'function') {
+          let node = e.target;
+          while (node && node !== e.currentTarget) {
+            if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-embed-index')) {
+              const idx = Number(node.getAttribute('data-embed-index'));
+              if (Number.isFinite(idx)) {
+                e.preventDefault();
+                onRemoveEmbedRef.current(idx);
+                return;
               }
-              node = node.parentNode;
             }
-            const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
-            if (adjacentIdx != null) {
-              e.preventDefault();
-              onRemoveEmbedRef.current(adjacentIdx);
-              return;
-            }
+            node = node.parentNode;
           }
-          if (handleEnter(e)) return;
-          // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D -> 쫠랿이 위치한 라인(또는
-          // 선택에 일부라도 걸친 모든 라인)을 라인 단위 round-up 삭제 (D-2 결정 잠금). preventDefault로
-          // Chrome 북마크 추가 기본 동작을 차단. 핸들러는 에디터 컨테이너의 onKeyDown 한정이므로
-          // 에디터가 포커스를 받지 않은 상태에서는 호출되지 않는다 (AC-CTRL-D-4 스코프).
-          if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+          const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
+          if (adjacentIdx != null) {
             e.preventDefault();
-            const el = e.currentTarget;
-            const sel = getSelectionOffsets(el);
-            const caret = sel ?? { start: getCaretCharOffset(el) ?? bodyText.length, end: getCaretCharOffset(el) ?? bodyText.length };
-            const next = deleteCurrentLine({
-              value: bodyText,
-              selectionStart: caret.start,
-              selectionEnd: caret.end,
-            });
-            paintNow(el, contentWithText(next.value));
-            setCaretCharOffset(el, next.selectionStart);
-            onChangeText(next.value);
+            onRemoveEmbedRef.current(adjacentIdx);
             return;
           }
-          if (e.altKey && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) {
-            e.preventDefault();
-            onAltY();
-          }
-        }}
-      />
-    </>
+        }
+        if (handleEnter(e)) return;
+        // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D -> 쫠랿이 위치한 라인(또는
+        // 선택에 일부라도 걸친 모든 라인)을 라인 단위 round-up 삭제 (D-2 결정 잠금). preventDefault로
+        // Chrome 북마크 추가 기본 동작을 차단. 핸들러는 에디터 컨테이너의 onKeyDown 한정이므로
+        // 에디터가 포커스를 받지 않은 상태에서는 호출되지 않는다 (AC-CTRL-D-4 스코프).
+        if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
+          e.preventDefault();
+          const el = e.currentTarget;
+          const sel = getSelectionOffsets(el);
+          const caret = sel ?? { start: getCaretCharOffset(el) ?? bodyText.length, end: getCaretCharOffset(el) ?? bodyText.length };
+          const next = deleteCurrentLine({
+            value: bodyText,
+            selectionStart: caret.start,
+            selectionEnd: caret.end,
+          });
+          paintNow(el, contentWithText(next.value));
+          setCaretCharOffset(el, next.selectionStart);
+          onChangeText(next.value);
+          return;
+        }
+        if (e.altKey && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) {
+          e.preventDefault();
+          onAltY();
+        }
+      }}
+    />
   );
 }
 
-export function WritePage({ user }) {
+export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded }) {
   // news.md 데스크 미송고 편집: writer.do?id=<articleId> loads that article for editing.
-  // Read the id once from the URL (the page remounts on navigation, so a per-render read is fine).
-  const editArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
-  const ctrl = useWriteController(user, { editArticleId });
+  // Prop takes precedence; fall back to URL param for standalone page navigation.
+  const editArticleId = editArticleIdProp !== undefined
+    ? (editArticleIdProp || undefined)
+    : (new URLSearchParams(window.location.search).get('id') || undefined);
+  const ctrl = useWriteController(user, { editArticleId, draftKey, onEditContextEnded });
   const [activeTab, setActiveTab] = useState('공통정보');
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
   // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
@@ -643,6 +664,7 @@ export function WritePage({ user }) {
   }, [ctrl.lockError]);
   // Action buttons only apply to an RDS (in-progress) article (news.md 기사 작성 페이지 내 버튼).
   const isRds = ctrl.status === 'RDS';
+  const isDdh = ctrl.status === 'DDH';
   // SPEC-NEWS-REVISE-001 — 본문 커서 위치 임베드 (Phase C): 메타 패널의 "삽입" 버튼을 클릭하면
   // 포커스가 BodyEditor를 떠난 뒤지만, 마지막으로 알려진 쫠랿 offset을 ref로 보존해 인라인 삽입한다.
   const lastCaretRef = useRef(null);
@@ -700,12 +722,14 @@ export function WritePage({ user }) {
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
           {isDdh && (user.role === 'D' || user.role === 'Z') ? (
-            <>
-              <button type="button" className="yh-btn yh-btn--primary"
-                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
-              <button type="button" className="yh-btn yh-btn--kill"
-                onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
-            </>
+            <button type="button" className="yh-btn yh-btn--primary"
+              disabled={!!ctrl.lockError}
+              onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+          ) : null}
+          {isDdh && user.role === 'Z' ? (
+            <button type="button" className="yh-btn yh-btn--kill"
+              disabled={!!ctrl.lockError}
+              onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
         </div>
 
@@ -715,6 +739,7 @@ export function WritePage({ user }) {
           </div>
         ) : null}
         {ctrl.actionError ? <div role="alert" className="yh-alert">{ctrl.actionError}</div> : null}
+        {ctrl.readonlyMeta ? <ReadonlyMetaPanel meta={ctrl.readonlyMeta} /> : null}
 
         {/* Tab strip */}
         <div role="tablist" className="yh-tabs">
