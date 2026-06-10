@@ -346,6 +346,50 @@ test('GET /api/stream without a session is rejected (401, no event stream)', asy
   assert.equal(body.reason, 'unauthenticated');
 });
 
+// SPEC-NEWS-REVISE-014 follow-up — 브라우저 EventSource 는 커스텀 헤더를 보낼 수 없으므로 /api/stream 만
+// ?session= 쿼리 파라미터 폴백을 허용한다. (a) 유효 query → 200 text/event-stream.
+test('GET /api/stream?session=<valid> is accepted (200 text/event-stream) when no header is sent', async () => {
+  seedUser('sse-query-valid', 'R');
+  const sessionId = loginSessionId('sse-query-valid');
+  const ac = new AbortController();
+  const res = await fetch(`${base}/api/stream?session=${sessionId}`, { signal: ac.signal });
+  try {
+    assert.equal(res.status, 200);
+    assert.ok(
+      (res.headers.get('content-type') ?? '').includes('text/event-stream'),
+      'a valid query-param session must open the SSE stream',
+    );
+  } finally {
+    ac.abort();
+  }
+});
+
+// (b) 헤더도 쿼리도 없으면 401.
+test('GET /api/stream with neither header nor query session is rejected (401)', async () => {
+  const res = await fetch(`${base}/api/stream`);
+  assert.equal(res.status, 401);
+  assert.ok(
+    !(res.headers.get('content-type') ?? '').includes('text/event-stream'),
+    'no credential must not switch to the SSE content-type',
+  );
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, 'unauthenticated');
+});
+
+// (c) 유효하지 않은 query session 은 401(폴백이 인증을 우회시키지 않는다).
+test('GET /api/stream?session=<invalid> is rejected (401) — query fallback does not bypass auth', async () => {
+  const res = await fetch(`${base}/api/stream?session=not-a-real-session`);
+  assert.equal(res.status, 401);
+  assert.ok(
+    !(res.headers.get('content-type') ?? '').includes('text/event-stream'),
+    'an invalid query session must not switch to the SSE content-type',
+  );
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, 'unauthenticated');
+});
+
 test('SSE: stream sends a ready frame then a change frame on article create', async () => {
   const stream = await openStream();
   try {

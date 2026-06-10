@@ -405,7 +405,12 @@ export function createApp({ controllers, sessionService }) {
   app.get('/api/stream', (req, res) => {
     // H-4: validate the session BEFORE switching to the SSE content-type so an unauthenticated
     // client gets a clean 401 JSON rejection rather than an open event stream.
-    if (sessionOf(req) === undefined) {
+    // SPEC-NEWS-REVISE-014 follow-up: 브라우저 EventSource 는 커스텀 헤더(x-session-id)를 보낼 수 없으므로
+    // 헤더 인증을 먼저 시도한 뒤, 실패 시 ?session= 쿼리 파라미터로만 폴백한다(이 라우트 한정 — 다른
+    // 라우트는 헤더가 유일한 인증 수단). 폴백이 없으면 실제 브라우저는 항상 401 로 거부되어 강제 해제
+    // 프레임을 영영 받지 못한다.
+    const authed = sessionOf(req) ?? sessionService.touchSession(req.query.session);
+    if (authed === undefined) {
       return res.status(401).json({ ok: false, reason: 'unauthenticated' });
     }
     res.set({

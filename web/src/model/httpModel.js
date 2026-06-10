@@ -252,7 +252,11 @@ export function createHttpModel({ baseUrl } = {}) {
       if (typeof EventSource === 'undefined') {
         return { unsubscribe() {}, get connected() { return false; } };
       }
-      const es = new EventSource(`${base}/api/stream`);
+      // EventSource cannot set custom headers (no x-session-id), so the stream route is authenticated
+      // via a ?session= query param instead. Without this the stream is always 401 and no realtime
+      // frames arrive — including forced-unlock auto-close frames (SPEC-NEWS-REVISE-014 follow-up).
+      const streamUrl = `${base}/api/stream${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''}`;
+      const es = new EventSource(streamUrl);
       es.addEventListener('change', (event) => {
         try {
           onChange(JSON.parse(event.data));
