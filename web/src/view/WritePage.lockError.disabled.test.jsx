@@ -31,9 +31,9 @@ describe('Issue #3 (Low): lockError 시 액션 버튼 disabled (SPEC-NEWS-REVISE
       markupVersion: contentToMarkup(contentFromText('편집중')),
       author: '기자',
     };
-    const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+    const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
     renderWrite(
-      createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]), acquireEditLock }),
+      createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]), lockArticle }),
       USER_D,
     );
     await screen.findByRole('alert');
@@ -50,15 +50,18 @@ describe('Issue #3 (Low): lockError 시 액션 버튼 disabled (SPEC-NEWS-REVISE
       markupVersion: contentToMarkup(contentFromText('편집중')),
       author: '기자',
     };
-    const acquireEditLock = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
+    const lockArticle = vi.fn().mockResolvedValue({ ok: false, reason: 'locked' });
     renderWrite(
-      createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]), acquireEditLock }),
+      createFakeModel({ queryArticles: vi.fn().mockResolvedValue([row]), lockArticle }),
       USER_R,
     );
     await screen.findByRole('alert');
     expect(screen.getByRole('button', { name: '송고' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '보류' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'KILL' })).toBeDisabled();
+    // SPEC-EDIT-LOCK-001: 락 거부 시 기사 로드가 차단되어 articleId 가 'A-DRAFT' 로 남는다.
+    // KILL 은 !isDraft 게이트(v0.6.0, news.md "기사아이디가 생성되지 않은 기사는 KILL 미표시")로
+    // 아예 렌더되지 않는 것이 현재 계약이다 — disabled 가 아니라 부재를 단언한다.
+    expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
   });
 
   it('AC-BTN-DISABLED-3: 락 없는 정상 상태에서 버튼이 활성화된다 (회귀 가드)', () => {

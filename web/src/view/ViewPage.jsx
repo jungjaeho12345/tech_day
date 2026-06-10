@@ -66,8 +66,8 @@ function buildContextItems({ article, menu, role, navigate }) {
       { label: '매핑', ...DISABLED },
       { label: '후속기사작성', ...DISABLED },
       { label: '계속기사작성', ...DISABLED },
-      dpsEditItem('고치(포털제외)'),
-      dpsEditItem('포털고치'),
+      dpsEditItem('고침(포털제외)'),
+      dpsEditItem('포털고침'),
       { label: '삭제요청', ...DISABLED },
       { label: '재송', ...DISABLED },
     ];
@@ -83,8 +83,8 @@ function buildContextItems({ article, menu, role, navigate }) {
     { label: '매핑', ...DISABLED },
     { label: '후속기사작성', ...DISABLED },
     { label: '계속기사작성', ...DISABLED },
-    dpsEditItem('고치(포털제외)'),
-    dpsEditItem('포털고치'),
+    dpsEditItem('고침(포털제외)'),
+    dpsEditItem('포털고침'),
     { label: '삭제요청', ...DISABLED },
     { label: '재송', ...DISABLED },
   ];
