@@ -23,7 +23,7 @@ describe('Issue #9 (Medium): DDH 기사 버튼 표시 (news.md 기사 작성 페
     vi.unstubAllGlobals();
   });
 
-  it('AC-DDH-1: DDH 기사에서 role D는 송고/KILL 버튼만 보이고 보류 버튼은 없다', async () => {
+  it('AC-DDH-1: DDH 기사에서 role D는 송고만 보이고 KILL 버튼은 보이지 않는다 (news.md 권한 매트릭스)', async () => {
     window.history.replaceState({}, '', '/writer.do?id=A-DDH1');
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const row = {
@@ -38,7 +38,7 @@ describe('Issue #9 (Medium): DDH 기사 버튼 표시 (news.md 기사 작성 페
     );
     await screen.findByTestId('readonly-meta');
     expect(screen.getByRole('button', { name: '송고' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'KILL' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'KILL' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '보류' })).not.toBeInTheDocument();
   });
 
