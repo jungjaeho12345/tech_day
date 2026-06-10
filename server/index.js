@@ -355,6 +355,33 @@ export function createApp({ controllers, sessionService }) {
     return res.json(result);
   });
 
+  // SPEC-NEWS-REVISE-012 — POST /api/articles/:id/force-unlock (편집 잠금 강제 해제, D/Z 전용).
+  // 처리 순서: 401(미인증) → 403(D/Z 아닌 역할; lock/unlock 보다 좁은 허용집합) → 404(기사 없음) → 강제 해제.
+  // 역할은 검증된 세션에서만 도출(body.role 불신, NFR-SEC). 보유자 여부와 무관하게 해제(강제의 본질).
+  // 성공 시 기존 SSE 경로 재사용(type:'unlock') → 열린 list.do 가 자기 필터로 재조회.
+  // @MX:NOTE: [AUTO] 응답에 직전 보유자 식별자(lockerSessionId/lockerUserId) 미노출 — forceReleaseEditLock
+  // 결과({ok:true})만 반환(AC-SRV-8, 기존 409 holder 비노출 원칙 일관).
+  app.post('/api/articles/:id/force-unlock', (req, res) => {
+    const sid = sessionIdOf(req);
+    const session = sessionService.touchSession(sid);
+    if (session === undefined) {
+      return res.status(401).json({ ok: false, reason: 'unauthenticated' });
+    }
+    if (session.role !== 'D' && session.role !== 'Z') {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
+    }
+    const articleId = req.params.id;
+    const [existing] = controllers.article.query({ articleId });
+    if (existing === undefined) {
+      return res.status(404).json({ ok: false, reason: 'not-found' });
+    }
+    const result = controllers.article.forceReleaseEditLock(articleId);
+    if (result.ok) {
+      bus.emit('change', { type: 'unlock', articleId });
+    }
+    return res.json(result);
+  });
+
   // --- Media ----------------------------------------------------------------
   // GET /api/media/search?q=&type=image|video -> { items, error }.
   // 2026-06-06 directive (supersedes D2-8 fallback): type 'video' -> YouTube, 'image' -> Google

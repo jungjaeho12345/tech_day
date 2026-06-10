@@ -234,6 +234,18 @@ export function createHttpModel({ baseUrl } = {}) {
       }
     },
 
+    // SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — D/Z 전용 강제 해제(보유자 무관). 역할 가드는 서버가
+    // 검증된 x-session-id 세션에서 재검증하므로 body 없이 articleId 만 넘긴다(NFR-SEC).
+    //   forceUnlockArticle -> POST /api/articles/:id/force-unlock  { ok:true } | { ok:false, reason }
+    async forceUnlockArticle(articleId) {
+      return sendJson(
+        'POST',
+        `/api/articles/${encodeURIComponent(articleId)}/force-unlock`,
+        undefined,
+        { ok: false, reason: 'network-error' },
+      );
+    },
+
     // --- Realtime (SSE, DP-F2) ----------------------------------------------
     subscribe(_filter, onChange) {
       // EventSource is a browser global; guard so importing this module never crashes in non-browser contexts.

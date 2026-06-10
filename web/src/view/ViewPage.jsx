@@ -3,7 +3,7 @@
 // 컨럼 추가) + a right-click context menu with role-gated DPS 고침/포털고침 items (news.md 기사 조회페이지).
 import { useState, useEffect, useRef } from 'react';
 import { useViewController, MENUS } from '../controller/useViewController.js';
-import { useSession } from '../app/context.js';
+import { useSession, useModel } from '../app/context.js';
 import { ROUTES } from '../app/routing.js';
 import { buildArticleDetailHtml } from './articleDetail.js';
 import { ContextMenu } from './ContextMenu.jsx';
@@ -34,19 +34,33 @@ function copyToClipboard(text) {
 
 const DISABLED = Object.freeze({ disabled: true });
 
-function buildContextItems({ article, menu, role, navigate }) {
+// SPEC-NEWS-REVISE-012 — 행 데이터 lockYN==='Y' 일 때만(메뉴 종류 무관) "Lock해제" 항목을 만든다.
+// 권한: D/Z 활성, R show-but-disabled(기존 비허용 항목 패턴 일관, Z=D-mirror). lockYN!='Y' 이면 null
+// 을 반환해 호출부가 메뉴에서 항목 자체를 제외한다(데이터-주도 노출).
+function buildForceUnlockItem({ article, role, onForceUnlock }) {
+  if (article.lockYN !== 'Y') return null;
+  if (role === 'D' || role === 'Z') {
+    return { label: 'Lock해제', onSelect: () => onForceUnlock(article.articleId) };
+  }
+  return { label: 'Lock해제', ...DISABLED };
+}
+
+function buildContextItems({ article, menu, role, navigate, onForceUnlock }) {
   const detail = { label: '상세보기', onSelect: () => openArticleDetail(article) };
   const copyBody = { label: '본문복사', onSelect: () => copyToClipboard(article.content) };
   const copyTitle = { label: '제목만복사', onSelect: () => copyToClipboard(article.title) };
+  const forceUnlock = buildForceUnlockItem({ article, role, onForceUnlock });
+  // 노출 조건이 행 데이터(lockYN)이므로 4개 메뉴 공통으로, lockYN='Y' 일 때만 항목을 덧붙인다.
+  const withForceUnlock = (items) => (forceUnlock ? [...items, forceUnlock] : items);
 
   if (menu === '데스크 미송고') {
-    return [
+    return withForceUnlock([
       { label: '편집', onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) },
       detail,
       { label: '이력보기', ...DISABLED },
       copyBody,
       copyTitle,
-    ];
+    ]);
   }
 
   const canDpsEdit = article.status === 'DPS' && role === 'D';
@@ -55,7 +69,7 @@ function buildContextItems({ article, menu, role, navigate }) {
     : { label, ...DISABLED });
 
   if (menu === '부서별 송고') {
-    return [
+    return withForceUnlock([
       { label: '편집', onSelect: () => navigate(ROUTES.WRITE, { id: article.articleId }) },
       detail,
       { label: '이력보기', ...DISABLED },
@@ -70,10 +84,10 @@ function buildContextItems({ article, menu, role, navigate }) {
       dpsEditItem('포털고침'),
       { label: '삭제요청', ...DISABLED },
       { label: '재송', ...DISABLED },
-    ];
+    ]);
   }
 
-  return [
+  return withForceUnlock([
     detail,
     { label: '이력보기', ...DISABLED },
     { label: '송고이력보기', ...DISABLED },
@@ -87,7 +101,7 @@ function buildContextItems({ article, menu, role, navigate }) {
     dpsEditItem('포털고침'),
     { label: '삭제요청', ...DISABLED },
     { label: '재송', ...DISABLED },
-  ];
+  ]);
 }
 
 function RealtimeStatus({ connected }) {
@@ -218,6 +232,7 @@ function DeptMultiSelect({ departments, selectedDepts, onChange }) {
 export function ViewPage({ user, nav }) {
   const ctrl = useViewController(user);
   const session = useSession();
+  const model = useModel();
   const navigate = session?.navigate;
   const [selectedDepts, setSelectedDepts] = useState([]);
   const [page, setPage] = useState(1);
@@ -335,7 +350,13 @@ export function ViewPage({ user, nav }) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={buildContextItems({ article: contextMenu.article, menu: ctrl.menu, role: user.role, navigate })}
+          items={buildContextItems({
+            article: contextMenu.article,
+            menu: ctrl.menu,
+            role: user.role,
+            navigate,
+            onForceUnlock: (articleId) => model.forceUnlockArticle(articleId),
+          })}
           onClose={closeContextMenu}
         />
       ) : null}

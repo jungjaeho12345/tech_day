@@ -162,6 +162,27 @@ export function createArticleService(db) {
     },
 
     /**
+     * SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — force-release an edit lock regardless of the holder.
+     * This is the deliberate exception to the holder-only releaseEditLock contract (AC-RLE-2 도둑질
+     * 금지 stays intact on that path): a D/Z operator can clear a lock left behind by any session.
+     * Clears lockYN + all locker columns and returns {ok:true}; a missing row returns
+     * {ok:false, reason:'not-found'}. The response intentionally omits the prior holder identifiers
+     * (NFR-SEC: no holder leak, consistent with the 409 holder-hiding rule).
+     */
+    forceReleaseEditLock(articleId) {
+      const row = readLock(articleId);
+      if (row === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      db.prepare(`
+        UPDATE Contents
+           SET lockYN = 'N', lockerUserId = NULL, lockerSessionId = NULL, lockedAt = NULL
+         WHERE articleId = ?
+      `).run(articleId);
+      return { ok: true };
+    },
+
+    /**
      * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — strict holder check used by applyAction / update gates.
      * Stale (timed-out) locks are treated as released (consistent with acquireEditLock's WHERE clause).
      */

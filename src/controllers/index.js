@@ -102,6 +102,9 @@ export function createControllers(db, deps = {}) {
       acquireEditLock: (articleId, options) => articleService.acquireEditLock(articleId, options),
       releaseEditLock: (articleId, options) => articleService.releaseEditLock(articleId, options),
       assertLockHolder: (articleId, options) => articleService.assertLockHolder(articleId, options),
+      // SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — D/Z 전용 강제 해제(보유자 무관). 라우트가 세션 역할을
+      // 재검증한 뒤에만 호출한다.
+      forceReleaseEditLock: (articleId) => articleService.forceReleaseEditLock(articleId),
     },
     user: {
       create: (user) => userService.create(user),
