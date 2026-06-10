@@ -54,10 +54,16 @@ const DISABLED = Object.freeze({ disabled: true });
 // SPEC-NEWS-REVISE-012 — 행 데이터 lockYN==='Y' 일 때만(메뉴 종류 무관) "Lock해제" 항목을 만든다.
 // 권한: D/Z 활성, R show-but-disabled(기존 비허용 항목 패턴 일관, Z=D-mirror). lockYN!='Y' 이면 null
 // 을 반환해 호출부가 메뉴에서 항목 자체를 제외한다(데이터-주도 노출).
+// SPEC-NEWS-REVISE-014 REQ-UNLOCK-CONFIRM — 활성(D/Z) 클릭은 window.confirm('Lock해제하시겠습니까?')
+// 선행 후 수락 시에만 onForceUnlock 한다(취소 시 무호출 → DB/SSE 무변동). 송고/보류/KILL 의 동기 confirm
+// 패턴(WritePage.jsx)과 동일 메커니즘 — 새 모달 없음. R 비활성 항목은 onSelect 자체가 없어 무동작(불변).
 function buildForceUnlockItem({ article, role, onForceUnlock }) {
   if (article.lockYN !== 'Y') return null;
   if (role === 'D' || role === 'Z') {
-    return { label: 'Lock해제', onSelect: () => onForceUnlock(article.articleId) };
+    return {
+      label: 'Lock해제',
+      onSelect: () => { if (window.confirm('Lock해제하시겠습니까?')) onForceUnlock(article.articleId); },
+    };
   }
   return { label: 'Lock해제', ...DISABLED };
 }

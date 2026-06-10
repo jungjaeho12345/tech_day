@@ -250,6 +250,10 @@ export function WriteWorkspace({ user }) {
             editArticleId={t.editArticleId ?? null}
             draftKey={draftKeyFor(t.id)}
             onEditContextEnded={() => endEditContext(t.id)}
+            // SPEC-NEWS-REVISE-014 REQ-EDITOR-AUTOCLOSE — 강제 해제(forced) SSE 수신 시 그 편집 탭을 닫는다
+            // (closeTab: 남은 탭/새 기사 탭 전환 + 초안 폐기 → 저장 안 한 변경분 폐기). 자기 해제(송고/보류/
+            // KILL/정상 닫기)는 forced 가 아니므로 WritePage 구독이 무시한다.
+            onForceClosed={() => closeTab(t.id)}
           />
         </div>
       ))}

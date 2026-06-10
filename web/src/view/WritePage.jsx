@@ -5,6 +5,7 @@
 // KILL for role R|Z, both only while the editing article's status is RDS. v0.6.0: KILL additionally
 // requires a generated articleId (edit context) — an id-less draft (A-DRAFT) never shows KILL.
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useModel } from '../app/context.js';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { buildColorSegments } from './editorColoring.js';
@@ -787,13 +788,14 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   );
 }
 
-export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded }) {
+export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded, onForceClosed }) {
   // news.md 데스크 미송고 편집: writer.do?id=<articleId> loads that article for editing.
   // 멀티탭 — 워크스페이스(WriteWorkspace)는 탭 모델의 editArticleId 를 prop 으로 명시한다 (null = 새 기사
   // 탭; URL 의 ?id= 는 활성 탭만 반영하므로 비활성 탭이 읽으면 안 된다). prop 이 주어지지 않은 단독
   // 사용(기존 단일 페이지/테스트)은 종전대로 URL 에서 한 번 읽는다 (the page remounts on navigation).
   const urlArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
   const editArticleId = editArticleIdProp === undefined ? urlArticleId : (editArticleIdProp || undefined);
+  const model = useModel();
   const ctrl = useWriteController(user, { editArticleId, draftKey });
   const [activeTab, setActiveTab] = useState('공통정보');
   // 멀티탭 — 편집 컨텍스트 탭에서 송고/보류/KILL 이 성공하면 컨트롤러가 빈 초안으로 리셋된다
@@ -803,6 +805,24 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
   useEffect(() => {
     if (editArticleId && ctrl.isDraft && ctrl.lifecycleStatus != null) onEditContextEnded?.();
   }, [editArticleId, ctrl.isDraft, ctrl.lifecycleStatus, onEditContextEnded]);
+  // SPEC-NEWS-REVISE-014 REQ-EDITOR-AUTOCLOSE — 편집 잠금을 보유한(editArticleId 있는) 동안에만 강제 해제
+  // SSE 를 구독한다(ViewPage 와 동일한 model.subscribe 컨트랙트 재사용 — 새 채널/폴링/타이머 없음). 자기
+  // 기사에 대한 { type:'unlock', articleId:X, forced:true } 프레임이 오면 alert 1회 후 탭을 닫는다(onForceClosed
+  // → WriteWorkspace.closeTab → 저장 안 한 변경분 폐기). 초안 탭(editArticleId=null)은 구독하지 않고
+  // (AC-CLOSE-3), 다른 articleId(AC-CLOSE-2)·forced 아닌 자기 해제(AC-CLOSE-4)는 무시하며, closed 플래그로
+  // 중복 프레임에도 alert 는 1회만(AC-CLOSE-5). unmount 시 unsubscribe 로 정리한다(NFR 6.2).
+  useEffect(() => {
+    if (!editArticleId) return undefined;
+    let closed = false;
+    const sub = model.subscribe(undefined, (payload) => {
+      if (closed) return;
+      if (payload?.type !== 'unlock' || !payload.forced || payload.articleId !== editArticleId) return;
+      closed = true;
+      window.alert('Lock이 해제되어 편집을 종료합니다');
+      onForceClosed?.();
+    });
+    return () => sub.unsubscribe();
+  }, [editArticleId, model, onForceClosed]);
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
   // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
   const alertedRef = useRef(false);

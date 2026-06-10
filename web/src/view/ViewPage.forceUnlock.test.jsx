@@ -95,7 +95,10 @@ describe('ViewPage context menu — Lock해제 (force-unlock, SPEC-NEWS-REVISE-0
   });
 
   // AC-MENU-5 (SPEC-NEWS-REVISE-012) — D 활성 클릭 → forceUnlockArticle('A-LOCK') 1회 + 메뉴 닫힘.
+  // (SPEC-NEWS-REVISE-014 이후엔 window.confirm 수락이 선행되므로 여기서 true 로 스텁한다 — AC-MENU-5 의
+  //  "클릭 → 1회 호출 + 메뉴 닫힘" 회귀는 수락 경로에서 그대로 유지된다.)
   it('AC-MENU-5: clicking the enabled "Lock해제" calls forceUnlockArticle once and closes the menu', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const spy = vi.fn().mockResolvedValue({ ok: true });
     const row = { articleId: 'A-LOCK', title: 'click row', status: 'RDS', lockYN: 'Y', createdAt: '2026-06-10T08:00:00Z' };
     renderView({
@@ -108,5 +111,65 @@ describe('ViewPage context menu — Lock해제 (force-unlock, SPEC-NEWS-REVISE-0
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('A-LOCK');
     expect(screen.queryByRole('menu', { name: '기사 메뉴' })).toBeNull();
+  });
+});
+
+// SPEC-NEWS-REVISE-014 REQ-UNLOCK-CONFIRM — 활성 "Lock해제" 클릭 시 window.confirm('Lock해제하시겠습니까?')
+// 를 선행하고, 수락(true) 시에만 forceUnlockArticle 를 1회 호출한다. 취소(false) 시 무호출. R 비활성 항목은
+// confirm 도 forceUnlockArticle 도 호출하지 않는다(SPEC-012 show-but-disabled 불변).
+describe('ViewPage Lock해제 확인창 (SPEC-NEWS-REVISE-014 REQ-UNLOCK-CONFIRM)', () => {
+  const LOCKED_ROW = { articleId: 'A-LOCK', title: 'confirm row', status: 'RDS', lockYN: 'Y', createdAt: '2026-06-10T08:00:00Z' };
+
+  // AC-CONFIRM-1 — 활성 "Lock해제" 클릭 → window.confirm('Lock해제하시겠습니까?') 표시.
+  it('AC-CONFIRM-1: clicking enabled "Lock해제" shows window.confirm with the exact message', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([LOCKED_ROW]) }) });
+    await act(async () => {});
+    const menu = await openMenuOnRow('confirm row');
+    const item = within(menu).getByRole('menuitem', { name: /Lock해제/ });
+    await act(async () => { fireEvent.click(item); });
+    expect(confirmSpy).toHaveBeenCalledWith('Lock해제하시겠습니까?');
+  });
+
+  // AC-CONFIRM-2 — 수락(예) → forceUnlockArticle('A-LOCK') 정확히 1회.
+  it('AC-CONFIRM-2: accepting the confirm calls forceUnlockArticle once with the articleId', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = vi.fn().mockResolvedValue({ ok: true });
+    renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([LOCKED_ROW]), forceUnlockArticle: spy }) });
+    await act(async () => {});
+    const menu = await openMenuOnRow('confirm row');
+    const item = within(menu).getByRole('menuitem', { name: /Lock해제/ });
+    await act(async () => { fireEvent.click(item); });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('A-LOCK');
+  });
+
+  // AC-CONFIRM-3 — 취소(아니오) → forceUnlockArticle 미호출(DB/SSE 무변동).
+  it('AC-CONFIRM-3: cancelling the confirm never calls forceUnlockArticle', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const spy = vi.fn().mockResolvedValue({ ok: true });
+    renderView({ model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([LOCKED_ROW]), forceUnlockArticle: spy }) });
+    await act(async () => {});
+    const menu = await openMenuOnRow('confirm row');
+    const item = within(menu).getByRole('menuitem', { name: /Lock해제/ });
+    await act(async () => { fireEvent.click(item); });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  // AC-CONFIRM-4 — R 비활성 항목 → confirm 도 forceUnlockArticle 도 호출되지 않는다.
+  it('AC-CONFIRM-4: R-role disabled "Lock해제" triggers neither confirm nor forceUnlockArticle', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = vi.fn().mockResolvedValue({ ok: true });
+    renderView({
+      user: { userId: 'r1', name: 'Reporter', role: 'R' },
+      model: createFakeModel({ queryArticles: vi.fn().mockResolvedValue([LOCKED_ROW]), forceUnlockArticle: spy }),
+    });
+    await act(async () => {});
+    const menu = await openMenuOnRow('confirm row');
+    const item = within(menu).getByRole('menuitem', { name: /Lock해제/ });
+    expect(item).toBeDisabled();
+    await act(async () => { fireEvent.click(item); });
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
   });
 });

@@ -346,3 +346,76 @@ test('AC-SRV-8 (route): the response body does not leak the prior holder identif
   assert.equal('lockerSessionId' in body, false, 'must not expose lockerSessionId');
   assert.equal('lockerUserId' in body, false, 'must not expose lockerUserId');
 });
+
+// ----------------------------------------------------------------------------
+// §D. SSE forced 구분 플래그 — SPEC-NEWS-REVISE-014 REQ-SSE-FORCED-FLAG
+// ----------------------------------------------------------------------------
+
+// AC-SSE-1 (SPEC-NEWS-REVISE-014) — 강제 해제 성공 시 발행되는 change payload 가 forced:true 를 싣는다.
+// 클라이언트(원 편집자 WritePage)가 강제 해제를 정상 해제와 구분해 편집 화면을 자동 종료할 수 있어야 한다.
+test('AC-SSE-1 (route): a successful force-unlock emits a change frame carrying forced:true', async () => {
+  seedUser('d-sse-1', 'D');
+  const sessionId = loginSessionId('d-sse-1');
+  const articleId = seedLockedArticle('sse-1');
+
+  const stream = await openStream(sessionId);
+  try {
+    const ready = await withTimeout(stream.nextFrame(), 3000, 'ready');
+    assert.equal(ready.event, 'ready', 'the stream must announce readiness first');
+
+    await forceUnlock(articleId, { sessionId });
+
+    const change = await withTimeout(stream.nextFrame(), 3000, 'change');
+    assert.equal(change.event, 'change');
+    const payload = JSON.parse(change.data);
+    assert.equal(payload.type, 'unlock');
+    assert.equal(payload.articleId, articleId);
+    assert.equal(payload.forced, true, 'force-unlock payload must carry forced:true');
+  } finally {
+    await stream.close();
+  }
+});
+
+// AC-SSE-2 (SPEC-NEWS-REVISE-014) — 정상(보유자) 해제 경로의 change payload 에는 forced:true 가 실리지 않는다.
+// POST /api/articles/:id/unlock 의 보유자 release 가 emit 하는 unlock 프레임을 검증한다(server/index.js ~353).
+// forced 키가 없거나 true 가 아니어야 클라이언트가 자기 시작 해제로 인식해 자동 종료하지 않는다(자기 종료 제외).
+test('AC-SSE-2 (route): a normal holder release emits an unlock frame without forced:true', async () => {
+  // 보유자 세션이 직접 잠금을 획득한 뒤 정상 해제하도록 D 세션으로 acquire→release 한다.
+  seedUser('d-sse-2', 'D');
+  const holderSession = loginSessionId('d-sse-2');
+  const { articleId } = controllers.article.create({ title: 'sse-2' });
+  // 보유자 = 로그인 세션 id (정상 release 가 보유자 검사를 통과하도록 동일 세션으로 acquire).
+  controllers.article.acquireEditLock(articleId, {
+    userId: 'd-sse-2',
+    sessionId: holderSession,
+    now: new Date('2026-06-10T01:00:00Z'),
+  });
+  assert.equal(lockYNOf(articleId), 'Y');
+
+  const stream = await openStream(holderSession);
+  try {
+    const ready = await withTimeout(stream.nextFrame(), 3000, 'ready');
+    assert.equal(ready.event, 'ready');
+
+    const res = await fetch(`${base}/api/articles/${articleId}/unlock`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-session-id': holderSession },
+      body: JSON.stringify({}),
+    });
+    const released = await res.json();
+    assert.equal(released.ok, true, 'the holder release must succeed');
+
+    const change = await withTimeout(stream.nextFrame(), 3000, 'change');
+    assert.equal(change.event, 'change');
+    const payload = JSON.parse(change.data);
+    assert.equal(payload.type, 'unlock');
+    assert.equal(payload.articleId, articleId);
+    assert.equal(
+      payload.forced === true,
+      false,
+      'a normal holder release must NOT carry forced:true',
+    );
+  } finally {
+    await stream.close();
+  }
+});

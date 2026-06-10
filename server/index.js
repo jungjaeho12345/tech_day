@@ -377,7 +377,10 @@ export function createApp({ controllers, sessionService }) {
     }
     const result = controllers.article.forceReleaseEditLock(articleId);
     if (result.ok) {
-      bus.emit('change', { type: 'unlock', articleId });
+      // SPEC-NEWS-REVISE-014 REQ-SSE-FORCED-FLAG — 강제 해제만 forced:true 로 표식하여
+      // 클라이언트가 강제/정상(보유자 release) 해제를 구분, 원 편집자 화면 자동 종료를 트리거한다.
+      // 정상 release 경로(line ~315, ~353)는 forced 를 싣지 않는다(AC-SSE-2).
+      bus.emit('change', { type: 'unlock', articleId, forced: true });
     }
     return res.json(result);
   });
