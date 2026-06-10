@@ -8,7 +8,7 @@
 // 라인은 '\n'으로 구분된다. 선택 영역에 *일부*라도 걸친 모든 라인을 라인 단위 round-up하여 제거한다
 // (VSCode Ctrl+Shift+K 스타일 — D-2 결정 잠금).
 import { describe, it, expect } from 'vitest';
-import { deleteCurrentLine, applyLineDeleteToContent } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt } from './editorShortcuts.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 import { END_MARKER } from '../model/editorContent.js';
 import { buildColorSegments } from './editorColoring.js';
@@ -151,6 +151,70 @@ describe('applyLineDeleteToContent — Ctrl+D 가 라인의 임베드도 함께 
     const out = applyLineDeleteToContent(content, del);
     expect(out.blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
     expect(out.blocks.filter((b) => b.type === 'text').map((b) => b.text).join('')).toBe('BBB');
+  });
+});
+
+// SPEC-NEWS-REVISE — lineRangeAt: 캐럿이 놓인 줄의 [lineStart, lineEnd] (lineEnd 는 줄 끝 '\n' 위치/문서 끝).
+describe('lineRangeAt — 캐럿 줄 범위', () => {
+  it('중간 줄: "AAA\\nBBB\\nCCC" 의 BBB(offset 5) → [4, 7]', () => {
+    expect(lineRangeAt('AAA\nBBB\nCCC', 5)).toEqual({ lineStart: 4, lineEnd: 7 });
+  });
+  it('첫 줄(offset 1) → [0, 3]', () => {
+    expect(lineRangeAt('AAA\nBBB', 1)).toEqual({ lineStart: 0, lineEnd: 3 });
+  });
+  it('마지막 줄(offset 6, BBB) → [4, 7=문서끝]', () => {
+    expect(lineRangeAt('AAA\nBBB', 6)).toEqual({ lineStart: 4, lineEnd: 7 });
+  });
+  it('빈 문서 → [0, 0]', () => {
+    expect(lineRangeAt('', 0)).toEqual({ lineStart: 0, lineEnd: 0 });
+  });
+});
+
+// SPEC-NEWS-REVISE — selectEmbedOnLine: 현재 줄에 임베드가 있으면 "한 개"만 골라 제거(나머지 보존),
+// 없으면 null(호출부가 라인 삭제로 폴백). 실브라우저 회귀(연속 임베드 한꺼번에 삭제) 방지.
+describe('selectEmbedOnLine — Ctrl+D 가 임베드를 한 개씩 선택', () => {
+  const img = { type: 'image', url: 'i' };
+  const vid = { type: 'video', url: 'v' };
+  const art = { type: 'article', articleId: 'A' };
+
+  // 본문: "TXT\n"(0..4) 다음 줄에 임베드 3개 연속(모두 offset 4) — 텍스트/줄바꿈 없이 붙어있다.
+  const threeEmbedsOnOneLine = {
+    blocks: [
+      { type: 'text', text: 'TXT\n' },
+      { type: 'embed', embed: img },
+      { type: 'embed', embed: vid },
+      { type: 'embed', embed: art },
+    ],
+  };
+
+  it('연속 임베드 줄에서 한 번에 1개만 제거(캐럿 at/before 우선), 텍스트 보존', () => {
+    // 캐럿이 임베드 줄(offset 4)에 있다고 보고 selectEmbedOnLine 호출. 줄 범위 [4,4](텍스트 없음).
+    const r1 = selectEmbedOnLine(threeEmbedsOnOneLine, 4, 4, 4);
+    expect(r1).not.toBeNull();
+    expect(r1.content.blocks.filter((b) => b.type === 'embed')).toHaveLength(2);
+    // 텍스트 블록 "TXT\n" 은 보존된다(임베드만 제거).
+    expect(r1.content.blocks.filter((b) => b.type === 'text').map((b) => b.text).join('')).toBe('TXT\n');
+
+    // 다음 호출은 남은 content 에서 또 1개 → 1개 남음.
+    const r2 = selectEmbedOnLine(r1.content, 4, 4, 4);
+    expect(r2.content.blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
+    // 마지막 1개 → 0개.
+    const r3 = selectEmbedOnLine(r2.content, 4, 4, 4);
+    expect(r3.content.blocks.filter((b) => b.type === 'embed')).toHaveLength(0);
+    // 모두 지운 뒤에는 임베드가 없으므로 null.
+    const r4 = selectEmbedOnLine(r3.content, 4, 4, 4);
+    expect(r4).toBeNull();
+  });
+
+  it('현재 줄에 임베드가 없으면 null (텍스트 전용 줄 → 라인 삭제 폴백)', () => {
+    // "TXT" 줄(offset 0..3)에는 임베드가 없다(임베드는 offset 4 의 다음 줄).
+    expect(selectEmbedOnLine(threeEmbedsOnOneLine, 0, 3, 1)).toBeNull();
+  });
+
+  it('캐럿 before 임베드가 없으면 캐럿 이후 첫 임베드를 고른다', () => {
+    // 줄 시작(offset 4)에 캐럿. at/before(≤4) 임베드가 offset 4 에 있으므로 그 중 가장 가까운 것 선택.
+    const r = selectEmbedOnLine(threeEmbedsOnOneLine, 4, 4, 4);
+    expect(r.ordinal).toBeTypeOf('number');
   });
 });
 

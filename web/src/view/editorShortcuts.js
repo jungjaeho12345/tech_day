@@ -161,3 +161,89 @@ export function applyLineDeleteToContent(content, del) {
   }
   return { blocks: next };
 }
+
+/**
+ * SPEC-NEWS-REVISE — Ctrl+D 단일 임베드 삭제 셀렉터(실브라우저 회귀 수정).
+ *
+ * 배경: 임베드는 본문 텍스트에 0글자를 기여하므로, 연속된 임베드(사이에 텍스트/줄바꿈 없음)는 모두 같은
+ * "라인"(같은 줄 문자 범위)에 놓인다. 라인 단위 삭제는 그 줄의 임베드를 한꺼번에 지운다. 사용자 요구는
+ * "Ctrl+D 한 번에 임베드 한 개"이므로, 현재 캐럿이 놓인 줄에 임베드가 하나라도 있으면 텍스트는 건드리지
+ * 않고 임베드 하나만 제거한다.
+ *
+ * 선택 규칙: 캐럿 오프셋(caret) 기준으로 캐럿 at/before 인 임베드(offset ≤ caret) 중 가장 가까운 것(가장 큰
+ * offset)을 우선, 없으면 캐럿 이후(offset > caret) 중 가장 앞(가장 작은 offset)을 고른다. 같은 offset 의
+ * 임베드가 여럿이면(연속 임베드) 캐럿에 가장 가까운 ordinal(앞 임베드부터)을 고른다.
+ *
+ * @param {{blocks: Array<object>}} content ORDERED content
+ * @param {number} lineStart 현재 줄의 시작 본문 문자 offset
+ * @param {number} lineEnd   현재 줄의 끝 본문 문자 offset(다음 줄 시작 직전 = 줄 끝 다음, 경계 포함)
+ * @param {number} caret     현재 캐럿의 본문 문자 offset
+ * @returns {{ ordinal: number, content: {blocks: Array<object>} } | null}
+ *   삭제할 임베드의 0-based ordinal(전체 임베드 기준 = data-embed-index)과 그 임베드를 제거한 content.
+ *   현재 줄에 임베드가 없으면 null(호출부가 라인 삭제로 폴백).
+ */
+export function selectEmbedOnLine(content, lineStart, lineEnd, caret) {
+  const blocks = content?.blocks ?? [];
+  // 줄 범위에 속한 임베드들을 { ordinal, offset } 로 모은다. ordinal 은 전체 임베드 기준 0-based.
+  const onLine = [];
+  let offset = 0;
+  let embedOrdinal = 0;
+  for (const b of blocks) {
+    if (b.type === 'text') {
+      offset += typeof b.text === 'string' ? b.text.length : 0;
+    } else if (b.type === 'embed') {
+      if (offset >= lineStart && offset <= lineEnd) {
+        onLine.push({ ordinal: embedOrdinal, offset });
+      }
+      embedOrdinal += 1;
+    }
+  }
+  if (onLine.length === 0) return null;
+
+  // 캐럿 at/before(offset ≤ caret) 중 가장 가까운(가장 큰 offset, 동률이면 가장 큰 ordinal = 캐럿 직전) 선택.
+  const atOrBefore = onLine.filter((e) => e.offset <= caret);
+  let chosen;
+  if (atOrBefore.length > 0) {
+    chosen = atOrBefore.reduce((best, e) =>
+      (e.offset > best.offset || (e.offset === best.offset && e.ordinal > best.ordinal)) ? e : best);
+  } else {
+    // 캐럿 이후 중 가장 앞(가장 작은 offset, 동률이면 가장 작은 ordinal).
+    chosen = onLine.reduce((best, e) =>
+      (e.offset < best.offset || (e.offset === best.offset && e.ordinal < best.ordinal)) ? e : best);
+  }
+  return { ordinal: chosen.ordinal, content: removeEmbedByOrdinal(content, chosen.ordinal) };
+}
+
+/** 전체 임베드 기준 0-based ordinal 의 임베드 블록 하나만 제거한 content (텍스트/다른 임베드 보존). */
+function removeEmbedByOrdinal(content, ordinal) {
+  const blocks = content?.blocks ?? [];
+  const next = [];
+  let seen = 0;
+  let removed = false;
+  for (const b of blocks) {
+    if (b.type === 'embed') {
+      if (!removed && seen === ordinal) { removed = true; seen += 1; continue; }
+      seen += 1;
+    }
+    next.push(b);
+  }
+  return { blocks: next };
+}
+
+/**
+ * 주어진 본문 텍스트(value)에서 캐럿 offset 이 놓인 줄의 [lineStart, lineEnd] 를 돌려준다.
+ * lineEnd 는 그 줄의 마지막 문자 다음(= 다음 줄 시작 직전의 '\n' 위치, 마지막 줄이면 value.length).
+ * 임베드가 줄 끝에 trailing 으로 붙는 경우까지 포함하도록 lineEnd 는 '\n' 위치(또는 끝)로 둔다.
+ * @param {string} value 본문 텍스트
+ * @param {number} caret 캐럿 본문 문자 offset
+ * @returns {{ lineStart: number, lineEnd: number }}
+ */
+export function lineRangeAt(value, caret) {
+  const text = typeof value === 'string' ? value : '';
+  const c = Math.max(0, Math.min(caret, text.length));
+  const prevNl = text.lastIndexOf('\n', c - 1);
+  const lineStart = prevNl === -1 ? 0 : prevNl + 1;
+  const nextNl = text.indexOf('\n', c);
+  const lineEnd = nextNl === -1 ? text.length : nextNl;
+  return { lineStart, lineEnd };
+}

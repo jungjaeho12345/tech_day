@@ -371,3 +371,40 @@ export function setCaretAfterEmbed(root, embedIndex) {
   sel.removeAllRanges();
   sel.addRange(range);
 }
+
+/**
+ * SPEC-NEWS-REVISE — place the collapsed caret at the very START of the editor (before any content).
+ * Used when an embed at ordinal 0 is deleted and there is no preceding embed/text to anchor to: a
+ * char-offset of 0 cannot disambiguate "before the first remaining embed", so anchor at the root start
+ * by DOM position. Lands the caret at the first text node start when present, else at root offset 0.
+ * @param {HTMLElement} root
+ */
+export function setCaretToEditorStart(root) {
+  if (root == null) return;
+  const doc = root.ownerDocument;
+  const sel = doc.getSelection?.();
+  if (!sel) return;
+  const range = doc.createRange();
+  // Prefer the first editable (non-embed) text node so the caret is a valid typing home; else root start.
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      let p = n.parentNode;
+      while (p && p !== root) {
+        if (p.nodeType === 1 && p.hasAttribute && p.hasAttribute('data-embed-index')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        p = p.parentNode;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const firstText = walker.nextNode();
+  if (firstText) {
+    range.setStart(firstText, 0);
+  } else {
+    range.setStart(root, 0);
+  }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}

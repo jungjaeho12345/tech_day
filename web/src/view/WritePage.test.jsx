@@ -1510,6 +1510,109 @@ describe('WritePage Ctrl+D line delete (REQ-EDITOR-EMBED-AND-CTRL-D)', () => {
   });
 });
 
+// SPEC-NEWS-REVISE — 실브라우저 회귀: 같은 줄에 연속된 임베드가 모두 0글자라 라인 삭제가 한꺼번에 지웠다.
+// 새 의미: Ctrl+D 는 임베드를 "한 개씩" 지운다(텍스트는 보존). 사용자 보고 레이아웃을 그대로 재현한다.
+describe('WritePage Ctrl+D — 임베드는 한 개씩, 텍스트 줄은 라인 삭제 (실브라우저 회귀)', () => {
+  // 본문 텍스트 한 줄 + 그 뒤 연속 임베드 3개(이미지/영상/기사)를 삽입한다.
+  async function setupTextThenThreeEmbeds(user) {
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'M item', url: 'https://m/1', thumbnailUrl: 'https://t/1' }],
+      error: false,
+    });
+    const searchArticles = vi.fn().mockResolvedValue([{ articleId: 'A-1', title: '내부기사', content: 'c' }]);
+    renderWrite(createFakeModel({ searchMedia, searchArticles }));
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, '본문줄');
+    // image
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'a');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 M item' }));
+    // video
+    await user.click(screen.getByRole('tab', { name: '영상' }));
+    await user.type(within(screen.getByTestId('panel-영상')).getByLabelText('검색어'), 'b');
+    await user.click(within(screen.getByTestId('panel-영상')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 M item' }));
+    // article
+    await user.click(screen.getByRole('tab', { name: '글기사' }));
+    await user.type(within(screen.getByTestId('panel-글기사')).getByLabelText('검색어'), 'c');
+    await user.click(within(screen.getByTestId('panel-글기사')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 내부기사' }));
+    return body;
+  }
+
+  it('(a) 텍스트 줄 + 연속 임베드 3개: Ctrl+D 가 한 번에 1개씩, 3번이면 모두 제거, 텍스트는 보존', async () => {
+    const user = userEvent.setup();
+    const body = await setupTextThenThreeEmbeds(user);
+    expect(body.querySelectorAll('[data-embed-index]')).toHaveLength(3);
+
+    // 캐럿을 임베드 줄(본문 텍스트 끝 = '본문줄' 뒤, 임베드 줄)에 둔다.
+    setCaretCharOffset(body, getBodyTextFromDom(body).length);
+
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    await waitFor(() => expect(body.querySelectorAll('[data-embed-index]')).toHaveLength(2));
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    await waitFor(() => expect(body.querySelectorAll('[data-embed-index]')).toHaveLength(1));
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    await waitFor(() => expect(body.querySelectorAll('[data-embed-index]')).toHaveLength(0));
+
+    // 텍스트 줄은 그대로 보존된다(임베드만 한 개씩 사라졌다).
+    expect(getBodyTextFromDom(body)).toBe('본문줄');
+  });
+
+  it('(c) 회귀: 임베드 없는 텍스트 전용 줄은 Ctrl+D 가 그 줄을 삭제한다', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'AAA');
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await user.type(body, 'BBB');
+    setCaretCharOffset(body, body.textContent.length); // BBB 줄
+    fireEvent.keyDown(body, { key: 'd', ctrlKey: true });
+    expect(body.textContent).toBe('AAA');
+  });
+});
+
+// SPEC-NEWS-REVISE — 실브라우저 회귀: 임베드 전용 문서(텍스트 없음)에서 Backspace 로 임베드를 지우면
+// 문자 오프셋 앵커가 삭제 지점을 못 짚어 캐럿이 "텍스트가 있는 곳"으로 튀었다. DOM 앵커로 복원되는지 검증.
+describe('WritePage Backspace — 임베드 전용 문서에서 캐럿이 제자리(에디터 시작)에 남는다', () => {
+  async function insertOneImage(user) {
+    const searchMedia = vi.fn().mockResolvedValue({
+      items: [{ source: 'youtube', title: 'YT', url: 'https://youtu.be/x', thumbnailUrl: 'https://thumb/x' }],
+      error: false,
+    });
+    renderWrite(createFakeModel({ searchMedia }));
+    const body = screen.getByTestId('editor-body');
+    await user.click(screen.getByRole('tab', { name: '이미지' }));
+    await user.type(within(screen.getByTestId('panel-이미지')).getByLabelText('검색어'), 'a');
+    await user.click(within(screen.getByTestId('panel-이미지')).getByRole('button', { name: '검색' }));
+    await user.click(await screen.findByRole('button', { name: '삽입 YT' }));
+    return body;
+  }
+
+  it('(b) 임베드 1개만 있는 문서: Backspace 로 삭제 후 selection 이 에디터 안(문서 시작)에 anchored', async () => {
+    const user = userEvent.setup();
+    const body = await insertOneImage(user);
+    const embedSpan = body.querySelector('[data-embed-index]');
+    expect(embedSpan).not.toBeNull();
+
+    // 캐럿을 임베드 바로 뒤에 둔 뒤 Backspace.
+    const range = document.createRange();
+    range.setStartAfter(embedSpan);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    fireEvent.keyDown(body, { key: 'Backspace' });
+
+    await waitFor(() => expect(body.querySelector('[data-embed-index]')).toBeNull());
+    // 캐럿(selection)은 에디터 내부(문서 시작)에 남는다 — 텍스트 위치로 튀지 않는다.
+    const after = document.getSelection();
+    expect(after.rangeCount).toBeGreaterThan(0);
+    expect(body.contains(after.getRangeAt(0).startContainer)).toBe(true);
+  });
+});
+
 describe('WritePage clipboard paste -> inline embed (news.md 기사 에디터: 붙여넣기 이미지/유투브)', () => {
   // Build a paste-event clipboardData stub. `imageFile` (a real File) sets up an image item;
   // `text` is returned by getData('text'). The 10%x10% size comes from the existing .yh-embed CSS.
