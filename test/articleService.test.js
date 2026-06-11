@@ -470,5 +470,5 @@ test('AC-API-5 (transaction): Contents UPDATE 실패 시 Article UPDATE도 롤�
   );
   db.prepare = origPrepare;
   const article = db.prepare('SELECT title FROM Article WHERE articleId = ?').get(articleId);
-  assert.equal(article.title, '원본', 'Article UPDATE は Contents 失敗で롤백되어 원본이어야 한다');
+  assert.equal(article.title, '원본', 'Article UPDATE는 Contents 실패로 롤백되어 원본이어야 한다');
 });

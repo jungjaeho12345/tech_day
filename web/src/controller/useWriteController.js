@@ -40,7 +40,7 @@ function editTabSurvives(articleId) {
 }
 
 // 멀티탭 작성 — 워크스페이스(WriteWorkspace)는 탭마다 별도 초안 키('newsroom.writeDraft.<tabId>')를
-// options.draftKey 로 주입해 탭 간 초안이 섞이지 않게 한다. 키 미지정 단독 사용은 종전 키 그대로.
+// options.draftKey 로 주입해 탭 간 초안이 섯이지 않게 한다. 키 미지정 단독 사용은 종전 키 그대로.
 /** Safe sessionStorage read — guarded so the controller never throws in non-browser/test contexts. */
 function readStoredDraft(key = DRAFT_STORAGE_KEY) {
   try {
@@ -159,13 +159,15 @@ function draftHasContent(markup, common, authorDefault) {
 
 /**
  * @param {AuthUser} user
- * @param {{ editArticleId?: string, draftKey?: string }} [options] when editArticleId is set, the
- *   controller loads that article on mount (markupVersion + common fields) and saves PUT (update)
- *   instead of POST (create). draftKey overrides the sessionStorage key for the NEW-draft persistence
- *   (멀티탭: 탭별 'newsroom.writeDraft.<tabId>'); defaults to the single-page legacy key.
+ * @param {{ editArticleId?: string, draftKey?: string, onEditContextEnded?: () => void }} [options]
+ *   when editArticleId is set, the controller loads that article on mount (markupVersion + common
+ *   fields) and saves PUT (update) instead of POST (create). draftKey overrides the sessionStorage
+ *   key for the NEW-draft persistence (멀티탭: 탭별 'newsroom.writeDraft.<tabId>'); defaults to the
+ *   single-page legacy key. onEditContextEnded is called after a successful action in edit context
+ *   so WriteWorkspace can transition the tab back to a blank-new state.
  */
 export function useWriteController(user, options = {}) {
-  const { editArticleId, draftKey = DRAFT_STORAGE_KEY } = options;
+  const { editArticleId, draftKey = DRAFT_STORAGE_KEY, onEditContextEnded } = options;
   const model = useModel();
   // SPEC-EDIT-LOCK-001 — 차단 진입 시 목록 복귀(navigate)와 logout 해제 콜백 등록에 쓰인다.
   const session = useSession();
@@ -216,14 +218,14 @@ export function useWriteController(user, options = {}) {
   // successful action (server auto-releases) so unmount/beforeunload never double-unlocks.
   const acquiredLockRef = useRef(false);
   // 보유 잠금 해제 (단일 경로): unmount, beforeunload, logout 콜백이 모두 이 함수를 거친다.
-  // 미보유 상태(차단 진입, 액션 후 auto-release)에서는 no-op — unlockArticle 을 호출하지 않는다.
+  // 미보유 상태(차단 진입, 액션 후 auto-release)에서는 no-op — unlockArticle 을 호용하지 않는다.
   //
   // SPEC-NEWS-REVISE-008 REQ-LOCK-RETENTION / REQ-LOCK-RELEASE-EXPLICIT — `force` 가 false(기본)인
   // unmount cleanup 경로에서는 편집 탭이 아직 살아있으면(editTabSurvives) 해제하지 않는다. 단순 조회
   // 페이지(list.do) 이동으로 WritePage 가 unmount 되어도 편집 탭이 탭 목록에 남아있는 한 잠금을 유지해야
   // 하기 때문이다(AC-LOCK-1 / AC-REL-3). 탭이 × 로 닫히면 WriteWorkspace 가 unmount 직전에 탭 목록을
-  // 갱신하므로 그 기사는 더 이상 생존하지 않아 정상 해제된다(AC-REL-2). beforeunload(브라우저 닫힘)와
-  // 로그아웃은 `force=true` 로 호출되어 탭 생존 여부와 무관하게 항상 해제한다(AC-LOCK-2 (c)(d)).
+  // 갱신하므로 그 기사는 더 이상 생존하지 않아 정상 해제된다(AC-REL-2). beforeunload(브라우저 닫혈)와
+  // 로그아웃은 `force=true` 로 호용되어 탭 생존 여부와 무관하게 항상 해제한다(AC-LOCK-2 (c)(d)).
   const releaseHeldLock = useCallback((force = false) => {
     if (!acquiredLockRef.current || !editArticleId) return;
     // 조건부 보유: 편집 탭이 살아있는 단순 unmount 는 해제하지 않는다(락 유지, acquiredLockRef 도 유지해
@@ -241,7 +243,7 @@ export function useWriteController(user, options = {}) {
   // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — lock-before-load: editArticleId 가 있으면 마운트 시 먼저
   // lockArticle(id) 로 잠금을 획득하고, 성공한 경우에만 queryArticles 로 기사를 로드한다. 409(locked) 등
   // 실패 시 lockError 를 세팅하고 로드를 차단한 뒤 session.navigate(ROUTES.VIEW) 로 목록에 복귀한다.
-  // 신규 초안(editArticleId 없음)은 잠금/로드를 모두 건너뛴다 (blank-new 동작 보존).
+  // 신규 초안(editArticleId 없음)은 잠금/로드를 모두 건너뛸다 (blank-new 동작 보존).
   useEffect(() => {
     if (!editArticleId) return undefined;
     let cancelled = false;
@@ -256,7 +258,7 @@ export function useWriteController(user, options = {}) {
       }
       if (cancelled) return;
       if (!lockResult?.ok) {
-        // 차단: 잠금 미획득 → 에디터 read-only + 목록 복귀. queryArticles 는 호출하지 않는다.
+        // 차단: 잠금 미획득 → 에디터 read-only + 목록 복귀. queryArticles 는 호용하지 않는다.
         setLockError(LOCK_CONFLICT_MESSAGE);
         session?.navigate?.(ROUTES.VIEW);
         return;
@@ -308,18 +310,18 @@ export function useWriteController(user, options = {}) {
   // over fetch because it survives the unload event without blocking it).
   useEffect(() => {
     if (!editArticleId) return undefined;
-    // 브라우저(탭) 닫힘 — 탭 메타데이터가 sessionStorage 에 남아있어도 무조건 해제한다(force=true).
+    // 브라우저(탭) 닫혈 — 탭 메타데이터가 sessionStorage 에 남아있어도 무조건 해제한다(force=true).
     const onBeforeUnload = () => { releaseHeldLock(true); };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload);
-      // React unmount(페이지 이동/핫리로드) — 편집 탭이 살아있으면 잠금을 유지한다(force 미지정 = 조건부).
+      // React unmount(페이지 이동/핯리로드) — 편집 탭이 살아있으면 잠금을 유지한다(force 미지정 = 조건부).
       // SPEC-NEWS-REVISE-008 AC-LOCK-1/AC-REL-3: 단순 조회 페이지 이동만으로는 풀리지 않는다.
       releaseHeldLock();
     };
   }, [editArticleId, releaseHeldLock]);
 
-  // logout 경로 — App.handleLogout 이 세션 클리어 전에 호출할 해제 콜백을 등록한다(release-before-clear-session).
+  // logout 경로 — App.handleLogout 이 세션 클리어 전에 호용할 해제 콜백을 등록한다(release-before-clear-session).
   // SPEC-NEWS-REVISE-008 AC-LOCK-2(c): 로그아웃은 편집 탭 생존 여부와 무관하게 무조건 해제한다(force=true).
   useEffect(() => {
     if (!editArticleId) return undefined;
@@ -417,7 +419,7 @@ export function useWriteController(user, options = {}) {
     // (AC-MAP-3): a fresh draft has no articleId/sender/sentAt yet.
     setReadonlyMeta(null);
     // SPEC-NEWS-REVISE — 송고/보류/KILL 성공 후 초기화는 보존 대상이 아니다 (news.md): 보존된 draft 도
-    // 함께 비운다. 이렇게 하지 않으면 액션 성공 → 빈 페이지로 복귀 후 다시 옛 초안이 되살아난다. 동기 clear
+    // 함께 비운다. 이렇게 하지 않으면 액션 성공 → 빈 페이지로 복귀 후 다시 옮 초안이 되살아난다. 동기 clear
     // 로 persist effect 의 다음 write 보다 먼저 키를 제거한다 (effect 도 빈 draft 면 어차피 clear 한다).
     clearStoredDraft(draftKey);
   }, [adapter, user.name, draftKey]);
@@ -425,7 +427,7 @@ export function useWriteController(user, options = {}) {
   // [DP-F5] send/hold/kill: persist DTO, then submit action+DTO only; display backend-returned state.
   const submitAction = useCallback(async (action) => {
     setActionError(null);
-    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금이 거부된(차단) 상태에서는 모든 transport 호출을 막는다
+    // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 잠금이 거부된(차단) 상태에서는 모든 transport 호용을 막는다
     // (페이지는 read-only). 서버측 잠금 가드를 클라이언트에서 미러링해 충돌이 네트워크 에러로 가려지지 않게 한다.
     if (lockError) {
       return;
@@ -450,7 +452,7 @@ export function useWriteController(user, options = {}) {
       const isEditContext = articleId !== 'A-DRAFT';
       // REQ-FE-WRITE-013 v0.3.0 — 송고뿐 아니라 보류/KILL도 액션 전에 현재 DTO를 저장한다. 종전에는
       // send만 저장해서, 미저장 새 초안(A-DRAFT)에 보류/KILL을 누르면 applyAction이 존재하지 않는
-      // 기사 ID로 호출되어 서버가 not-found로 거부했다 (보류/KILL 미동작의 원인).
+      // 기사 ID로 호용되어 서버가 not-found로 거부했다 (보류/KILL 미동작의 원인).
       //
       // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK / REQ-API-INSERT-UPDATE-SPLIT — when this is an edit
       // context (articleId !== 'A-DRAFT'), include the page-scoped sessionId so the server PUT
@@ -478,8 +480,8 @@ export function useWriteController(user, options = {}) {
         return;
       }
       // AC-EDIT-LOCK-6 — 편집 컨텍스트에선 페이지 락 sessionId를 4번째 인자로 함께 보내 서버 action
-      // 라우트의 락 게이트가 호출자를 락 보유자 본인으로 식별하게 한다. 신규 초안은 락이 없으므로
-      // 기존 3-인자 호출을 유지한다 (게이트는 락이 빈 기사를 그대로 통과시킨다).
+      // 라우트의 락 게이트가 호용자를 락 보유자 본인으로 식별하게 한다. 신규 초안은 락이 없으므로
+      // 기존 3-인자 호용을 유지한다 (게이트는 락이 빈 기사를 그대로 통과시킨다).
       const result = isEditContext
         ? await model.applyAction(id, user.role, action, { sessionId: pageSessionIdRef.current })
         : await model.applyAction(id, user.role, action);
@@ -489,15 +491,17 @@ export function useWriteController(user, options = {}) {
         return;
       }
       // SPEC-EDIT-LOCK-001 REQ-EDIT-LOCK — 액션 성공 시 서버가 잠금을 auto-release 한다. 클라이언트 획득
-      // 플래그를 꺼서 이후 unmount/beforeunload 가 다시 unlockArticle 을 호출하지 않게 한다(이중 해제 방지).
+      // 플래그를 쾜서 이후 unmount/beforeunload 가 다시 unlockArticle 을 호용하지 않게 한다(이중 해제 방지).
       acquiredLockRef.current = false;
       setLifecycleStatus(result.status);
       // Success -> reset the page for a new article (status confirmation is preserved).
       resetDraft();
+      // Notify the workspace tab that the edit context ended (WriteWorkspace.onEditContextEnded).
+      if (isEditContext) onEditContextEnded?.();
     } catch {
       setActionError('전송 중 오류가 발생했습니다.');
     }
-  }, [adapter, articleId, assembleDto, model, user.role, resetDraft, lockError]);
+  }, [adapter, articleId, assembleDto, model, user.role, resetDraft, lockError, onEditContextEnded]);
 
   return {
     // Editor surface: structured content (text + ordered inline embeds) + plain body text.
@@ -513,7 +517,7 @@ export function useWriteController(user, options = {}) {
     status,
     // v0.6.0 — 기사아이디가 아직 생성되지 않은 신규 초안인지 (A-DRAFT 센티널). WritePage가 이 값으로
     // KILL 버튼 노출을 게이트한다 (news.md: 기사아이디 미생성 기사의 작성 화면에는 KILL 버튼이 없다 —
-    // 존재하지 않는 기사는 KILL 대상이 될 수 없고, 종전엔 초안 KILL이 기사를 만들었다 바로 죽였다).
+    // 존재하지 않는 기사는 KILL 대상이 될 수 없고, 종전에 초안 KILL이 기사를 만들었다 바로 죽였다).
     isDraft: articleId === 'A-DRAFT',
     // SPEC-NEWS-REVISE-007 REQ-VO-MAPPING — read-only ContentsVO 8 fields; null in a blank-new context
     // (WritePage renders the read-only area only when this is non-null — AC-MAP-2/3).

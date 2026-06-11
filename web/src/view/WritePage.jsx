@@ -132,6 +132,28 @@ function TextArticlePanel({ onEmbed }) {
   );
 }
 
+// SPEC-NEWS-REVISE-007 REQ-VO-MAPPING: 8 ContentsVO fields displayed read-only in the metadata panel.
+const READONLY_META_LABELS = {
+  articleId: '기사아이디', modifier: '수정자', sender: '송고자',
+  department: '부서', departmentCode: '부서코드', createdAt: '작성시간',
+  editedAt: '편집시간', sentAt: '송고시간',
+};
+const READONLY_META_KEYS = [
+  'articleId', 'modifier', 'sender', 'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
+];
+function ReadonlyMetaPanel({ meta }) {
+  return (
+    <div data-testid="readonly-meta" className="yh-readonly-meta">
+      {READONLY_META_KEYS.map((key) => (
+        <div key={key} className="yh-field-row">
+          <span className="yh-field-label">{READONLY_META_LABELS[key]}</span>
+          <span className="yh-field-value">{meta[key] || ''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // @MX:NOTE: [AUTO] Build an inline embed <span> DOM node for paintEditor. contenteditable=false +
 // zero text contribution: the embed span carries NO text children, so DOM textContent stays equal to
 // bodyText. data-testid mirrors InlineEmbed (embed-image/embed-video/embed-article) so the existing
@@ -786,6 +808,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
               onRemoveEmbedRef.current(adjacentIdx);
               return;
             }
+            node = node.parentNode;
           }
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
           // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
@@ -980,6 +1003,7 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
         {/* REQ-FE-WRITE-014 v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — lifecycleStatus
             표시 블록 제거. 거부/오류(actionError)는 종전대로 노출한다. */}
         {ctrl.actionError ? <div role="alert" className="yh-alert">{ctrl.actionError}</div> : null}
+        {ctrl.readonlyMeta ? <ReadonlyMetaPanel meta={ctrl.readonlyMeta} /> : null}
 
         {/* SPEC-NEWS-REVISE-007 REQ-VO-MAPPING (AC-MAP-2/3): read-only ContentsVO 8 fields, shown only in
             an edit context (ctrl.readonlyMeta non-null). A blank-new draft renders nothing here. */}
