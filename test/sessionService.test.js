@@ -159,3 +159,55 @@ test('SESSION-POLICY: touchSession returns undefined for an unknown/absent id', 
   assert.equal(svc.touchSession('nope'), undefined);
   assert.equal(svc.touchSession(undefined), undefined);
 });
+
+// ---------------------------------------------------------------------------
+// SPEC-NEWS-REVISE-010 — explicit AC/EC locks for the 1h sliding idle policy.
+// All assertions inject a fixed `now`/`ttlMs` (no real clock — required by spec NFR 5.1).
+// ---------------------------------------------------------------------------
+
+// AC-SESS-1 (SPEC-NEWS-REVISE-010): 만료 직전 59분에 touch → deadline 이 그 시점 +1h 로 sliding,
+// 갱신 후 추가 59분에도 여전히 유효.
+test('AC-SESS-1: touch at 59분 slides the deadline; +59분 later still valid', () => {
+  let clock = 0;
+  const svc = createSessionService({ ttlMs: ONE_HOUR_MS, now: () => clock });
+  const { sessionId } = svc.createSession(USER);
+  clock = 59 * 60 * 1000; // 59분 시점에 활동.
+  assert.ok(svc.touchSession(sessionId), 'session alive at 59분 and slides forward');
+  clock += 59 * 60 * 1000; // 갱신 시점에서 +59분 (< 1h window).
+  assert.ok(svc.validateSession(sessionId), 'still valid 59분 after the sliding touch');
+});
+
+// AC-SESS-2 / EC-3 (SPEC-NEWS-REVISE-010): 정확히 ttl 경계는 still valid (boundary is `now > expiresAt`),
+// ttl + 1ms 에서 만료 → validateSession/getSession 모두 undefined.
+test('AC-SESS-2 / EC-3: exact ttl boundary is valid; ttl+1ms expires (now > expiresAt)', () => {
+  let clock = 0;
+  const svc = createSessionService({ ttlMs: ONE_HOUR_MS, now: () => clock });
+  const { sessionId } = svc.createSession(USER);
+  clock = ONE_HOUR_MS; // 정확히 60분 0ms — 경계는 `>` 이므로 아직 유효.
+  assert.ok(svc.validateSession(sessionId), 'exactly at ttl boundary the session is still valid');
+  clock = ONE_HOUR_MS + 1; // 60분 0ms 를 1ms 넘김 → 만료.
+  assert.equal(svc.validateSession(sessionId), undefined, 'ttl+1ms → validateSession undefined');
+  assert.equal(svc.getSession(sessionId), undefined, 'ttl+1ms → getSession undefined (evicted)');
+});
+
+// AC-SESS-3 (SPEC-NEWS-REVISE-010): 마지막 활동 후 1시간 미만(59분 59초)은 유효.
+test('AC-SESS-3: under the idle window (59분 59초) the session stays valid', () => {
+  let clock = 0;
+  const svc = createSessionService({ ttlMs: ONE_HOUR_MS, now: () => clock });
+  const { sessionId } = svc.createSession(USER);
+  clock = 59 * 60 * 1000 + 59 * 1000; // 59분 59초.
+  assert.ok(svc.validateSession(sessionId), 'session valid just under the 1h idle window');
+});
+
+// AC-SESS-4 / EC-4 (SPEC-NEWS-REVISE-010): sliding 으로 deadline 이 미뤄진 유효 세션도 로그아웃 시 즉시 무효.
+test('AC-SESS-4 / EC-4: logout invalidates a slid session immediately (sliding 무관)', () => {
+  let clock = 0;
+  const svc = createSessionService({ ttlMs: ONE_HOUR_MS, now: () => clock });
+  const { sessionId } = svc.createSession(USER);
+  clock = 30 * 60 * 1000; // 30분 시점 활동으로 deadline 을 90분으로 민다.
+  assert.ok(svc.touchSession(sessionId), 'session slid forward by the 30분 activity');
+  assert.equal(svc.invalidateSession(sessionId), true, 'logout drops the session');
+  // 남은 sliding 시간(아직 만료 전)과 무관하게 즉시 무효.
+  assert.equal(svc.validateSession(sessionId), undefined, 'logged-out session never validates');
+  assert.equal(svc.touchSession(sessionId), undefined, 'a logged-out session cannot be touched back');
+});

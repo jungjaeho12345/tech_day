@@ -9,4 +9,8 @@ afterEach(() => {
   // httpModel persists the session id). jsdom shares sessionStorage across a file, so clear it between
   // tests to stop a persisted draft/session from leaking into the next case's fresh mount.
   try { sessionStorage.clear(); } catch { /* no storage in this env */ }
+  // SPEC-NEWS-COLCONFIG — ViewPage persists per-menu column config to localStorage. jsdom shares
+  // localStorage across a file, so clear it between tests to stop one case's column tweaks (hidden
+  // columns, resized widths) from leaking into the next case's default-all-visible expectation.
+  try { localStorage.clear(); } catch { /* no storage in this env */ }
 });

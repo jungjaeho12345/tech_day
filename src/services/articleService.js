@@ -162,6 +162,27 @@ export function createArticleService(db) {
     },
 
     /**
+     * SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — force-release an edit lock regardless of the holder.
+     * This is the deliberate exception to the holder-only releaseEditLock contract (AC-RLE-2 도둑질
+     * 금지 stays intact on that path): a D/Z operator can clear a lock left behind by any session.
+     * Clears lockYN + all locker columns and returns {ok:true}; a missing row returns
+     * {ok:false, reason:'not-found'}. The response intentionally omits the prior holder identifiers
+     * (NFR-SEC: no holder leak, consistent with the 409 holder-hiding rule).
+     */
+    forceReleaseEditLock(articleId) {
+      const row = readLock(articleId);
+      if (row === undefined) {
+        return { ok: false, reason: 'not-found' };
+      }
+      db.prepare(`
+        UPDATE Contents
+           SET lockYN = 'N', lockerUserId = NULL, lockerSessionId = NULL, lockedAt = NULL
+         WHERE articleId = ?
+      `).run(articleId);
+      return { ok: true };
+    },
+
+    /**
      * SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — strict holder check used by applyAction / update gates.
      * Stale (timed-out) locks are treated as released (consistent with acquireEditLock's WHERE clause).
      */
@@ -243,10 +264,6 @@ export function createArticleService(db) {
           articleValues.push(safe[key] ?? null);
         }
       }
-      if (articleSets.length > 0) {
-        db.prepare(`UPDATE Article SET ${articleSets.join(', ')} WHERE articleId = ?`)
-          .run(...articleValues, articleId);
-      }
       const contentsAllowed = new Set([
         'title', 'content', 'author', 'modifier', 'sender', 'department', 'departmentCode',
         'editedAt', 'sentAt', 'distributedAt', 'embargoAt', 'secondEmbargoAt',
@@ -262,9 +279,21 @@ export function createArticleService(db) {
           contentsValues.push(safe[key] ?? null);
         }
       }
-      if (contentsSets.length > 0) {
-        db.prepare(`UPDATE Contents SET ${contentsSets.join(', ')} WHERE articleId = ?`)
-          .run(...contentsValues, articleId);
+      // Wrap both table writes in one transaction so Article and Contents stay in sync.
+      db.exec('BEGIN');
+      try {
+        if (articleSets.length > 0) {
+          db.prepare(`UPDATE Article SET ${articleSets.join(', ')} WHERE articleId = ?`)
+            .run(...articleValues, articleId);
+        }
+        if (contentsSets.length > 0) {
+          db.prepare(`UPDATE Contents SET ${contentsSets.join(', ')} WHERE articleId = ?`)
+            .run(...contentsValues, articleId);
+        }
+        db.exec('COMMIT');
+      } catch (err) {
+        db.exec('ROLLBACK');
+        throw err;
       }
       return { ok: true };
     },

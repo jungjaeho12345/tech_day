@@ -33,6 +33,11 @@
 // 클라이언트는 body 없이 articleId만 넘긴다.
 //   lockArticle(articleId)   -> { ok:true, article? } | { ok:false, reason }   POST /api/articles/:id/lock
 //   unlockArticle(articleId) -> { ok:true, released:boolean }                  POST /api/articles/:id/unlock
+//
+// SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — 편집 잠금 강제 해제(D/Z 전용). 보유자 여부와 무관하게 해제하는
+// 별도 경로(기존 보유자-한정 unlockArticle 과 구분). 역할 가드는 서버가 검증된 세션에서 재검증하므로
+// 클라이언트는 body 없이 articleId 만 넘긴다(NFR-SEC).
+//   forceUnlockArticle(articleId) -> { ok:true } | { ok:false, reason }        POST /api/articles/:id/force-unlock
 export const MODEL_KEYS = Object.freeze([
   'login',
   'logout',
@@ -44,6 +49,7 @@ export const MODEL_KEYS = Object.freeze([
   'saveArticle',
   'lockArticle',
   'unlockArticle',
+  'forceUnlockArticle',
   'subscribe',
 ]);
 

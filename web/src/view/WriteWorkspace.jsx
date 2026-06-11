@@ -19,6 +19,9 @@ import { ROUTES, pathForRoute } from '../app/routing.js';
 const TABS_STORAGE_KEY = 'newsroom.editorTabs';
 // 단일 에디터 시절의 초안 키 — 최초 진입 시 첫 탭의 초안으로 1회 이관한다 (기존 작성 내용 보존).
 const LEGACY_DRAFT_KEY = 'newsroom.writeDraft';
+// 브라우저 탭 제목 기본값(web/index.html <title> 와 동일). 편집 탭 활성 시 articleId 로 바꾸고,
+// 새 기사 탭/언마운트(조회 복귀) 시 이 값으로 복원한다.
+const DEFAULT_DOC_TITLE = '기사 작성기';
 
 function draftKeyFor(tabId) {
   return `${LEGACY_DRAFT_KEY}.${tabId}`;
@@ -49,6 +52,30 @@ function removeStoredDraft(tabId) {
   } catch {
     // best effort — 닫힌 탭의 초안 잔재 제거 실패는 무해.
   }
+}
+
+// SPEC-NEWS-REVISE-014 — 강제 해제(forced) 통지를 list.do(ViewPage)가 받았을 때, 다른 화면(또는 unmount 된
+// writer.do)의 해당 편집 탭을 영속 메타데이터에서 제거해 둔다. WritePage 가 마운트돼 있으면 자기 SSE 구독이
+// 즉시 alert+closeTab 하지만, 단일 브라우저에서 list.do 로 이동해 강제 해제하면 그 사이 WriteWorkspace 는
+// unmount 상태라 살아있는 구독이 없다. 이 함수가 영속 탭 목록에서 그 기사를 지워, writer.do 로 돌아왔을 때
+// 그 기사가 다시 열리지 않고(요구: "편집기에서 닫힌다") 닫힌 상태로 복원되게 한다. 마운트된 WriteWorkspace 는
+// storage 이벤트로 이 변화를 반영한다(아래 effect). 순수/가드 — 비브라우저·없는 키에서 무해.
+// 이 모듈 외부(ViewPage)에서 호출하는 순수 함수라 컴포넌트와 함께 export 한다(HMR 경고는 무해 — 상태 없음).
+// eslint-disable-next-line react-refresh/only-export-components
+export function forgetEditTab(articleId) {
+  const stored = readStoredTabs();
+  if (!stored || !Array.isArray(stored.tabs)) return;
+  const target = stored.tabs.find((t) => t && t.editArticleId === articleId);
+  if (!target) return;
+  removeStoredDraft(target.id);
+  let tabs = stored.tabs.filter((t) => t.id !== target.id);
+  let seq = Number.isFinite(stored.seq) ? stored.seq : tabs.length;
+  if (tabs.length === 0) {
+    seq += 1;
+    tabs = [{ id: `t${seq}`, editArticleId: null }];
+  }
+  const activeId = tabs.some((t) => t.id === stored.activeId) ? stored.activeId : tabs[0].id;
+  writeStoredTabs({ tabs, activeId, seq });
 }
 
 function urlEditId() {
@@ -138,6 +165,21 @@ export function WriteWorkspace({ user }) {
     }
   }, [state]);
 
+  // 브라우저 탭 제목 동기화 — 활성 탭이 편집 탭이면 document.title 을 그 articleId 로, 새 기사 탭이면
+  // 기본 제목으로 둔다. 탭 전환/closeTab/forgetEditTab(storage)/endEditContext(편집→새 기사) 모두 state
+  // 변화를 일으키므로 [state] 하나로 커버된다. 언마운트(조회 등으로 복귀) 시 기본 제목으로 복원한다.
+  useEffect(() => {
+    const active = state.tabs.find((t) => t.id === state.activeId);
+    try {
+      document.title = active?.editArticleId ? active.editArticleId : DEFAULT_DOC_TITLE;
+    } catch {
+      // document 없음(비브라우저) — best effort.
+    }
+    return () => {
+      try { document.title = DEFAULT_DOC_TITLE; } catch { /* best effort */ }
+    };
+  }, [state]);
+
   // 뒤로/앞으로 가기로 writer.do?id=… 에 도달한 경우(라우트는 그대로 WRITE 라 App 이 remount 하지
   // 않는다) — 해당 편집 탭을 보장/활성화한다.
   useEffect(() => {
@@ -148,6 +190,31 @@ export function WriteWorkspace({ user }) {
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // SPEC-NEWS-REVISE-014 — 다른 창의 list.do 가 강제 해제(forced)를 받아 forgetEditTab 으로 영속 탭 목록을
+  // 줄이면, 이 창의 storage 이벤트로 그 변화를 반영해 사라진 편집 탭을 닫는다(cross-tab 강제 종료). 같은
+  // 창에서 일어난 변경(WritePage 자기 구독의 closeTab)은 storage 이벤트를 발생시키지 않으므로 이중 처리 없음.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key !== null && e.key !== TABS_STORAGE_KEY) return;
+      const stored = readStoredTabs();
+      if (!stored || !Array.isArray(stored.tabs)) return;
+      const liveIds = new Set(stored.tabs.map((t) => t.editArticleId));
+      setState((s) => {
+        // 영속 목록에서 사라진 편집 탭만 제거한다(강제 해제로 forgetEditTab 된 기사). 빈 목록이면 새 기사 탭 유지.
+        const removed = s.tabs.filter((t) => t.editArticleId && !liveIds.has(t.editArticleId));
+        if (removed.length === 0) return s;
+        const removedIds = new Set(removed.map((t) => t.id));
+        let tabs = s.tabs.filter((t) => !removedIds.has(t.id));
+        let seq = s.seq;
+        if (tabs.length === 0) { seq += 1; tabs = [{ id: `t${seq}`, editArticleId: null }]; }
+        const activeId = tabs.some((t) => t.id === s.activeId) ? s.activeId : tabs[0].id;
+        return { tabs, activeId, seq };
+      });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   // ＋ 버튼: 빈 '새 기사' 탭을 추가하고 활성화.
@@ -250,6 +317,10 @@ export function WriteWorkspace({ user }) {
             editArticleId={t.editArticleId ?? null}
             draftKey={draftKeyFor(t.id)}
             onEditContextEnded={() => endEditContext(t.id)}
+            // SPEC-NEWS-REVISE-014 REQ-EDITOR-AUTOCLOSE — 강제 해제(forced) SSE 수신 시 그 편집 탭을 닫는다
+            // (closeTab: 남은 탭/새 기사 탭 전환 + 초안 폐기 → 저장 안 한 변경분 폐기). 자기 해제(송고/보류/
+            // KILL/정상 닫기)는 forced 가 아니므로 WritePage 구독이 무시한다.
+            onForceClosed={() => closeTab(t.id)}
           />
         </div>
       ))}

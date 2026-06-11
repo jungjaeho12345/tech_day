@@ -5,13 +5,14 @@
 // KILL for role R|Z, both only while the editing article's status is RDS. v0.6.0: KILL additionally
 // requires a generated articleId (edit context) — an id-less draft (A-DRAFT) never shows KILL.
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useModel } from '../app/context.js';
 import { useWriteController } from '../controller/useWriteController.js';
 import { useMediaSearch, useArticleSearch } from '../controller/useSearchController.js';
 import { buildColorSegments } from './editorColoring.js';
-import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, getBodyTextFromDom, findEmbedIndexBeforeCaret, readOrderedContentFromDom } from './editorCaret.js';
-import { embedOrdinalAtInsertOffset, insertNewlineIntoContent } from '../model/editorContent.js';
+import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, setCaretToEditorStart, getBodyTextFromDom, findEmbedIndexBeforeCaret, readOrderedContentFromDom, embedTextOffset } from './editorCaret.js';
+import { embedOrdinalAtInsertOffset, insertNewlineIntoContent, contentToText } from '../model/editorContent.js';
 import { insertNewlineAt } from './editorNewline.js';
-import { deleteCurrentLine } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
 
 const TABS = ['공통정보', '이미지', '영상', '글기사'];
@@ -387,6 +388,22 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // can preserve inline embeds when only the text changes. Updated on every render.
   const contentRef = useRef(content);
   contentRef.current = content;
+  // SPEC-NEWS-REVISE — 임베드 1개 삭제(Backspace/Ctrl+D) 직후 캐럿 복원 디스크립터. 재페인트(임베드 count
+  // 감소) 후 이 앵커로 캐럿을 DOM 위치에 둔다. 문자 오프셋만으로는 임베드 전용/연속 임베드/빈 줄에서 삭제
+  // 지점을 못 짚어 "텍스트가 있는 곳"으로 캐럿이 튀므로, DOM 앵커(직전 임베드 뒤 / 에디터 시작)를 우선한다.
+  // 삽입의 pendingEmbedCaretRef 와 대칭. × 버튼 삭제는 mousedown=preventDefault 라 이 경로를 타지 않는다.
+  const pendingDeleteCaretRef = useRef(null);
+
+  // 임베드(ordinal N, 전체 임베드 기준 0-based)를 지우기 직전, 삭제 후 캐럿을 어디에 둘지 디스크립터로 캡처한다.
+  //  - N > 0 → 남아있는 직전 임베드(ordinal N-1) 뒤로 (DOM 앵커, 텍스트 없어도 안전).
+  //  - N === 0 이고 텍스트 앵커가 있으면 → 그 본문 문자 오프셋(charOffset) 폴백.
+  //  - 그 외(첫 임베드 + 텍스트 앵커 없음) → 에디터 시작.
+  const captureDeleteAnchor = useCallback((el, ordinal) => {
+    if (ordinal > 0) return { kind: 'afterEmbed', ordinal: ordinal - 1 };
+    const offset = embedTextOffset(el, ordinal);
+    if (offset != null && offset > 0) return { kind: 'charOffset', offset };
+    return { kind: 'start' };
+  }, []);
 
   // Build a content snapshot with the given replacement bodyText, preserving existing embed blocks.
   // The new bodyText becomes a single text block; trailing embeds (or originally interleaved embeds)
@@ -591,7 +608,24 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           el.focus?.();
           setCaretAfterEmbed(el, ordinal);
         }
+      } else if (pendingDeleteCaretRef.current != null
+        && embedModelCount < prevEmbedCountRef.current) {
+        // SPEC-NEWS-REVISE — 임베드 1개 삭제(Backspace/Ctrl+D) 직후 재페인트. 캐럿을 DOM 위치로 복원한다.
+        // 임베드는 0글자라 텍스트 없는 레이아웃(임베드 전용/연속 임베드/빈 줄)에서는 문자 오프셋이 삭제
+        // 지점을 못 짚어 "텍스트가 있는 곳"으로 캐럿이 튀던 실브라우저 회귀를 DOM 앵커로 차단한다. 앵커
+        // 디스크립터: { kind:'afterEmbed', ordinal }(남은 직전 임베드 뒤) / { kind:'start' }(에디터 시작) /
+        // { kind:'charOffset', offset }(텍스트 앵커 폴백). (숫자도 허용 — 과거 형태 호환: charOffset 으로 취급.)
+        const anchor = pendingDeleteCaretRef.current;
+        pendingDeleteCaretRef.current = null;
+        paintNow(el, content);
+        if (el.ownerDocument.activeElement === el) {
+          if (typeof anchor === 'number') setCaretCharOffset(el, anchor);
+          else if (anchor.kind === 'afterEmbed') setCaretAfterEmbed(el, anchor.ordinal);
+          else if (anchor.kind === 'charOffset') setCaretCharOffset(el, anchor.offset);
+          else setCaretToEditorStart(el);
+        }
       } else {
+        pendingDeleteCaretRef.current = null;
         paintWithCaret(content);
       }
     }
@@ -732,6 +766,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
                 const idx = Number(node.getAttribute('data-embed-index'));
                 if (Number.isFinite(idx)) {
                   e.preventDefault();
+                  // 삭제 후 캐럿을 DOM 위치(직전 임베드 뒤 / 에디터 시작)에 복원할 앵커를 캡처한다.
+                  pendingDeleteCaretRef.current = captureDeleteAnchor(e.currentTarget, idx);
                   onRemoveEmbedRef.current(idx);
                   return;
                 }
@@ -745,6 +781,8 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             const adjacentIdx = findEmbedIndexBeforeCaret(e.currentTarget);
             if (adjacentIdx != null) {
               e.preventDefault();
+              // 같은 이유로 삭제 후 캐럿 앵커를 캡처해 둔다(DOM 위치 복원).
+              pendingDeleteCaretRef.current = captureDeleteAnchor(e.currentTarget, adjacentIdx);
               onRemoveEmbedRef.current(adjacentIdx);
               return;
             }
@@ -752,23 +790,38 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
           // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
           if (handleEnter(e)) return;
-          // SPEC-NEWS-REVISE-001 / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D -> 캐럿이 위치한 라인(또는
-          // 선택에 일부라도 걸친 모든 라인)을 라인 단위 round-up 삭제 (D-2 결정 잠금). preventDefault로
-          // Chrome 북마크 추가 기본 동작을 차단. 핸들러는 에디터 컨테이너의 onKeyDown 한정이므로
-          // 에디터가 포커스를 받지 않은 상태에서는 호출되지 않는다 (AC-CTRL-D-4 스코프).
+          // SPEC-NEWS-REVISE / REQ-EDITOR-EMBED-AND-CTRL-D: Ctrl+D 의미.
+          //  (1) 현재 캐럿 줄에 인라인 임베드가 하나라도 있으면 → 그 줄의 임베드를 "한 개씩" 제거한다
+          //      (사용자 요구: "ctrl+d 누르면 글기사/이미지/영상 한개씩 지워주고"). 텍스트는 건드리지 않고,
+          //      누를 때마다 다음 임베드가 하나씩 사라진다. 임베드는 0글자라 연속 임베드가 같은 줄에 몰리는데,
+          //      라인 삭제로 한꺼번에 지워지던 실브라우저 회귀를 이 분기가 차단한다.
+          //  (2) 현재 줄에 임베드가 없으면 → 기존 라인 단위 round-up 삭제(텍스트 줄 의미 불변).
+          // preventDefault 로 Chrome 북마크 추가 기본 동작을 차단. 에디터 컨테이너 onKeyDown 한정(AC-CTRL-D-4).
           if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD')) {
             e.preventDefault();
             const el = e.currentTarget;
             const sel = getSelectionOffsets(el);
             const caret = sel ?? { start: getCaretCharOffset(el) ?? bodyText.length, end: getCaretCharOffset(el) ?? bodyText.length };
+            // (1) 현재 줄에 임베드가 있으면 한 개만 제거 (캐럿 at/before 우선). DOM-ORDERED content 기준.
+            const { lineStart, lineEnd } = lineRangeAt(bodyText, caret.start);
+            const ordered = orderedContentFromDom(el);
+            const pick = selectEmbedOnLine(ordered, lineStart, lineEnd, caret.start);
+            if (pick) {
+              // 삭제 후 캐럿 앵커를 캡처(직전 임베드 뒤 / 에디터 시작)하고, 컨트롤러로 그 한 임베드만 제거한다.
+              pendingDeleteCaretRef.current = captureDeleteAnchor(el, pick.ordinal);
+              if (typeof onRemoveEmbedRef.current === 'function') onRemoveEmbedRef.current(pick.ordinal);
+              return;
+            }
+            // (2) 임베드 없는 줄 → 기존 라인 삭제(텍스트 전용 줄 의미 보존, REQ-EDITOR-EMBED-AND-CTRL-D).
             const next = deleteCurrentLine({
               value: bodyText,
               selectionStart: caret.start,
               selectionEnd: caret.end,
             });
-            paintNow(el, contentWithText(next.value));
+            const nextContent = applyLineDeleteToContent(ordered, next);
+            paintNow(el, nextContent);
             setCaretCharOffset(el, next.selectionStart);
-            onChangeText(next.value);
+            onChangeText(contentToText(nextContent), nextContent);
             return;
           }
           // Alt+Y: append "(끝)" (골드색) to the end of the body. preventDefault so no 'y' is typed.
@@ -782,13 +835,14 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   );
 }
 
-export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded }) {
+export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, onEditContextEnded, onForceClosed }) {
   // news.md 데스크 미송고 편집: writer.do?id=<articleId> loads that article for editing.
   // 멀티탭 — 워크스페이스(WriteWorkspace)는 탭 모델의 editArticleId 를 prop 으로 명시한다 (null = 새 기사
   // 탭; URL 의 ?id= 는 활성 탭만 반영하므로 비활성 탭이 읽으면 안 된다). prop 이 주어지지 않은 단독
   // 사용(기존 단일 페이지/테스트)은 종전대로 URL 에서 한 번 읽는다 (the page remounts on navigation).
   const urlArticleId = new URLSearchParams(window.location.search).get('id') || undefined;
   const editArticleId = editArticleIdProp === undefined ? urlArticleId : (editArticleIdProp || undefined);
+  const model = useModel();
   const ctrl = useWriteController(user, { editArticleId, draftKey });
   const [activeTab, setActiveTab] = useState('공통정보');
   // 멀티탭 — 편집 컨텍스트 탭에서 송고/보류/KILL 이 성공하면 컨트롤러가 빈 초안으로 리셋된다
@@ -798,6 +852,24 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
   useEffect(() => {
     if (editArticleId && ctrl.isDraft && ctrl.lifecycleStatus != null) onEditContextEnded?.();
   }, [editArticleId, ctrl.isDraft, ctrl.lifecycleStatus, onEditContextEnded]);
+  // SPEC-NEWS-REVISE-014 REQ-EDITOR-AUTOCLOSE — 편집 잠금을 보유한(editArticleId 있는) 동안에만 강제 해제
+  // SSE 를 구독한다(ViewPage 와 동일한 model.subscribe 컨트랙트 재사용 — 새 채널/폴링/타이머 없음). 자기
+  // 기사에 대한 { type:'unlock', articleId:X, forced:true } 프레임이 오면 alert 1회 후 탭을 닫는다(onForceClosed
+  // → WriteWorkspace.closeTab → 저장 안 한 변경분 폐기). 초안 탭(editArticleId=null)은 구독하지 않고
+  // (AC-CLOSE-3), 다른 articleId(AC-CLOSE-2)·forced 아닌 자기 해제(AC-CLOSE-4)는 무시하며, closed 플래그로
+  // 중복 프레임에도 alert 는 1회만(AC-CLOSE-5). unmount 시 unsubscribe 로 정리한다(NFR 6.2).
+  useEffect(() => {
+    if (!editArticleId) return undefined;
+    let closed = false;
+    const sub = model.subscribe(undefined, (payload) => {
+      if (closed) return;
+      if (payload?.type !== 'unlock' || !payload.forced || payload.articleId !== editArticleId) return;
+      closed = true;
+      window.alert('Lock이 해제되어 편집을 종료합니다');
+      onForceClosed?.();
+    });
+    return () => sub.unsubscribe();
+  }, [editArticleId, model, onForceClosed]);
   // SPEC-NEWS-REVISE-002 REQ-EDIT-LOCK — show ALERT once on lock rejection (D2-1 = C: ALERT + inline
   // banner). The banner stays visible (aria-live="assertive") and the editor body is disabled below.
   const alertedRef = useRef(false);
@@ -812,6 +884,12 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
   }, [ctrl.lockError]);
   // Action buttons only apply to an RDS (in-progress) article (news.md 기사 작성 페이지 내 버튼).
   const isRds = ctrl.status === 'RDS';
+  // SPEC-NEWS-REVISE-009 lineage-Y — DDH(데스크 보류) 기사: role D|Z 에게 송고/KILL 만 노출(보류 없음),
+  // role R 은 아무 버튼도 없음. RDS 분기와 배타적으로 동작한다 (status 가 정확히 하나여서 겹치지 않음).
+  const isDdh = ctrl.status === 'DDH';
+  // SPEC-NEWS-REVISE-011 — DPS(배부 대상) 기사를 고침/포털고침으로 연 작성 페이지: R/D/Z 에게 송고/보류만
+  // 노출(KILL 비표시). 게이트는 로드된 기사 상태값(ctrl.status)으로만 판정 — 모드 플래그 무도입(SPEC-007 정합).
+  const isDps = ctrl.status === 'DPS';
   // SPEC-NEWS-REVISE-001 — 본문 커서 위치 임베드 (Phase C): 메타 패널의 "삽입" 버튼을 클릭하면
   // 포커스가 BodyEditor를 떠난 뒤지만, 마지막으로 알려진 캐럿 offset을 ref로 보존해 인라인 삽입한다.
   const lastCaretRef = useRef(null);
@@ -867,15 +945,35 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
         <div className="yh-meta-actions">
           {(user.role === 'R' || user.role === 'D' || user.role === 'Z') && isRds ? (
             <>
-              <button type="button" className="yh-btn yh-btn--primary"
+              <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
                 onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
-              <button type="button" className="yh-btn yh-btn--hold"
+              <button type="button" className="yh-btn yh-btn--hold" disabled={!!ctrl.lockError}
                 onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
             </>
           ) : null}
           {(user.role === 'R' || user.role === 'Z') && isRds && !ctrl.isDraft ? (
-            <button type="button" className="yh-btn yh-btn--kill"
+            <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+          ) : null}
+          {/* SPEC-NEWS-REVISE-009 lineage-Y — DDH(데스크 보류) 기사: role D|Z 에게 송고/KILL 만 노출(보류 없음).
+              role R 은 어떤 액션 버튼도 보이지 않는다. lockError 시 비활성화. */}
+          {isDdh && (user.role === 'D' || user.role === 'Z') ? (
+            <>
+              <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+              <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
+            </>
+          ) : null}
+          {/* SPEC-NEWS-REVISE-011 — DPS 고침/포털고침: R/D/Z 에게 송고/보류만 노출(KILL 비표시). 기존 RDS
+              블록과 동일 클래스·확인창·lockError disabled·송고 가드(ctrl.send 내부 "(끝)"/제목 가드)를 재사용한다. */}
+          {isDps && (user.role === 'R' || user.role === 'D' || user.role === 'Z') ? (
+            <>
+              <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+              <button type="button" className="yh-btn yh-btn--hold" disabled={!!ctrl.lockError}
+                onClick={() => { if (window.confirm('보류하시겠습니까?')) ctrl.hold(); }}>보류</button>
+            </>
           ) : null}
         </div>
 

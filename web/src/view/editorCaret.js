@@ -28,6 +28,49 @@ function embedTextBeforePoint(root, container, offset) {
 }
 
 /**
+ * SPEC-NEWS-REVISE-009 — body-text character offset of the inline embed span whose ordinal is
+ * `embedIndex` (span[data-embed-index="N"]): the number of body-text characters that precede that span
+ * in document order (embed-internal text excluded, mirroring getCaretCharOffset / setCaretCharOffset).
+ *
+ * Used by the Backspace embed-delete path to capture WHERE the embed sat BEFORE it is removed, so the
+ * repaint can restore the caret to that same text position (symmetric to the insert path's
+ * setCaretAfterEmbed). Without this, deleting a 0-char embed span leaves the caret on/inside a vanished
+ * node and getCaretCharOffset fails → caret jumps to document start.
+ * Returns null when root is null or no span matches `embedIndex`.
+ * @param {HTMLElement} root
+ * @param {number|null} embedIndex 0-based ordinal matching the span's data-embed-index
+ * @returns {number|null}
+ */
+export function embedTextOffset(root, embedIndex) {
+  if (root == null || embedIndex == null) return null;
+  const span = root.querySelector(`[data-embed-index="${embedIndex}"]`);
+  if (!span || !root.contains(span)) return null;
+  // Walk text nodes in document order, summing the lengths of those OUTSIDE any embed span, and stop as
+  // soon as a node lies at/after the target span. Mirrors getBodyTextFromDom's exclusion rule so the
+  // returned offset matches the bodyText model (embed-internal text contributes 0).
+  const doc = root.ownerDocument;
+  const before = (node) =>
+    (span.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+  const insideAnyEmbed = (node) => {
+    let p = node.parentNode;
+    while (p && p !== root) {
+      if (p.nodeType === 1 && p.hasAttribute && p.hasAttribute('data-embed-index')) return true;
+      p = p.parentNode;
+    }
+    return false;
+  };
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+  let total = 0;
+  let n = walker.nextNode();
+  while (n) {
+    // Only count text nodes positioned strictly before the target span and not inside any embed.
+    if (before(n) && !insideAnyEmbed(n)) total += n.textContent.length;
+    n = walker.nextNode();
+  }
+  return total;
+}
+
+/**
  * Current caret character offset within `root` (text characters before the collapsed caret).
  * Returns null when there is no selection inside `root` (e.g. editor not focused).
  * SPEC-NEWS-REVISE-001: text inside inline embed spans ([data-embed-index]) is excluded so the offset
@@ -180,7 +223,7 @@ export function findEmbedIndexBeforeCaret(root) {
   if (!root.contains(range.startContainer)) return null;
 
   let node = range.startContainer;
-  let offset = range.startOffset;
+  const offset = range.startOffset;
 
   // If the caret is inside a text node past its start, a real character precedes it → normal backspace.
   if (node.nodeType === 3) {
@@ -323,6 +366,43 @@ export function setCaretAfterEmbed(root, embedIndex) {
   } else {
     // No following text node (e.g. embed before another element): keep the boundary-after-span position.
     range.setStartAfter(span);
+  }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/**
+ * SPEC-NEWS-REVISE — place the collapsed caret at the very START of the editor (before any content).
+ * Used when an embed at ordinal 0 is deleted and there is no preceding embed/text to anchor to: a
+ * char-offset of 0 cannot disambiguate "before the first remaining embed", so anchor at the root start
+ * by DOM position. Lands the caret at the first text node start when present, else at root offset 0.
+ * @param {HTMLElement} root
+ */
+export function setCaretToEditorStart(root) {
+  if (root == null) return;
+  const doc = root.ownerDocument;
+  const sel = doc.getSelection?.();
+  if (!sel) return;
+  const range = doc.createRange();
+  // Prefer the first editable (non-embed) text node so the caret is a valid typing home; else root start.
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      let p = n.parentNode;
+      while (p && p !== root) {
+        if (p.nodeType === 1 && p.hasAttribute && p.hasAttribute('data-embed-index')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        p = p.parentNode;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const firstText = walker.nextNode();
+  if (firstText) {
+    range.setStart(firstText, 0);
+  } else {
+    range.setStart(root, 0);
   }
   range.collapse(true);
   sel.removeAllRanges();
