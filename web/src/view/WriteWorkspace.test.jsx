@@ -6,7 +6,7 @@ import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ModelContext } from '../app/context.js';
 import { createFakeModel } from '../test/fakeModel.js';
-import { WriteWorkspace } from './WriteWorkspace.jsx';
+import { WriteWorkspace, forgetEditTab } from './WriteWorkspace.jsx';
 import { contentToMarkup, contentFromText } from '../model/editorContent.js';
 
 const USER = { userId: 'd1', name: 'Desk', role: 'D', department: 'Politics' };
@@ -315,5 +315,85 @@ describe('SPEC-NEWS-REVISE-009 멀티탭 행위 계약 가드', () => {
     expect(within(activePanel()).getByTestId('readonly-articleId')).toHaveTextContent('AKR-1');
     expect(within(activePanel()).getByTestId('editor-body')).toHaveTextContent('편집 본문');
     expect(window.location.search).toBe('?id=AKR-1');
+  });
+});
+
+// SPEC-NEWS-REVISE-014 — 단일 브라우저 흐름: list.do(ViewPage)가 강제 해제(forced)를 받으면 forgetEditTab
+// 으로 그 기사의 편집 탭을 영속 메타데이터에서 제거한다. writer.do 로 돌아왔을 때 그 기사가 다시 열리지 않고
+// "편집기에서 닫힌" 상태로 복원된다(요구: Lock해제 시 해당 기사가 편집기에서 닫힌다).
+describe('forgetEditTab — 강제 해제 시 영속 편집 탭 제거 (SPEC-NEWS-REVISE-014)', () => {
+  beforeEach(() => {
+    try { sessionStorage.clear(); } catch { /* no storage */ }
+  });
+
+  it('해당 articleId 의 편집 탭을 목록에서 제거하고 active 를 보정한다', () => {
+    sessionStorage.setItem('newsroom.editorTabs', JSON.stringify({
+      tabs: [{ id: 't1', editArticleId: null }, { id: 't2', editArticleId: 'A-LOCK' }],
+      activeId: 't2',
+      seq: 2,
+    }));
+    forgetEditTab('A-LOCK');
+    const stored = JSON.parse(sessionStorage.getItem('newsroom.editorTabs'));
+    expect(stored.tabs.some((t) => t.editArticleId === 'A-LOCK')).toBe(false);
+    expect(stored.tabs).toHaveLength(1);
+    // 닫힌 탭이 active 였으므로 남은 탭으로 active 가 옮겨진다.
+    expect(stored.tabs.some((t) => t.id === stored.activeId)).toBe(true);
+  });
+
+  it('마지막 편집 탭이 제거되면 빈 새 기사 탭 1개를 유지한다', () => {
+    sessionStorage.setItem('newsroom.editorTabs', JSON.stringify({
+      tabs: [{ id: 't2', editArticleId: 'A-LOCK' }],
+      activeId: 't2',
+      seq: 2,
+    }));
+    forgetEditTab('A-LOCK');
+    const stored = JSON.parse(sessionStorage.getItem('newsroom.editorTabs'));
+    expect(stored.tabs).toHaveLength(1);
+    expect(stored.tabs[0].editArticleId).toBeNull();
+  });
+
+  it('일치하는 편집 탭이 없으면 목록을 바꾸지 않는다 (다른 기사·초안 무시)', () => {
+    const before = {
+      tabs: [{ id: 't1', editArticleId: null }, { id: 't2', editArticleId: 'OTHER' }],
+      activeId: 't1',
+      seq: 2,
+    };
+    sessionStorage.setItem('newsroom.editorTabs', JSON.stringify(before));
+    forgetEditTab('A-LOCK');
+    expect(JSON.parse(sessionStorage.getItem('newsroom.editorTabs'))).toEqual(before);
+  });
+});
+
+// 편집 탭 진입 시 브라우저 탭 제목(document.title)을 그 기사 articleId 로, 새 기사 탭/언마운트 시 기본 제목으로.
+describe('WriteWorkspace document.title — 편집 탭은 articleId, 새 기사/복귀는 기본 제목', () => {
+  beforeEach(() => {
+    try { sessionStorage.clear(); } catch { /* no storage */ }
+    window.history.replaceState({}, '', '/writer.do');
+    document.title = '기사 작성기';
+  });
+
+  it('편집 탭 진입(?id=) → document.title 이 그 articleId 가 된다', async () => {
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    renderWorkspace(modelWithArticle(EDIT_ROW));
+    await waitFor(() => expect(document.title).toBe('AKR-1'));
+  });
+
+  it('새 기사 탭만 있으면 기본 제목 유지, 언마운트 시 기본 제목으로 복원', () => {
+    const { unmount } = renderWorkspace();
+    expect(document.title).toBe('기사 작성기');
+    // 편집 탭으로 바꾼 뒤 언마운트하면 기본 제목으로 되돌아온다.
+    unmount();
+    expect(document.title).toBe('기사 작성기');
+  });
+
+  it('편집 탭을 × 로 닫으면 새 기사 탭으로 전환되어 기본 제목으로 돌아온다', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, '', '/writer.do?id=AKR-1');
+    renderWorkspace(modelWithArticle(EDIT_ROW));
+    await waitFor(() => expect(document.title).toBe('AKR-1'));
+
+    const editTab = tabStrip().getByRole('tab', { name: 'AKR-1' });
+    await user.click(within(editTab.closest('.yh-edit-tab')).getByRole('button', { name: /탭 닫기/ }));
+    await waitFor(() => expect(document.title).toBe('기사 작성기'));
   });
 });

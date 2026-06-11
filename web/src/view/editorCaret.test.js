@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { setCaretCharOffset, getCaretCharOffset, findEmbedIndexBeforeCaret, setCaretAfterEmbed, readOrderedContentFromDom } from './editorCaret.js';
+import { setCaretCharOffset, getCaretCharOffset, findEmbedIndexBeforeCaret, setCaretAfterEmbed, readOrderedContentFromDom, embedTextOffset } from './editorCaret.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 
 // SPEC-UI-EDITOR-001 — contentEditable caret save/restore by character offset. These cover
@@ -161,6 +161,75 @@ describe('findEmbedIndexBeforeCaret (caret-adjacent embed deletion)', () => {
 
   it('returns null when root is null', () => {
     expect(findEmbedIndexBeforeCaret(null)).toBe(null);
+  });
+});
+
+// SPEC-NEWS-REVISE-009 — embedTextOffset reports the body-text char count BEFORE an embed span so the
+// Backspace-delete path can restore the caret to that exact text position (caret stays where the embed
+// was instead of jumping to document start). Embed-internal text contributes 0 (mirrors the bodyText
+// model), so the returned offset round-trips with setCaretCharOffset.
+describe('embedTextOffset (SPEC-NEWS-REVISE-009 Backspace embed-delete caret restore)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    document.getSelection()?.removeAllRanges();
+  });
+
+  // <div root> [before]? <span data-embed-index=N>card</span> [after]? </div>
+  function buildEditor({ before = '', embedIndex = 0, after = '', extraEmbedBefore = false } = {}) {
+    const root = document.createElement('div');
+    if (extraEmbedBefore) {
+      const e0 = document.createElement('span');
+      e0.setAttribute('data-embed-index', '0');
+      e0.setAttribute('contenteditable', 'false');
+      e0.textContent = 'first'; // embed-internal text — must NOT count toward the offset
+      root.appendChild(e0);
+    }
+    if (before) root.appendChild(document.createTextNode(before));
+    const embed = document.createElement('span');
+    embed.setAttribute('data-embed-index', String(embedIndex));
+    embed.setAttribute('contenteditable', 'false');
+    embed.textContent = 'card';
+    root.appendChild(embed);
+    if (after) root.appendChild(document.createTextNode(after));
+    document.body.appendChild(root);
+    return { root, embed };
+  }
+
+  it('returns the body-text char count before the embed (excluding embed-internal text)', () => {
+    const { root } = buildEditor({ before: '본문 글', embedIndex: 0, after: '뒤' });
+    // "본문 글" = 4 chars precede the embed; "card" inside the embed counts 0.
+    expect(embedTextOffset(root, 0)).toBe(4);
+  });
+
+  it('returns 0 when the embed is at the very start of the body', () => {
+    const { root } = buildEditor({ before: '', embedIndex: 0, after: '뒤 텍스트' });
+    expect(embedTextOffset(root, 0)).toBe(0);
+  });
+
+  it('excludes a PRECEDING embed span\'s internal text from the offset (two embeds)', () => {
+    // [embed#0 "first"][text "중간"][embed#1 "card"] → offset before embed#1 is "중간" = 2, not 7.
+    const { root } = buildEditor({ extraEmbedBefore: true, before: '중간', embedIndex: 1 });
+    expect(embedTextOffset(root, 1)).toBe(2);
+  });
+
+  it('round-trips with setCaretCharOffset on the POST-delete DOM (caret lands at the embed position)', () => {
+    // Capture the offset BEFORE removal (as the Backspace handler does)...
+    const { root, embed } = buildEditor({ before: '앞', embedIndex: 0, after: '뒤' });
+    const off = embedTextOffset(root, 0); // 1 ("앞")
+    expect(off).toBe(1);
+    // ...then remove the embed (the repaint path) and restore the caret at the captured offset. With the
+    // 0-char embed gone, body text is "앞뒤"; placing the caret at offset 1 lands between 앞 and 뒤 and the
+    // measured offset round-trips (no document-start jump) — exactly the SPEC-NEWS-REVISE-009 fix.
+    embed.remove();
+    setCaretCharOffset(root, off);
+    expect(getCaretCharOffset(root)).toBe(1);
+  });
+
+  it('returns null when the embed index is absent or root is null', () => {
+    const { root } = buildEditor({ before: 'x', embedIndex: 0 });
+    expect(embedTextOffset(root, 9)).toBe(null);
+    expect(embedTextOffset(null, 0)).toBe(null);
+    expect(embedTextOffset(root, null)).toBe(null);
   });
 });
 

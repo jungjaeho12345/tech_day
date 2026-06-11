@@ -520,5 +520,35 @@ describe('createHttpModel', () => {
       expect(sub.connected).toBe(false);
       expect(() => sub.unsubscribe()).not.toThrow();
     });
+
+    // SPEC-NEWS-REVISE-014 follow-up — EventSource cannot send the x-session-id header, so subscribe()
+    // must authenticate the stream via a ?session= query param replaying the captured sessionId.
+    // Without it the real-browser stream is always 401 and forced-unlock frames never arrive.
+    it('appends the captured sessionId as a ?session= query param after login', async () => {
+      const opened = [];
+      class FakeEventSource {
+        static OPEN = 1;
+        constructor(url) {
+          opened.push(url);
+          this.readyState = 1;
+          this.addEventListener = () => {};
+          this.close = vi.fn();
+        }
+      }
+      global.EventSource = FakeEventSource;
+      global.fetch.mockResolvedValueOnce(
+        jsonResponse({ ok: true, user: { userId: 'r1' }, sessionId: 'sess-123' }),
+      );
+      const model = createHttpModel();
+
+      // Before login: no session captured → no query param.
+      model.subscribe({}, vi.fn());
+      expect(opened.at(-1)).toBe(`${BASE}/api/stream`);
+
+      // After login: the captured sessionId is replayed as the ?session= query param (URL-encoded).
+      await model.login('r1', 'pw');
+      model.subscribe({}, vi.fn());
+      expect(opened.at(-1)).toBe(`${BASE}/api/stream?session=sess-123`);
+    });
   });
 });

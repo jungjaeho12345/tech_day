@@ -234,13 +234,29 @@ export function createHttpModel({ baseUrl } = {}) {
       }
     },
 
+    // SPEC-NEWS-REVISE-012 REQ-FORCE-UNLOCK — D/Z 전용 강제 해제(보유자 무관). 역할 가드는 서버가
+    // 검증된 x-session-id 세션에서 재검증하므로 body 없이 articleId 만 넘긴다(NFR-SEC).
+    //   forceUnlockArticle -> POST /api/articles/:id/force-unlock  { ok:true } | { ok:false, reason }
+    async forceUnlockArticle(articleId) {
+      return sendJson(
+        'POST',
+        `/api/articles/${encodeURIComponent(articleId)}/force-unlock`,
+        undefined,
+        { ok: false, reason: 'network-error' },
+      );
+    },
+
     // --- Realtime (SSE, DP-F2) ----------------------------------------------
     subscribe(_filter, onChange) {
       // EventSource is a browser global; guard so importing this module never crashes in non-browser contexts.
       if (typeof EventSource === 'undefined') {
         return { unsubscribe() {}, get connected() { return false; } };
       }
-      const es = new EventSource(`${base}/api/stream`);
+      // EventSource cannot set custom headers (no x-session-id), so the stream route is authenticated
+      // via a ?session= query param instead. Without this the stream is always 401 and no realtime
+      // frames arrive — including forced-unlock auto-close frames (SPEC-NEWS-REVISE-014 follow-up).
+      const streamUrl = `${base}/api/stream${sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''}`;
+      const es = new EventSource(streamUrl);
       es.addEventListener('change', (event) => {
         try {
           onChange(JSON.parse(event.data));

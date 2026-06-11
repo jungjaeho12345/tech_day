@@ -81,3 +81,42 @@ test('AC-INT-1: U1 송고(RDS) → U2 락 획득 → U2 KILL(RRK) → U2 락 해
   // 락 해제는 status에 영향 없음 — RRK 유지.
   assert.equal(finalRow.status, 'RRK');
 });
+
+// SPEC-NEWS-REVISE-012 — 강제 해제 후 기존 잠금 의미론 정합(서비스 통합). 새 동작을 발명하지 않고
+// 기존 acquire/assertLockHolder/applyAction 경로가 강제 해제 이후에도 의도대로 동작함을 확인한다.
+// [HARD] 시간 비교(30분 stale) 경로를 타므로 now 고정 전달 — 실시간 시계 금지(30분 stale time-bomb 방지).
+test('AC-CON-1/2 (SPEC-NEWS-REVISE-012): force-unlock → 타 세션 재획득 가능 + 원 편집자 lock-required(status 불변)', () => {
+  const db = new DatabaseSync(':memory:');
+  createSchema(db);
+  const svc = createArticleService(db);
+  const now = new Date('2026-06-10T01:00:00Z');
+
+  const { articleId } = svc.create({ title: '강제 해제 정합', content: '본문', author: 'u-a' }, { now });
+  // 원 편집자 sess-A 가 비stale 잠금 보유.
+  assert.equal(svc.acquireEditLock(articleId, { userId: 'u-a', sessionId: 'sess-A', now }).ok, true);
+  const statusBefore = db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status;
+
+  // D/Z 강제 해제 (서비스 레벨 — 보유자 무관).
+  assert.equal(svc.forceReleaseEditLock(articleId).ok, true);
+  assert.equal(db.prepare('SELECT lockYN FROM Contents WHERE articleId = ?').get(articleId).lockYN, 'N');
+
+  // AC-CON-1: 타 세션 sess-B 가 자유 잠금으로 재획득 가능 (now 고정).
+  const reAcquire = svc.acquireEditLock(articleId, { userId: 'u-b', sessionId: 'sess-B', now });
+  assert.equal(reAcquire.ok, true, '강제 해제된 기사는 자유 잠금 — 재획득 성공');
+
+  // AC-CON-2: 원 편집자 sess-A 의 PUT 게이트(assertLockHolder)는 이제 보유자가 아니므로 lock-required.
+  // (재획득자 sess-B 가 보유 중이므로 sess-A 는 보유자 불일치 → lock-required.)
+  const holder = svc.assertLockHolder(articleId, { userId: 'u-a', sessionId: 'sess-A', now });
+  assert.equal(holder.ok, false);
+  assert.equal(holder.reason, 'lock-required');
+
+  // AC-CON-2: 원 편집자 sess-A 의 applyAction(send)도 lock-required 로 거부, status 불변.
+  const action = svc.applyAction(articleId, 'R', 'send', { userId: 'u-a', sessionId: 'sess-A', now });
+  assert.equal(action.ok, false);
+  assert.equal(action.reason, 'lock-required');
+  assert.equal(
+    db.prepare('SELECT status FROM Contents WHERE articleId = ?').get(articleId).status,
+    statusBefore,
+    'lock-required 거부 시 기사 status 불변(새 동작 발명 없음)',
+  );
+});

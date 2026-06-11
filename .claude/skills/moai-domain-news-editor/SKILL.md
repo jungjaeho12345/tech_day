@@ -12,10 +12,10 @@ description: >
 license: Apache-2.0
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
-  version: "0.1.8"
+  version: "0.2.1"
   category: "domain"
   status: "active"
-  updated: "2026-06-06"
+  updated: "2026-06-11"
   tags: "news, editor, lifecycle, design-tokens"
 
 # MoAI Extension: Progressive Disclosure
@@ -57,6 +57,8 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-11 (v0.2.1): maintenance.md(구 news_.md — 코드-명세 갭 전수 조사 문서) 내용을 news.md 문체로 news.md 에 반영 동기화 — (1) API 명세서 절에 9개 라우트 추가 (login/logout, session, articles/search, :id/action, PUT :id, lock·unlock·force-unlock, media/search, stream, health). (2) "## 편집 잠금 (lockYN)" 절 신설 (30분 stale 승계, 1기사 1페이지 1세션, 보유자 비노출, 언로드 해제 요청, 강제해제 D/Z). (3) 생애주기 절에 Z=D-mirror, DPS(송고→DPS 유지/보류→DDH, KILL 불가), DDH(D/Z 송고→DPS·KILL→DDK, R 전액션 거부), 화이트리스트 거부 4줄 추가. (4) 조회페이지 절에 SSE 구현·부서 멀티셀렉트·컨텍스트 메뉴 비활성 스텁 8종·Lock해제 메뉴(D/Z)·컬럼 설정 모달·시간 포맷(YYYY-MM-DD HH:mm 가운데 정렬)·배지 색 추가. (5) 세션 정책·로그인 워크플로우에 보안 세부(무작위 토큰, fixation 방어, rate limit 15분/10회, bcrypt, active='N' 거부, constant-time) 추가. (6) "## 보안" 절 신설 + DB 명세서에 잠금/공통정보 8컬럼/User.active·멱등 마이그레이션·부서 자동입력·트랜잭션 추가. (7) 디자인 절 레드→블루 기조 정정 (#0A4DA6 주도, 레드 #C8102E 는 포인트 — v0.1.1 미해결 모순 해소), `wirter.do` 오타 → `writer.do` 정정. (8) 에디터 절에 임베드 삭제(Backspace/Delete/Ctrl+D 동반, × 버튼)·markupVersion 블록 구조·IME repaint 시점 추가. news.md 라인 인용은 대량 추가로 전반 drift — 본 스킬의 L## 인용은 추후 보정 필요. 본문 정정 4곳: §1.1 오타 주석, §2.2 Z 행 출처, §2.4 검색 fallback 폐기 반영, §2.6 lock 의미론 수록 표기.
+- 2026-06-09 (v0.2.0): 상세보기 별도 제목 요소 폐지 동기화 (SPEC-NEWS-REVISE-013 REQ-DETAIL-NO-SEPARATE-TITLE) — 상세보기 새창 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`/`<h1>`)를 제거하고 본문(`.yh-detail__content`, markupVersion 첫 줄이 제목)만 렌더한다. 사용자 지시("제목은 이미 본문에서 같이 나오니 없애라") 기반. 기존 REQ-DETAIL-LAYOUT-SPLIT(001)·FONT-EMPHASIS(002)·BODY-EMPHASIS(003)의 제목-요소/폰트강조 전제는 supersede(마커 부착), gray-line `#DDE3EC`·12 공통정보 dt·공통정보→기사 형제 가드는 AC-NOTITLE-4 로 계승. `<head><title>`(빈 제목 시 `(제목 없음)`)은 유지. §2.3 반영, news.md "# 상세보기" 절 1줄 갱신. 구현: web/src/view/articleDetail.js (h1·CSS 제거), articleDetail.test.js (제목 단언 → AC-NOTITLE-*). 동반(별건): 에디터 임베드 Backspace 삭제 시 커서 점프 수정(editorCaret.embedTextOffset), 조회 작성/수정시간 컬럼 grid 정렬(yonhap.css).
 - 2026-06-08 (v0.1.9): 생애주기 신규 결정 동기화 — **최초 송고 = RDS**: 작성 페이지(writer.do) 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이 없이 RDS 저장만 한다 (useWriteController.submitAction 이 applyAction 을 부르지 않음). §1.3/§2.2 의 권한별 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고/보류/KILL 에만 적용된다. 보류/KILL 은 신규에서도 종전 전이 유지 (R→RRH/RRK, D→DDH/DDK). news.md 기사 생애주기 절에 결정 1줄 반영. 동반: 부서별 작성/송고의 부서 멀티셀렉트 체크박스 드롭다운(.yh-multi-select) 디자인 토큰 스타일 신설 (yonhap.css — 종전엔 무스타일이라 깨져 보였음).
 - 2026-06-06 (v0.1.8): 작성 에디터 멀티탭 동기화 — writer.do 는 WriteWorkspace(web/src/view/WriteWorkspace.jsx) 가 탭 스트립 + 탭별 WritePage 인스턴스(전부 mounted, 비활성 hidden)를 관리. 탭 메타 sessionStorage `newsroom.editorTabs`, 탭별 초안 키 `newsroom.writeDraft.<tabId>` (구 단일 키는 첫 진입 시 1회 이관). 조회(list.do) 편집/고침/포털고침 진입(?id=)은 **새 탭** 생성·활성화, 같은 기사 재진입은 기존 탭 활성화(잠금 자기충돌 방지 — D2-5 strict 정합). 편집 탭에서 송고/보류/KILL 성공 시 그 탭은 빈 '새 기사' 탭으로 전환(잠금 해제 + 주소창 ?id= 제거). 주소창은 활성 탭을 replaceState 로 비춘다. 동반 수정: 서버 POST /lock 이 sendBeacon 페이로드의 release:true 를 해제로 처리하도록 계약 복원 (종전엔 무시되어 언로드 해제가 잠금 재획득이 되는 기존 버그). news.md 기사 작성페이지 절(L60-62)에 규칙 3줄 반영.
 - 2026-06-06 (v0.1.7): 작성 초안 보존 동기화 — writer.do → list.do 이동 후 복귀 시 작성 내용(제목/본문/임베드/공통정보) 유지. sessionStorage 키 `newsroom.writeDraft` 영속(useWriteController, 블랭크-신규 컨텍스트 한정), 편집 진입(?id=)은 서버 ContentsVO 로드 우선(영속/복원 OFF), 송고/보류/KILL 성공 초기화 시 보존 draft 도 함께 제거. news.md 기사 작성페이지 절에 규칙 반영.
@@ -70,7 +72,8 @@ triggers:
 
 ## Source of Truth
 
-- 원본: `D:\agents\tech_day\news.md` (마지막 sync 시점: 2026-06-06 v0.1.4 — **전수 대조 완료**. 부서별 작성/개인별 수정 필터, 컬럼 통일, 송고 `(끝)` 가드 본문 규칙, 확인창/SP 규칙/'본문' 라벨 미표시 포함)
+- 원본: `D:\agents\tech_day\news.md` (마지막 sync 시점: 2026-06-11 v0.2.1 — maintenance.md 의 코드-명세 갭 전수 반영 완료. API 라우트/편집 잠금/생애주기 확장 전이/보안/DB 컬럼 절 추가, 레드→블루 디자인 정정, `writer.do` 오타 정정. 라인 인용은 drift 상태 — 보정 전까지 L## 숫자 신뢰 금지)
+- 보조: `D:\agents\tech_day\maintenance.md` — 코드에만 있던 동작의 근거 file:line·SPEC 출처 대장 (news.md 반영분의 traceability 원본)
 - **2026-06-06 구두 지시 2건은 news.md 에 반영 완료 (사용자 승인)**: (1) 클립보드 임베드 크기 17%*17% (1.7배, figure 612px / 기사 카드 480px 유지) — news.md L120. (2) Alt+Y `(끝)` prefix-free 토큰을 embeds 뒤 최종 블록으로 배치 — news.md L122-123. 코드·news.md·본 스킬 3자 정합 상태.
 - 보조 출처: `D:\agents\tech_day\.moai\specs\SPEC-NEWS-REVISE-001\spec.md`, `SPEC-UI-EDITOR-001`, `SPEC-FRONTEND-UI-001`, `SPEC-AUTH-001`
 - 동기화 의무: `news.md` 의 `^#`/`^##` 헤더 섹션이 추가/수정되면 본 SKILL.md `## HISTORY` 에 항목을 추가하고 해당 표를 갱신한다.
@@ -86,7 +89,7 @@ triggers:
 | URL | 페이지 | 요지 |
 |-----|--------|------|
 | `login.do` | 로그인 페이지 | 아이디/암호 → USER 테이블 대조. 성공 시 writer.do로 이동, 실패 시 실패 이유 포함 ALERT (Source: news.md L44, L95-98) |
-| `writer.do` | 기사 작성 페이지 | **멀티탭**: 작성 에디터를 탭으로 여러 개 연다 (＋ 추가/× 닫기, 탭별 내용 독립; 조회의 편집/고침/포털고침 진입은 새 탭, 같은 기사 재진입은 기존 탭 활성화 — v0.1.8). 각 탭 = 좌측 에디터 60% + 우측 메타데이터 40%. 우측 탭 4종(공통정보/이미지/영상/글기사). 송고/보류/KILL 버튼 (Source: news.md L45, L51-69 — news.md L45 표기는 `wirter.do` 오타, 구현·테스트는 `writer.do`) |
+| `writer.do` | 기사 작성 페이지 | **멀티탭**: 작성 에디터를 탭으로 여러 개 연다 (＋ 추가/× 닫기, 탭별 내용 독립; 조회의 편집/고침/포털고침 진입은 새 탭, 같은 기사 재진입은 기존 탭 활성화 — v0.1.8). 각 탭 = 좌측 에디터 60% + 우측 메타데이터 40%. 우측 탭 4종(공통정보/이미지/영상/글기사). 송고/보류/KILL 버튼 (Source: news.md 페이지·기사 작성페이지 절 — 구 `wirter.do` 오타는 2026-06-11 `writer.do` 로 정정 완료) |
 | `list.do` | 기사 조회 페이지 | 실시간 + 메뉴 4종(데스크 미송고/부서별 작성/부서별 송고/개인별 수정). 메뉴별 상태 필터·컬럼은 §2.8. 시간 내림차순, 10개씩 페이징 (Source: news.md L46, L68-86) |
 
 ### 1.2 디자인 토큰 (스타일)
@@ -172,7 +175,7 @@ triggers:
 | RDS | D | 송고 | DPS | 배부 대상으로 전환 (L157) |
 | RDS | D | 보류 | DDH | (L158) |
 | RDS | D | KILL | DDK | (L159) |
-| RDS | Z | 송고 → DPS / 보류 → DDH / KILL → DDK | **Z 는 D-mirror** — `lifecycle.js` TRANSITIONS `'RDS|Z|send'→DPS, 'RDS|Z|hold'→DDH, 'RDS|Z|kill'→DDK` (SPEC-NEWS-REVISE-001 D-6 결정, `lifecycleRule.test.js` 검증). news.md 생애주기 절에는 Z 행이 없으며 코드·SPEC 이 출처 |
+| RDS | Z | 송고 → DPS / 보류 → DDH / KILL → DDK | **Z 는 D-mirror** — `lifecycle.js` TRANSITIONS `'RDS|Z|send'→DPS, 'RDS|Z|hold'→DDH, 'RDS|Z|kill'→DDK` (SPEC-NEWS-REVISE-001 D-6 결정, `lifecycleRule.test.js` 검증). 2026-06-11 부로 news.md 생애주기 절에 Z 행·DPS/DDH 전이 반영 완료 |
 
 API 측면 (Source: news.md L101-105, L130-135):
 - 최초 작성 → `articleInsert` (RDS 생성).
@@ -201,7 +204,7 @@ API 측면 (Source: news.md L101-105, L130-135):
 | 11 | 엠바고 | 시간 입력 |
 | 12 | 2차 엠바고 | 시간 입력 |
 
-상세보기 새창 레이아웃 (Source: news.md L89): 상단에 위 12 필드를 **가로로 나열**(flex wrap 카드형 셀, dt 위/dd 아래) → 하단에 단일 `기사` 영역(aria-label="기사")에서 **제목과 본문을 한번에 같이** 표시 (분리 섹션 폐지, 2026-06-06 구두 지시 → news.md 반영 완료), **본문이 제목보다 크게** 표현 (.yh-detail__title 1.3rem < .yh-detail__content 1.75rem).
+상세보기 새창 레이아웃 (Source: news.md "# 상세보기" / SPEC-NEWS-REVISE-013): 상단에 위 12 필드를 **가로로 나열**(flex wrap 카드형 셀, dt 위/dd 아래) → 하단에 단일 `기사` 영역(aria-label="기사")에서 **기사 본문만** 표시한다. **별도 제목 요소(`.yh-detail__title`/`<h1>`)는 두지 않는다** — 본문(`.yh-detail__content`, markupVersion 파싱)의 첫 줄이 곧 제목이므로 중복이다(SPEC-NEWS-REVISE-013 REQ-DETAIL-NO-SEPARATE-TITLE). 기존 "제목+본문 통합 표시"·"본문>제목 폰트 강조"(REQ-DETAIL-LAYOUT-SPLIT/FONT-EMPHASIS/BODY-EMPHASIS)는 supersede. 브라우저 탭 제목용 `<head><title>`(빈 제목 시 `(제목 없음)`)은 유지.
 
 ### 2.4 인라인 임베딩 계약
 
@@ -212,8 +215,9 @@ API 측면 (Source: news.md L101-105, L130-135):
 - 클립보드 붙여넣기로 들어온 이미지/유튜브 크기: 에디터 100% 기준 가로*세로 = **17%*17%** (news.md L120 의 10%*10% 에 1.7배 적용 — 2026-06-06 구두 지시, news.md L120 반영 완료). 사진/영상 figure 폭도 360px → 612px (1.7배), 기사 참조 카드는 480px 유지.
 - `(끝)` 마커는 embeds 와 별개의 **구분된 최종 텍스트 블록** — setBodyText 가 trailing `(끝)` 을 peel 하여 `[...본문, ...embeds, "(끝)"]` 순서를 타이핑 중에도 유지하고, 이 순서는 markupVersion round-trip 에서 보존된다.
 
-이미지/영상 검색 (Source: news.md L58-59):
-- Youtube API 우선 사용 → 실패 시 구글 검색으로 fallback.
+이미지/영상 검색 (Source: news.md 기사 작성페이지 절, src/services/mediaSearch.js):
+- type 라우팅 단일 소스: 이미지 탭 → Google Custom Search(searchType=image), 영상 탭 → YouTube Data API. **fallback 없음** (2026-06-06 지시로 YouTube-first + Google fallback 구조 폐기).
+- 서버 프록시(/api/media/search) 경유, API 키는 서버 환경변수. 외부 검색 실패 시 빈 결과 반환 (오류로 중단하지 않음).
 - 글기사는 내부 기사 DB에서 제목·본문 검색.
 
 ### 2.5 에디터 본문 구조 규약 (Source: news.md L116-118)
@@ -222,7 +226,7 @@ API 측면 (Source: news.md L101-105, L130-135):
 - **첫째 줄**: 제목 (색: `--yh-blue` 파란색).
 - **둘째 줄 ~ 다섯째 줄**: 부제목 (색: 빨간색). 단 개행이 2번 이상이면 그 시점부터 본문 (색: 검정색).
 
-### 2.6 lockYN 동시 편집 제어 (Source: SPEC-NEWS-REVISE-002/003 — news.md 에는 lock 의미론 비수록, `LockYN` 컬럼 노출만 L81·L84 에 존재)
+### 2.6 lockYN 동시 편집 제어 (Source: SPEC-NEWS-REVISE-002/003 — 2026-06-11 부로 news.md "## 편집 잠금 (lockYN)" 절에 의미론 수록 완료)
 
 - 기사 편집 시작 → `lockYN = 'Y'`.
 - 편집 종료 / 세션 종료 / 브라우저 닫힘 → `lockYN = 'N'`.
