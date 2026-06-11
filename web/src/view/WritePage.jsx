@@ -12,7 +12,7 @@ import { buildColorSegments } from './editorColoring.js';
 import { getCaretCharOffset, getSelectionOffsets, setCaretCharOffset, setCaretAfterEmbed, setCaretToEditorStart, getBodyTextFromDom, findEmbedIndexBeforeCaret, readOrderedContentFromDom, embedTextOffset } from './editorCaret.js';
 import { embedOrdinalAtInsertOffset, insertNewlineIntoContent, contentToText } from '../model/editorContent.js';
 import { insertNewlineAt } from './editorNewline.js';
-import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt, isInputBlockedAfterEndMarker } from './editorShortcuts.js';
 import { isYouTubeUrl, findClipboardImageFile, readFileAsDataUrl } from './clipboardEmbed.js';
 
 const TABS = ['공통정보', '이미지', '영상', '글기사'];
@@ -131,7 +131,6 @@ function TextArticlePanel({ onEmbed }) {
     </div>
   );
 }
-
 
 // @MX:NOTE: [AUTO] Build an inline embed <span> DOM node for paintEditor. contenteditable=false +
 // zero text contribution: the embed span carries NO text children, so DOM textContent stays equal to
@@ -406,6 +405,23 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
     return { kind: 'start' };
   }, []);
 
+  // SPEC-NEWS-REVISE — 맞춤법 검사(브라우저 네이티브)는 Alt+Y 시점에만 켠다. 초기엔 spellCheck=false 라
+  // Alt+Y 전에는 빨간 밑줄이 없고, Alt+Y 후 contentEditable 에 spellcheck=true + lang="ko" 를 부여하고
+  // 다시 포커스해 브라우저가 검사를 트리거하게 한다. 밑줄 렌더링/품질은 브라우저 사전에 위임한다(사용자
+  // 승인 결정 — 기사 텍스트는 로컬에 머문다, 외부 전송 없음).
+  const [spellcheckOn, setSpellcheckOn] = useState(false);
+  const handleAltY = useCallback(() => {
+    onAltY();
+    setSpellcheckOn(true);
+    const el = ref.current;
+    if (el) {
+      el.setAttribute('spellcheck', 'true');
+      if (!el.getAttribute('lang')) el.setAttribute('lang', 'ko');
+      // 재포커스로 브라우저 맞춤법 평가를 트리거한다(이미 포커스면 blur→focus 로 재평가 유도).
+      el.focus?.();
+    }
+  }, [onAltY]);
+
   // Build a content snapshot with the given replacement bodyText, preserving existing embed blocks.
   // The new bodyText becomes a single text block; trailing embeds (or originally interleaved embeds)
   // are appended in their original relative order. This is a presentation-only helper used by the
@@ -434,6 +450,15 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
   // a YouTube URL in the pasted text -> embed as an inline video. Otherwise let normal plain-text paste proceed
   // (do NOT preventDefault). Resilient to jsdom (clipboardData/items may be missing).
   const handlePaste = useCallback((e) => {
+    // SPEC-NEWS-REVISE — "(끝)" 마커 뒤에 붙여넣기로도 어떤 내용도 들어갈 수 없다. 캐럿이 마커 토큰 시작
+    // 이상이면 붙여넣기(텍스트/이미지/유투브) 전부 차단한다.
+    const caretStart = getSelectionOffsets(e.currentTarget)?.start
+      ?? getCaretCharOffset(e.currentTarget)
+      ?? bodyText.length;
+    if (isInputBlockedAfterEndMarker(bodyText, caretStart)) {
+      e.preventDefault();
+      return;
+    }
     const cd = e.clipboardData;
     if (!cd) return; // no clipboard data -> normal paste
     const imageFile = findClipboardImageFile(cd.items);
@@ -460,7 +485,7 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
       return;
     }
     // Plain text (or anything else): do not preventDefault — let the browser paste the text normally.
-  }, [onPasteEmbed]);
+  }, [onPasteEmbed, bodyText]);
 
   // Paint a content snapshot (or string) into the editor while preserving the caret by character
   // offset (caret restored only when the editor is focused). Pure presentation — DOM textContent
@@ -668,6 +693,9 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         aria-label="본문"
         contentEditable={!readOnly}
         suppressContentEditableWarning
+        // SPEC-NEWS-REVISE — 맞춤법 검사는 Alt+Y 전에는 꺼두고(빨간 밑줄 없음), Alt+Y 시 켠다(handleAltY).
+        spellCheck={spellcheckOn}
+        lang={spellcheckOn ? 'ko' : undefined}
         ref={ref}
         onInput={(e) => {
           // SPEC-NEWS-REVISE-001 D-7: 합성 중에는 state를 갱신하지 않는다 — onChangeText가 호출되면
@@ -694,6 +722,21 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
           if (onCaretChange) {
             const off = getCaretCharOffset(e.currentTarget);
             if (off != null) onCaretChange(off);
+          }
+        }}
+        onBeforeInput={(e) => {
+          // SPEC-NEWS-REVISE — "(끝)" 마커 뒤 입력 차단의 실브라우저 통합 가드. beforeinput 은 타이핑·붙여넣기·
+          // IME 합성(insertCompositionText)·drop 등 "삽입" 계열을 모두 포괄하므로, 캐럿이 마커 토큰 시작
+          // 이상일 때 삽입형 inputType 을 막아 IME 합성이 마커 뒤에 떨어지는 경우까지 차단한다. 삭제형
+          // (deleteContentBackward 등)은 막지 않는다(마커 삭제 = 입력 재개). jsdom 은 beforeinput 을 잘
+          // 발생시키지 않으므로 keydown/paste 가드가 동기 테스트를 커버하고, 이 가드는 실브라우저 IME 보강이다.
+          const t = e.nativeEvent?.inputType ?? '';
+          if (!t.startsWith('insert')) return;
+          const caretStart = getSelectionOffsets(e.currentTarget)?.start
+            ?? getCaretCharOffset(e.currentTarget)
+            ?? bodyText.length;
+          if (isInputBlockedAfterEndMarker(bodyText, caretStart)) {
+            e.preventDefault();
           }
         }}
         onPaste={handlePaste}
@@ -788,6 +831,22 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             }
             node = node.parentNode;
           }
+          // SPEC-NEWS-REVISE — "(끝)" 마커 뒤 입력 차단: 본문이 "(끝)" 로 끝나고 캐럿이 마커 토큰 시작 이상
+          // 이면 글자 생성 키(타이핑/Enter)를 막는다. 내비게이션/수정자/단축키(Ctrl/Alt/Meta 조합), 삭제
+          // (Backspace/Delete)는 허용한다(위 Backspace 분기는 이미 처리/통과). Enter 도 여기서 차단한다.
+          {
+            const isCharKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+            const isEnter = e.key === 'Enter';
+            if (isCharKey || isEnter) {
+              const caretStart = getSelectionOffsets(e.currentTarget)?.start
+                ?? getCaretCharOffset(e.currentTarget)
+                ?? bodyText.length;
+              if (isInputBlockedAfterEndMarker(bodyText, caretStart)) {
+                e.preventDefault();
+                return;
+              }
+            }
+          }
           // Enter / Shift+Enter -> insert a model '\n' (caret-jump fix). Handled first; if it consumed the
           // key, do not fall through to Alt+Y. handleEnter returns false for non-Enter / IME-commit Enter.
           if (handleEnter(e)) return;
@@ -825,10 +884,10 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
             onChangeText(contentToText(nextContent), nextContent);
             return;
           }
-          // Alt+Y: append "(끝)" (골드색) to the end of the body. preventDefault so no 'y' is typed.
+          // Alt+Y: append "(끝)" (골드색) to the end of the body + 맞춤법 검사 활성화. preventDefault so no 'y' is typed.
           if (e.altKey && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) {
             e.preventDefault();
-            onAltY();
+            handleAltY();
           }
         }}
       />

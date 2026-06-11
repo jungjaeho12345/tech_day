@@ -41,6 +41,19 @@ export function hasEndMarker(text) {
   return typeof text === 'string' && text.trimEnd().endsWith(END_MARKER);
 }
 
+/**
+ * SPEC-NEWS-REVISE — Alt+Y 의 "(끝)" 은 본문 맨 마지막 다음 개행에 들어간다(자기 줄). 즉 마커 텍스트 블록은
+ * base 본문이 개행으로 끝나지 않으면 앞에 '\n' 을 붙인 '\n(끝)' 이 되고, 이미 개행으로 끝나거나 본문이 비어
+ * 있으면 그냥 '(끝)' 이다. 이렇게 하면 getBodyText() 가 '...본문\n(끝)' 로 끝나 hasEndMarker(=trimEnd 후
+ * '(끝)' 로 끝남)와 송고 (끝) 가드가 그대로 통과한다.
+ * @param {string} baseText "(끝)" 직전까지의 본문 텍스트
+ * @returns {string} 마커 텍스트 블록 내용 ('(끝)' 또는 '\n(끝)')
+ */
+export function endMarkerBlockFor(baseText) {
+  const base = typeof baseText === 'string' ? baseText : '';
+  return (base === '' || base.endsWith('\n')) ? END_MARKER : `\n${END_MARKER}`;
+}
+
 /** @returns {{blocks: Array<object>}} an empty content document. */
 export function createEmptyContent() {
   return { blocks: [] };

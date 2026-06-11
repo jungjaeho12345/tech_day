@@ -425,11 +425,11 @@ describe('readOrderedContentFromDom — 텍스트-임베드 시각 순서 보존
 
     const blocks = JSON.parse(adapter.getMarkup()).blocks;
     const types = blocks.map((b) => b.type);
-    // 최종 시각 순서: 본문 텍스트 → 임베드 → "(끝)".
+    // 최종 시각 순서: 본문 텍스트 → 임베드 → "(끝)" (마커는 새 줄 형태 '\n(끝)').
     expect(types).toEqual(['text', 'embed', 'text']);
     expect(blocks[0]).toEqual({ type: 'text', text: '본문' });
     expect(blocks[1].type).toBe('embed');
-    expect(blocks[2]).toEqual({ type: 'text', text: '(끝)' });
+    expect(blocks[2]).toEqual({ type: 'text', text: '\n(끝)' });
     // 본문 텍스트 모델은 "(끝)" 로 끝난다(송고 가드/골드 coloring 정합).
     expect(adapter.getBodyText().endsWith('(끝)')).toBe(true);
     // 임베드는 "(끝)" 보다 앞이다 (마지막 블록이 임베드가 아니다).

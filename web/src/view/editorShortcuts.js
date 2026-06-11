@@ -5,6 +5,34 @@
 // DOM 의존성 없음 — Vitest 단위테스트로 결정성 검증 가능. React 통합(BodyEditor의 onKeyDown)에서
 // contentEditable이 아닌 plain text 모델 기준으로 호출된다.
 
+import { END_MARKER } from '../model/editorContent.js';
+
+/**
+ * SPEC-NEWS-REVISE — "(끝)" 마커 뒤 입력 차단 규칙(단일·일관 규칙).
+ *
+ * 규칙: 본문이 "(끝)" 마커로 끝나는 동안, 캐럿(또는 선택 시작)이 "(끝)" 토큰의 시작 오프셋 이상이면 글자
+ * 생성 입력(타이핑/Enter/붙여넣기/IME 합성 commit)을 차단한다. 즉 "(끝)" 안·뒤에는 어떤 문자도 들어갈 수
+ * 없다. 마커 앞(그 위 줄들)에서의 편집은 허용된다.
+ *
+ * 삭제(Backspace/Delete)와 내비게이션/선택은 항상 허용 — "(끝)" 를 지우면 더는 마커로 끝나지 않으므로
+ * 이 함수가 false 를 돌려 입력이 다시 모든 위치에서 열린다(마커 삭제 = 입력 재개, 가장 단순한 일관 규칙).
+ *
+ * markerStart = bodyText 가 정확히 "(끝)" 로 끝날 때 그 토큰의 시작 오프셋(= length - 3). 선행 '\n' 은
+ * 마커 줄의 일부지만 토큰 자체는 "(끝)" 이므로, 토큰 시작 이상이면 차단한다(토큰 앞 '\n' 위치는 허용 —
+ * 그 자리는 마커 "앞"이다).
+ *
+ * @param {string} bodyText 현재 본문 텍스트
+ * @param {number} caretStart 캐럿(또는 선택 시작)의 본문 문자 오프셋
+ * @returns {boolean} 차단해야 하면 true
+ */
+export function isInputBlockedAfterEndMarker(bodyText, caretStart) {
+  const text = typeof bodyText === 'string' ? bodyText : '';
+  if (!text.endsWith(END_MARKER)) return false; // 마커로 끝나지 않으면 차단 없음(삭제로 재개됨).
+  const markerStart = text.length - END_MARKER.length;
+  const c = Number.isFinite(caretStart) ? caretStart : text.length;
+  return c >= markerStart;
+}
+
 /**
  * @typedef {Object} EditorState
  * @property {string} value

@@ -8,7 +8,7 @@
 // 라인은 '\n'으로 구분된다. 선택 영역에 *일부*라도 걸친 모든 라인을 라인 단위 round-up하여 제거한다
 // (VSCode Ctrl+Shift+K 스타일 — D-2 결정 잠금).
 import { describe, it, expect } from 'vitest';
-import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt } from './editorShortcuts.js';
+import { deleteCurrentLine, applyLineDeleteToContent, selectEmbedOnLine, lineRangeAt, isInputBlockedAfterEndMarker } from './editorShortcuts.js';
 import { createStructuredEditorAdapter } from '../model/editorAdapter.js';
 import { END_MARKER } from '../model/editorContent.js';
 import { buildColorSegments } from './editorColoring.js';
@@ -218,25 +218,42 @@ describe('selectEmbedOnLine — Ctrl+D 가 임베드를 한 개씩 선택', () =
   });
 });
 
+// SPEC-NEWS-REVISE — "(끝)" 마커 뒤 입력 차단 판정(순수 함수). 마커로 끝날 때만, 캐럿이 토큰 시작 이상이면 true.
+describe('isInputBlockedAfterEndMarker — "(끝)" 뒤 입력 차단 판정', () => {
+  it('마커로 끝나지 않으면 어느 캐럿이든 false(삭제로 재개)', () => {
+    expect(isInputBlockedAfterEndMarker('foo', 3)).toBe(false);
+    expect(isInputBlockedAfterEndMarker('', 0)).toBe(false);
+  });
+  it('마커로 끝나고 캐럿이 토큰 시작 이상이면 true', () => {
+    // 'foo\n(끝)' length 7, 토큰 '(끝)' 시작 offset = 7-3 = 4.
+    const body = 'foo\n(끝)';
+    expect(isInputBlockedAfterEndMarker(body, body.length)).toBe(true); // 끝(마커 뒤)
+    expect(isInputBlockedAfterEndMarker(body, 4)).toBe(true);            // 토큰 시작
+  });
+  it('마커로 끝나도 캐럿이 토큰 앞이면 false(마커 앞 편집 허용)', () => {
+    const body = 'foo\n(끝)';
+    expect(isInputBlockedAfterEndMarker(body, 3)).toBe(false); // 'foo' 끝(개행 앞)
+    expect(isInputBlockedAfterEndMarker(body, 0)).toBe(false); // 본문 시작
+  });
+});
+
 // SPEC-NEWS-REVISE-003 — REQ-EDITOR-EMBED-DELETE-AND-ALT-Y-EXACT (토픽 E): Alt+Y "(끝)" 정확 텍스트.
 // Alt+Y 핸들링 seam 은 useWriteController.appendEnd → editorAdapter.appendEnd → editorContent.END_MARKER 이며,
 // 골드 스타일 토큰은 view/model 계약(editorColoring.buildColorSegments 의 cls:'end' 세그먼트)으로 노출된다.
 // 본 파일의 순수-함수 관례에 맞춰 model+view-contract seam 에서 단언한다 (React 마운트 불필요).
 describe('SPEC-NEWS-REVISE-003 REQ-EDITOR-EMBED-DELETE-AND-ALT-Y-EXACT Alt+Y (토픽 E)', () => {
-  it('AC-ALTY-1: 본문 끝 Alt+Y → 정확히 "(끝)" 1회 삽입 (선행 \\r\\n/공백 없음) + 골드 토큰', () => {
+  // SPEC-NEWS-REVISE — Alt+Y "(끝)" 은 본문 맨 마지막 다음 개행에 자기 줄로 들어간다('...본문\n(끝)').
+  it('AC-ALTY-1: 본문 끝 Alt+Y → "(끝)" 이 새 줄(개행 뒤)에 1회 삽입 + 골드 토큰', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.setBodyText('본문 마지막 문장.');
     // Alt+Y 의 모델 효과 = adapter.appendEnd().
     adapter.appendEnd();
     const body = adapter.getBodyText();
 
-    // 정확히 "(끝)" 로 끝나며, 토큰 직전에 \r/\n/공백이 추가로 들어가지 않는다.
+    // "(끝)" 로 끝나며, 본문이 개행으로 끝나지 않았으므로 토큰 직전에 '\n' 이 들어간다(자기 줄).
     expect(body.endsWith(END_MARKER)).toBe(true);
-    expect(/[^\r\n ]\(끝\)$/.test(body)).toBe(true);
-    // 구 형식("\r\n (끝)" / "\n(끝)") 의 prefix 가 본문 끝에 끼지 않는다.
-    expect(body.endsWith('\r\n' + END_MARKER)).toBe(false);
-    expect(body.endsWith('\n' + END_MARKER)).toBe(false);
-    expect(body.endsWith(' ' + END_MARKER)).toBe(false);
+    expect(body.endsWith('\n' + END_MARKER)).toBe(true);
+    expect(body).toBe('본문 마지막 문장.\n(끝)');
     // "(끝)" 토큰은 정확히 1회.
     expect(body.split(END_MARKER).length - 1).toBe(1);
 

@@ -910,8 +910,8 @@ describe('WritePage editor coloring + Alt+Y (news.md 기사 에디터)', () => {
     expect(body).toHaveTextContent('헤드라인 제목');
   });
 
-  // SPEC-NEWS-REVISE-002 — AC-ENDMARK-1/3: Alt+Y가 prefix 없이 정확히 "(끝)" 1회를 본문 끝에 삽입한다.
-  it('AC-ENDMARK-1/3: Alt+Y inserts exactly "(끝)" (prefix-free) and renders it in a gold-colored element', async () => {
+  // SPEC-NEWS-REVISE — AC-ENDMARK-1/3: Alt+Y가 "(끝)" 을 본문 맨 마지막 다음 개행에 자기 줄로 삽입한다.
+  it('AC-ENDMARK-1/3: Alt+Y places "(끝)" on its own new line at the end + gold-colored element', async () => {
     const user = userEvent.setup();
     const saveArticle = vi.fn().mockResolvedValue({ ok: true, articleId: 'A-9' });
     const applyAction = vi.fn().mockResolvedValue({ ok: true, status: 'DPS' });
@@ -920,8 +920,8 @@ describe('WritePage editor coloring + Alt+Y (news.md 기사 에디터)', () => {
     await user.type(body, '본문 내용');
     await user.keyboard('{Alt>}y{/Alt}');
 
-    // SPEC-NEWS-REVISE-002: prefix-free "(끝)" appended at body end.
-    expect(body.textContent).toBe('본문 내용(끝)');
+    // "(끝)" 은 본문 뒤 새 줄(개행)에 들어간다 — bodyText 는 '본문 내용\n(끝)' 로 끝난다.
+    expect(getBodyTextFromDom(body)).toBe('본문 내용\n(끝)');
     const endEl = body.querySelector('.yh-end-mark');
     expect(endEl).not.toBeNull();
     expect(endEl).toHaveTextContent('(끝)');
@@ -932,7 +932,7 @@ describe('WritePage editor coloring + Alt+Y (news.md 기사 에디터)', () => {
     expect(saveArticle.mock.calls[0][1].markupVersion).toContain('(끝)');
   });
 
-  // SPEC-NEWS-REVISE-002 — AC-ENDMARK-2: idempotent Alt+Y.
+  // SPEC-NEWS-REVISE — AC-ENDMARK-2: idempotent Alt+Y (개행 줄 형태에서도 중복 없음).
   it('AC-ENDMARK-2: Alt+Y is idempotent — pressing it twice keeps exactly one "(끝)"', async () => {
     const user = userEvent.setup();
     renderWrite();
@@ -940,9 +940,77 @@ describe('WritePage editor coloring + Alt+Y (news.md 기사 에디터)', () => {
     await user.type(body, '본문 내용');
     await user.keyboard('{Alt>}y{/Alt}');
     await user.keyboard('{Alt>}y{/Alt}');
-    expect(body.textContent).toBe('본문 내용(끝)');
-    expect(body.textContent.split('(끝)').length - 1).toBe(1);
+    expect(getBodyTextFromDom(body)).toBe('본문 내용\n(끝)');
+    expect(getBodyTextFromDom(body).split('(끝)').length - 1).toBe(1);
     expect(body.querySelectorAll('.yh-end-mark')).toHaveLength(1);
+  });
+});
+
+// SPEC-NEWS-REVISE — Alt+Y 신규 동작: (a) "(끝)" 은 본문 뒤 새 줄, (c) 마커 뒤 입력 차단/마커 앞 입력 허용,
+// (d) 마커 삭제 시 입력 재개, (e) 맞춤법 검사는 Alt+Y 전 false / 후 true.
+describe('WritePage Alt+Y 신규 동작 — 새 줄 "(끝)" + 마커 뒤 입력 차단 + 맞춤법', () => {
+  // (a) Alt+Y → bodyText 가 '\n(끝)' 로 끝난다.
+  it('(a) Alt+Y on body "foo" → bodyText ends with "\\n(끝)"', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'foo');
+    await user.keyboard('{Alt>}y{/Alt}');
+    expect(getBodyTextFromDom(body).endsWith('\n(끝)')).toBe(true);
+    expect(getBodyTextFromDom(body)).toBe('foo\n(끝)');
+  });
+
+  // (c) 마커 뒤 타이핑은 막히고, 마커 앞(그 위 줄) 타이핑은 된다.
+  it('(c) typing after the marker is blocked; typing before it still works', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'foo');
+    await user.keyboard('{Alt>}y{/Alt}');
+    expect(getBodyTextFromDom(body)).toBe('foo\n(끝)');
+
+    // 캐럿을 본문 끝(="...(끝)" 뒤)에 두고 타이핑 → 차단(preventDefault).
+    setCaretCharOffset(body, getBodyTextFromDom(body).length);
+    const evt = fireEvent.keyDown(body, { key: 'x' });
+    expect(evt).toBe(false); // preventDefault 호출됨
+    // Enter 도 마커 뒤에서는 차단된다.
+    const enterEvt = fireEvent.keyDown(body, { key: 'Enter' });
+    expect(enterEvt).toBe(false);
+    expect(getBodyTextFromDom(body)).toBe('foo\n(끝)'); // 본문 불변
+
+    // 마커 앞(첫 줄 'foo' 안, offset 1)으로 캐럿 이동 → 타이핑 키는 차단되지 않는다(기본 입력 진행).
+    setCaretCharOffset(body, 1);
+    const allowedEvt = fireEvent.keyDown(body, { key: 'x' });
+    expect(allowedEvt).toBe(true); // preventDefault 안 됨 → 입력 허용
+  });
+
+  // (d) "(끝)" 를 지우면(더는 마커로 끝나지 않음) 입력이 다시 모든 위치에서 열린다.
+  it('(d) deleting "(끝)" re-enables typing', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    await user.type(body, 'foo');
+    await user.keyboard('{Alt>}y{/Alt}');
+    // 마커를 본문에서 제거(모델 텍스트를 'foo'로 되돌린다) — 재페인트 후 차단이 풀린다.
+    fireEvent.input(body, { target: { textContent: 'foo' } });
+    // jsdom input 은 textContent 기반 onChange 로 모델을 갱신한다. 끝에서 타이핑이 더 이상 막히지 않는다.
+    setCaretCharOffset(body, getBodyTextFromDom(body).length);
+    const evt = fireEvent.keyDown(body, { key: 'x' });
+    expect(evt).toBe(true); // 차단 해제 → preventDefault 안 됨
+  });
+
+  // (e) 에디터 spellcheck 속성은 초기 false, Alt+Y 후 true.
+  it('(e) editor spellcheck attribute is false initially, true after Alt+Y', async () => {
+    const user = userEvent.setup();
+    renderWrite();
+    const body = screen.getByTestId('editor-body');
+    // 초기: spellcheck=false (빨간 밑줄 없음).
+    expect(body.getAttribute('spellcheck')).toBe('false');
+    await user.type(body, 'speling mistaek');
+    await user.keyboard('{Alt>}y{/Alt}');
+    // Alt+Y 후: spellcheck=true + lang=ko.
+    expect(body.getAttribute('spellcheck')).toBe('true');
+    expect(body.getAttribute('lang')).toBe('ko');
   });
 });
 
@@ -1480,15 +1548,15 @@ describe('WritePage Ctrl+D line delete (REQ-EDITOR-EMBED-AND-CTRL-D)', () => {
     expect(body.textContent).toBe(before);
   });
 
-  // SPEC-NEWS-REVISE-001 AC-CTRL-D-5 회귀 — Ctrl+D 핸들러가 Alt+Y 동작을 방해하지 않는다.
-  // SPEC-NEWS-REVISE-002 REQ-EDITOR-END-MARKER로 단언 문자열을 "\n (끝)" → "(끝)"로 동기 갱신.
-  it('AC-CTRL-D-5: Alt+Y 회귀 — Ctrl+D 핸들러 도입 후에도 "(끝)" 삽입 동작 보존 (SPEC-NEWS-REVISE-002 동기 갱신)', async () => {
+  // SPEC-NEWS-REVISE AC-CTRL-D-5 회귀 — Ctrl+D 핸들러가 Alt+Y 동작을 방해하지 않는다.
+  // "(끝)" 은 새 줄(개행 뒤)에 들어가므로 bodyText 는 '본문\n(끝)' 로 끝난다(동기 갱신).
+  it('AC-CTRL-D-5: Alt+Y 회귀 — Ctrl+D 핸들러 도입 후에도 "(끝)" 삽입 동작 보존', async () => {
     const user = userEvent.setup();
     renderWrite();
     const body = screen.getByTestId('editor-body');
     await user.type(body, '본문');
     await user.keyboard('{Alt>}y{/Alt}');
-    expect(body.textContent).toBe('본문(끝)');
+    expect(getBodyTextFromDom(body)).toBe('본문\n(끝)');
     expect(body.querySelector('.yh-end-mark')).not.toBeNull();
   });
 

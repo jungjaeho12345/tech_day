@@ -47,26 +47,26 @@ describe('createStructuredEditorAdapter (REQ-EDIT-ADP)', () => {
     expect(adapter.getStructure()).toEqual({ title: '제목', subtitle: '부제목', body: '본문줄' });
   });
 
-  // SPEC-NEWS-REVISE-002 — AC-ENDMARK-1: prefix-free "(끝)".
-  it('AC-ENDMARK-1: appendEnd inserts exactly "(끝)" (prefix-free) and survives a setMarkup round-trip', () => {
+  // SPEC-NEWS-REVISE — AC-ENDMARK-1: "(끝)" 은 본문 맨 마지막 다음 개행에 자기 줄로 들어간다('\n(끝)').
+  it('AC-ENDMARK-1: appendEnd places "(끝)" on its own new line at the end and survives a setMarkup round-trip', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.setBodyText('본문 내용');
     adapter.appendEnd();
-    expect(adapter.getBodyText()).toBe('본문 내용(끝)');
+    expect(adapter.getBodyText()).toBe('본문 내용\n(끝)');
     expect(adapter.getMarkup()).toContain('(끝)');
     const m = adapter.getMarkup();
     adapter.setMarkup(m);
-    expect(adapter.getBodyText()).toBe('본문 내용(끝)');
+    expect(adapter.getBodyText()).toBe('본문 내용\n(끝)');
   });
 
-  // SPEC-NEWS-REVISE-002 — AC-ENDMARK-2: idempotent.
+  // SPEC-NEWS-REVISE — AC-ENDMARK-2: idempotent (개행 줄 형태에서도 중복 없음).
   it('AC-ENDMARK-2: appendEnd is IDEMPOTENT — a second call does not append a duplicate "(끝)"', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.setBodyText('본문');
     adapter.appendEnd();
     adapter.appendEnd();
     const body = adapter.getBodyText();
-    expect(body).toBe('본문(끝)');
+    expect(body).toBe('본문\n(끝)');
     expect(body.split('(끝)').length - 1).toBe(1);
   });
 
@@ -83,25 +83,25 @@ describe('createStructuredEditorAdapter (REQ-EDIT-ADP)', () => {
     adapter.setBodyText('본문');
     adapter.embed(IMG);
     adapter.appendEnd();
-    expect(adapter.getBodyText()).toBe('본문(끝)');
+    expect(adapter.getBodyText()).toBe('본문\n(끝)');
     expect(adapter.getContent().blocks.filter((b) => b.type === 'embed')).toHaveLength(1);
   });
 
-  // SPEC-NEWS-REVISE — Alt+Y "(끝)" must be placed AFTER all embeds (final block).
+  // SPEC-NEWS-REVISE — Alt+Y "(끝)" must be placed AFTER all embeds (final block), on its own new line.
   it('END-AFTER-EMBED: appendEnd places "(끝)" as the LAST block, after a trailing embed', () => {
     const adapter = createStructuredEditorAdapter();
     adapter.setBodyText('본문');
     adapter.embed(IMG);
     adapter.appendEnd();
     const blocks = adapter.getContent().blocks;
-    // block order: [text "본문", embed, text "(끝)"]
+    // block order: [text "본문", embed, text "\n(끝)"] — 마커는 개행 줄 형태로 임베드 뒤 최종 블록.
     expect(blocks).toEqual([
       { type: 'text', text: '본문' },
       { type: 'embed', embed: { ...IMG } },
-      { type: 'text', text: '(끝)' },
+      { type: 'text', text: '\n(끝)' },
     ]);
     // the marker is the FINAL block (after the embed)
-    expect(blocks[blocks.length - 1]).toEqual({ type: 'text', text: '(끝)' });
+    expect(blocks[blocks.length - 1]).toEqual({ type: 'text', text: '\n(끝)' });
     // body text invariant: getBodyText() still ends with "(끝)" so the 송고 guard keeps working
     expect(adapter.getBodyText().endsWith('(끝)')).toBe(true);
   });

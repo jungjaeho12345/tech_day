@@ -21,6 +21,7 @@ import {
   contentToMarkup,
   deserializeContent,
   END_MARKER_BLOCK,
+  endMarkerBlockFor,
   hasEndMarker,
 } from './editorContent.js';
 import { parseArticleStructure } from './articleStructure.js';
@@ -133,8 +134,11 @@ export function createStructuredEditorAdapter(initialMarkup = '') {
       const bodyText = contentToText(content);
       if (hasEndMarker(bodyText)) return; // already present -> do not append a duplicate
       const embeds = content.blocks.filter((b) => b.type === 'embed');
+      // SPEC-NEWS-REVISE — "(끝)" 은 본문 맨 마지막 다음 개행에 자기 줄로 들어간다. base 가 개행으로 끝나지
+      // 않으면 마커 블록에 선행 '\n' 을 붙여('\n(끝)') 본문이 '...본문\n(끝)' 로 끝나게 한다(자기 줄).
+      const markerText = endMarkerBlockFor(bodyText);
       content = {
-        blocks: [...contentFromText(bodyText).blocks, ...embeds, { type: 'text', text: END_MARKER_BLOCK }],
+        blocks: [...contentFromText(bodyText).blocks, ...embeds, { type: 'text', text: markerText }],
       };
     },
     /**
