@@ -334,12 +334,10 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     expect(articleSections[0].querySelector('h1')).toBeNull();
     expect(articleSections[0].querySelector('.yh-detail__content')).not.toBeNull();
 
-    // 1px 회색 구분선. gray-line 디자인 토큰이 정확한 production 값 #DDE3EC 임을 단언한다(대소문자 무시).
     const styleText = doc.querySelector('style').textContent;
     expect(styleText).toMatch(/--yh-gray-line:\s*#DDE3EC/i);
     expect(styleText).toMatch(/1px solid var\(--yh-gray-line\)/);
 
-    // 공통정보 섹션의 dt label 12개가 각각 정확히 한 번씩 enumerate.
     const dts = doc.querySelectorAll('section[aria-label="공통정보"] dt');
     const labels = Array.from(dts).map((dt) => dt.textContent);
     const required = [
@@ -349,7 +347,6 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     for (const req of required) {
       expect(labels.filter((l) => l === req).length).toBe(1);
     }
-    // 엠바고 / 2차 엠바고는 "시간" 접미사 포함 형태로 각 1회.
     expect(labels.filter((l) => l === '엠바고' || l.startsWith('엠바고')).length).toBe(1);
     expect(labels.filter((l) => l === '2차 엠바고' || l.startsWith('2차 엠바고')).length).toBe(1);
     expect(dts.length).toBe(12);
@@ -361,11 +358,8 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     const precise = /--yh-gray-line:\s*#DDE3EC/i;
     const loose = /--yh-gray-line:\s*#DD[0-9A-Fa-f]{4}/;
 
-    // 정밀화 가드: 레드 계열 오변경 #DD0000 은 거부된다.
     expect(precise.test('--yh-gray-line: #DD0000')).toBe(false);
-    // 대조: 003 의 느슨한 가드였다면 같은 샘플을 통과시켜 회귀를 놓쳤을 것이다(구멍 증명).
     expect(loose.test('--yh-gray-line: #DD0000')).toBe(true);
-    // true-positive 보존: 정확 토큰 #DDE3EC 는 그대로 수용된다.
     expect(precise.test('--yh-gray-line: #DDE3EC')).toBe(true);
   });
 
@@ -385,7 +379,6 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
     const labels = sections.map((s) => s.getAttribute('aria-label'));
     expect(labels).toEqual(['공통정보', '기사']);
 
-    // 공통정보 dt label 12개가 각각 정확히 한 번씩 enumerate.
     const dts = doc.querySelectorAll('section[aria-label="공통정보"] dt');
     const dtLabels = Array.from(dts).map((dt) => dt.textContent);
     const required = [
@@ -402,9 +395,7 @@ describe('SPEC-NEWS-REVISE-003 REQ-DETAIL-BODY-EMPHASIS (토픽 B)', () => {
 });
 
 // 과업 ③ — 상세보기 '기사' 본문을 markupVersion(에디터 직렬화 JSON)을 파싱한 실제 본문으로 렌더한다.
-// content(공통정보 "내용")가 아니라 markupVersion 의 블록(텍스트 + 이미지/영상/기사 임베드)을 순서대로 표시.
 describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 ③)', () => {
-  // editorContent.serializeContent 와 동일한 포맷 — 테스트에서 직접 markup 문자열을 만든다.
   function markup(blocks) {
     return JSON.stringify({ format: 'yh-editor', version: 1, blocks });
   }
@@ -426,14 +417,11 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
     const doc = parse(buildArticleDetailHtml(article));
     const content = doc.querySelector('section[aria-label="기사"] .yh-detail__content');
     expect(content).not.toBeNull();
-    // 본문 텍스트가 공통정보 "내용"이 아니라 markupVersion 텍스트 블록에서 온다.
     expect(content.textContent).toContain('본문 첫 문단입니다.');
     expect(content.textContent).toContain('(끝)');
-    // 이미지 임베드는 <img> 로 렌더 (thumbnailUrl 우선).
     const img = content.querySelector('img');
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe('https://t/1');
-    // 블록 순서 보존: 텍스트 → 이미지 → (끝).
     const text = content.textContent;
     expect(text.indexOf('본문 첫 문단입니다.')).toBeLessThan(text.indexOf('(끝)'));
     const imgPos = content.innerHTML.indexOf('<img');
@@ -486,11 +474,8 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
       ]),
     };
     const doc = parse(buildArticleDetailHtml(article));
-    // 본문 텍스트의 위험 토큰은 노드로 생성되지 않는다.
     const section = doc.querySelector('section[aria-label="기사"]');
     expect(section.querySelectorAll('script').length).toBe(0);
-    // onerror 이미지가 실제 img 노드로 생성되지 않는다(텍스트 블록은 escape).
-    // (임베드 영상 썸네일 img 는 없을 수 있으나, 위험 텍스트가 attribute 로 새지 않음을 확인)
     expect(section.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(section.textContent).toContain('<script>bad</script>');
   });
@@ -512,7 +497,6 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
       markupVersion: markup([{ type: 'text', text: '진짜 본문' }]),
     };
     const doc = parse(buildArticleDetailHtml(article));
-    // 공통정보 "내용" = content.
     const rows = doc.querySelectorAll('section[aria-label="공통정보"] .yh-detail__row');
     let 내용 = null;
     for (const row of rows) {
@@ -522,7 +506,6 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
       }
     }
     expect(내용).toBe('짧은 리드');
-    // 기사 본문 = markupVersion.
     const body = doc.querySelector('section[aria-label="기사"] .yh-detail__content').textContent;
     expect(body).toContain('진짜 본문');
     expect(body).not.toContain('짧은 리드');
@@ -530,20 +513,16 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
 });
 
 // REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드와 매핑된다.
-// articleDetail.js COMMON_INFO_FIELDS에서 'description' -> 'content' 키로 수정하여 해소.
 describe('REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드와 매핑되어야 한다', () => {
   it('content 필드 값이 공통정보 "내용" 행에 표시된다', () => {
-    // 폼 흐름의 데이터: WritePage common.content -> articleInsert -> DB row 형태
     const formArticle = {
       articleId: 'A-FORM',
       title: '제목',
       content: '본문은 별도지만 "내용" 입력 필드 값',
-      // description 키 자체가 존재하지 않음 (폼/DB가 만들지 않음)
     };
     const html = buildArticleDetailHtml(formArticle);
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const rows = doc.querySelectorAll('section[aria-label="공통정보"] .yh-detail__row');
-    // "내용" 라벨의 dd 텍스트
     let contentRowText = null;
     for (const row of rows) {
       const dt = row.querySelector('dt');
@@ -552,7 +531,6 @@ describe('REGRESSION FIX: 공통정보 "내용" 행은 form/DB의 content 필드
         break;
       }
     }
-    // form-input 값이 공통정보 "내용" 행에 표시된다
     expect(contentRowText).toBe('본문은 별도지만 "내용" 입력 필드 값');
   });
 });
