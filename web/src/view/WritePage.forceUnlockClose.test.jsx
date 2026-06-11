@@ -140,10 +140,10 @@ describe('WritePage 강제 해제 자동 종료 (SPEC-NEWS-REVISE-014 REQ-EDITOR
     const model = modelWithLockedArticle({ saveArticle });
     await openEditTabAndWait(model);
     await waitFor(() => {
-      expect(within(screen.getByTestId('writer-panel-t2')).getByTestId('editor-body')).toHaveTextContent('편집 본문');
+      expect(within(screen.getByRole('tabpanel', { name: 'A-LOCK' })).getByTestId('editor-body')).toHaveTextContent('편집 본문');
     });
     // 저장하지 않은 편집 추가.
-    await user.type(within(screen.getByTestId('writer-panel-t2')).getByTestId('editor-body'), ' 추가 미저장');
+    await user.type(within(screen.getByRole('tabpanel', { name: 'A-LOCK' })).getByTestId('editor-body'), ' 추가 미저장');
 
     await act(async () => {
       model.__emit({ type: 'unlock', articleId: 'A-LOCK', forced: true });

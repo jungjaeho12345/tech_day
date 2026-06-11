@@ -636,13 +636,12 @@ function BodyEditor({ content, bodyText, onChangeText, onAltY, onPasteEmbed, onC
         // 임베드는 0글자라 텍스트 없는 레이아웃(임베드 전용/연속 임베드/빈 줄)에서는 문자 오프셋이 삭제
         // 지점을 못 짚어 "텍스트가 있는 곳"으로 캐럿이 튀던 실브라우저 회귀를 DOM 앵커로 차단한다. 앵커
         // 디스크립터: { kind:'afterEmbed', ordinal }(남은 직전 임베드 뒤) / { kind:'start' }(에디터 시작) /
-        // { kind:'charOffset', offset }(텍스트 앵커 폴백). (숫자도 허용 — 과거 형태 호환: charOffset 으로 취급.)
+        // { kind:'charOffset', offset }(텍스트 앵커 폴백).
         const anchor = pendingDeleteCaretRef.current;
         pendingDeleteCaretRef.current = null;
         paintNow(el, content);
         if (el.ownerDocument.activeElement === el) {
-          if (typeof anchor === 'number') setCaretCharOffset(el, anchor);
-          else if (anchor.kind === 'afterEmbed') setCaretAfterEmbed(el, anchor.ordinal);
+          if (anchor.kind === 'afterEmbed') setCaretAfterEmbed(el, anchor.ordinal);
           else if (anchor.kind === 'charOffset') setCaretCharOffset(el, anchor.offset);
           else setCaretToEditorStart(el);
         }
