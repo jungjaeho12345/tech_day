@@ -371,6 +371,9 @@ issue_number: 0
 
 ## §17. 품질 게이트 (Quality Gate)
 
+> **AC 총수: 41** (§1~§16 실집계 — DSN 2 + RT 2 + CMN 4 + VW 7 + DT 3 + UI 1 + SES 3 + LK 2 + LG 3 + WR 1 +
+> SP 1 + ED 3 + API 1 + LC 3 + DB 3 + SEC 2 = 41). 이 수치가 spec.md/plan.md 의 AC 총수 표기의 SSOT 다.
+
 - [ ] `npm test` (backend node --test) 전체 GREEN, coverage ≥85%(per-commit ≥80%)
 - [ ] `npm run test:web` (vitest) 전체 GREEN
 - [ ] `npm run build` (vite) 무경고

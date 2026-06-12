@@ -1,6 +1,6 @@
 ---
 id: SPEC-NEWS-REVISE-015
-version: 0.1.0
+version: 0.1.1
 status: Plan
 created: 2026-06-12
 updated: 2026-06-12
@@ -23,6 +23,12 @@ related_specs:
 
 ## HISTORY
 
+- 2026-06-12 (v0.1.1): 평가 후 정정(evaluator-active 라운드 1 판정, PASS 0.833). **AC-DSN-2 문구 결함 정정 반영** —
+  실제 코드는 조회 목록 행에 배지를 렌더하지 않으므로(`ViewPage.jsx:190-198` plain text, `yonhap.css:1054-1056`
+  "목록 배지는 제거됨, `--yh-badge-*` 토큰은 버튼 팔레트가 계속 사용"), REQ-ABSORB-DESIGN 의 배지 색 요구를
+  "`--yh-badge-*` 색 토큰/`.yh-badge--*` 클래스 SSOT + 조회 목록 plain text 현행 고정"으로 표기 동기화(빌더가 코드
+  불변 원칙대로 작성한 `ViewPage.statusBadge.test.jsx`, PASS 와 일치). 또한 **AC 총수 표기를 35 -> 41**(acceptance.md
+  실집계)로 정정. AC 추가/삭제·REQ 의미 변경 없음(문구 정정·수치 동기화만). (manager-spec)
 - 2026-06-12 (v0.1.0): 최초 작성. **근거 커밋 a8a6c87**(2026-06-11, "docs(spec): maintenance.md 코드-명세 갭을
   news.md 문체로 반영 + 스킬 SSOT v0.2.1 동기화") 의 news.md 추가분(73줄)을 SPEC 으로 흡수한다. a8a6c87 은 "이미
   코드로 구현되어 있으나 news.md 에 명세가 없던 항목"을 역반영(reverse-sync)한 **문서 커밋**이므로, 추가분은
@@ -410,6 +416,6 @@ news.md 추가분은 **SPEC 으로 흡수해 추적 가능하게** 만들되, **
 
 ---
 
-Version: 0.1.0
+Version: 0.1.1
 Status: Plan
 Last Updated: 2026-06-12

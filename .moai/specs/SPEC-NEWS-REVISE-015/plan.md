@@ -1,6 +1,6 @@
 ---
 id: SPEC-NEWS-REVISE-015
-version: 0.1.0
+version: 0.1.1
 status: Plan
 created: 2026-06-12
 updated: 2026-06-12
@@ -13,6 +13,11 @@ issue_number: 0
 
 ## HISTORY
 
+- 2026-06-12 (v0.1.1): 평가 후 정정(evaluator-active 라운드 1 판정, PASS 0.833). acceptance.md 의 **AC-DSN-2 문구
+  결함 정정**(행 배지 단언 -> `--yh-badge-*` 색 토큰/`.yh-badge--*` 클래스 SSOT 단언 + 조회 목록 plain text 현행
+  고정; 목록 배지는 REQ-FE-VIEW-011 v0.4.0 에서 제거됨)에 맞춰 본 계획의 AC-DSN-2 검증 대상 표기를 동기화. 또한
+  **AC 총수 표기를 35 -> 41**(acceptance.md 실집계)로 정정. AC 추가/삭제·REQ 의미 변경 없음(문구 정정·수치 동기화만).
+  (manager-spec)
 - 2026-06-12 (v0.1.0): 최초 작성. 근거 커밋 **a8a6c87**(2026-06-11). news.md 추가분의 **명세 흡수 + 기구현
   characterization 고정 + 잔여(테스트) 갭 신규화** 에 대한 구현 접근·마일스톤·리스크 정의. maintenance.md 전수
   대장과 도메인 SSOT(`moai-domain-news-editor/SKILL.md`)로 교차 검증한 결과, 추가분은 대부분 코드로 이미
@@ -145,6 +150,6 @@ spec.md §9 Exclusions 를 그대로 따른다. 특히: 운영 코드(`web/`·`s
 
 ---
 
-Version: 0.1.0
+Version: 0.1.1
 Status: Plan
 Last Updated: 2026-06-12
