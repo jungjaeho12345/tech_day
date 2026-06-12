@@ -156,14 +156,19 @@ news.md 추가분은 **SPEC 으로 흡수해 추적 가능하게** 만들되, **
 > 각 REQ 의 AC 는 acceptance.md 에 Given-When-Then 으로 상술된다. 백엔드 `test/*.test.js`(`npm test`), 프론트
 > `web/src/**/*.test.*`(`npm run test:web`). **분류 머리표**: [기구현] = 코드·기존 테스트 존재, GREEN 유지 /
 > [테스트 공백] = 코드 있음·테스트 신설.
+>
+> **AC 총수: 41** (acceptance.md §1~§16 실집계, §17 SSOT 일치). [기구현/회귀가드] 38 + [테스트 공백/신설] 3
+> (AC-DSN-2 / AC-UI-1 / AC-VW-2).
 
 ### REQ-ABSORB-DESIGN — 디자인 블루 기조 정정 흡수 (Priority: Low) — 분류 (a) 기구현 + (c) 테스트 공백
 
 - **[Ubiquitous]** THE 시스템 SHALL 헤더 강조선·활성 탭·주요 버튼에 브랜드 블루(`--yh-blue #0A4DA6`)를 사용하고
   레드(#C8102E)는 포인트(로고 룰·송고 배지)로만 사용한다(코드 이미 블루 — news.md 정정 정합, 코드 변경 없음).
-- **[Ubiquitous]** THE 시스템 SHALL 조회 목록 상태 배지를 RDS=회색, DPS=레드, 보류(RRH/DDH)=앰버,
-  KILL(RRK/DDK)=슬레이트로 구분한다(코드 존재 — **독립 회귀 가드 테스트 신설**).
-- AC 포인터: AC-DSN-1 (블루 회귀가드), AC-DSN-2 (배지 색 신설) — acceptance.md §1
+- **[Ubiquitous]** THE 시스템 SHALL 상태 배지 색 규칙을 디자인 토큰 `--yh-badge-*`(RDS=회색, 송고 *PS=레드,
+  보류 RRH/DDH=앰버, KILL RRK/DDK=슬레이트)와 `.yh-badge--*` 클래스 바인딩(색 규칙의 단일 출처)으로 유지한다.
+  단, **조회 목록 행에는 상태 배지가 없다** — 목록 상태 셀은 plain text 로 렌더한다(목록 배지는 REQ-FE-VIEW-011
+  v0.4.0 에서 제거됨; `--yh-badge-*` 토큰은 버튼 팔레트가 계속 사용). 코드 존재 — **독립 회귀 가드 테스트 신설**.
+- AC 포인터: AC-DSN-1 (블루 회귀가드), AC-DSN-2 (색 토큰/클래스 SSOT 단언 + 목록 plain text 고정) — acceptance.md §1
 
 ### REQ-ABSORB-ROUTING — SPA 라우팅(.do)·writer.do 오타 흡수 (Priority: Low) — 분류 (a) 기구현
 
@@ -337,7 +342,8 @@ news.md 추가분은 **SPEC 으로 흡수해 추적 가능하게** 만들되, **
 > **운영 코드는 변경하지 않는다.** 아래 운영 파일은 **참조/회귀 대상**일 뿐 수정 대상이 아니다.
 
 ### 7.1 신규 작성 (테스트만)
-- `web/src/view/ViewPage.statusBadge.test.jsx` — 상태 배지 색 매핑(AC-DSN-2).
+- `web/src/view/ViewPage.statusBadge.test.jsx` — `--yh-badge-*` 색 토큰/`.yh-badge--*` 클래스 매핑 단언 + 조회
+  목록 상태 셀 plain text(목록 배지 제거) 현행 고정(AC-DSN-2).
 - `web/src/view/TopBar.test.jsx` — 사용자 정보 '유저아이디 · 부서 · (권한)' 형식(AC-UI-1).
 - `web/src/model/httpModel.reconnect.test.js`(또는 기존 `httpModel.test.js` 확장) — EventSource 배선·연결 상태
   추적(AC-VW-2, 재연결 위임 한계 주석).

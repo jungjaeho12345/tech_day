@@ -1,6 +1,6 @@
 ---
 id: SPEC-NEWS-REVISE-015
-version: 0.1.0
+version: 0.1.1
 status: Plan
 created: 2026-06-12
 updated: 2026-06-12
@@ -13,6 +13,13 @@ issue_number: 0
 
 ## HISTORY
 
+- 2026-06-12 (v0.1.1): 평가 후 정정(evaluator-active 라운드 1 판정, PASS 0.833). **AC-DSN-2 문구 결함 정정** —
+  종전 문구는 "각 상태 *행의 배지 클래스/색 토큰* 을 단언"이라 했으나, 실제 코드는 조회 목록 행에 배지를 렌더하지
+  않는다(`ViewPage.jsx:190-198` plain text, `yonhap.css:1054-1056` "목록 배지는 제거됨, `--yh-badge-*` 토큰은
+  버튼 팔레트가 계속 사용"). 빌더가 코드 불변 원칙대로 작성한 회귀 가드(`ViewPage.statusBadge.test.jsx`, PASS)와
+  일치하도록, AC-DSN-2 를 "`--yh-badge-*` 색 토큰 값 + `.yh-badge--*` 클래스 바인딩(디자인 SSOT) 단언 + 조회 목록
+  plain text 현행 고정(목록 배지 제거 — REQ-FE-VIEW-011 v0.4.0)"으로 수정. **AC 추가/삭제·REQ 의미 변경 없음**
+  (문구 정정만). 또한 spec.md/plan.md 의 AC 총수 표기를 실집계 **41**(본 문서)로 동기화. (manager-spec)
 - 2026-06-12 (v0.1.0): 최초 작성. 근거 커밋 **a8a6c87**(2026-06-11, "docs(spec): maintenance.md 코드-명세 갭을
   news.md 문체로 반영")의 news.md 추가분 흡수에 대한 Given-When-Then 인수 기준. 추가분 대부분은 **기구현
   (characterization)** 이라 본 문서 AC 의 다수는 **기존 테스트 GREEN 유지(회귀 가드)** 이고, 일부 **테스트 공백
@@ -48,12 +55,20 @@ issue_number: 0
 - **Then**: 헤더 강조선·활성 탭·주요 버튼이 블루(`--yh-blue`)이고 레드(#C8102E)는 포인트로만 사용됨이 회귀 없이
   유지된다. (코드는 이미 블루 — news.md a8a6c87 정정은 코드 정합. 새 운영 코드 없음)
 
-### AC-DSN-2 — 상태 배지 색 회귀 가드 [테스트 공백/신설]
-- **Given**: 조회 목록 상태 배지 색 규칙(RDS=회색, DPS=레드, 보류 RRH/DDH=앰버, KILL RRK/DDK=슬레이트)
-- **When**: 신규 회귀 가드 테스트(`web/src/view/ViewPage.statusBadge.test.jsx` 권장)로 각 상태 행의 배지
-  클래스/색 토큰을 단언
-- **Then**: 6 상태가 위 색 매핑과 일치한다. (maintenance.md L119 는 yonhap.css 근거만 있고 독립 테스트가 없는
-  공백 — 운영 코드 변경 없이 테스트만 신설)
+### AC-DSN-2 — 상태 배지 색 토큰/클래스 회귀 가드 + 목록 plain text 고정 [테스트 공백/신설]
+- **Given**: 상태 배지 색 규칙의 단일 출처(디자인 SSOT)는 `web/src/styles/yonhap.css` 의 `--yh-badge-*` 색 토큰과
+  `.yh-badge--*` 클래스 바인딩이다(RDS=회색, 송고 *PS=레드, 보류 RRH/DDH=앰버, KILL RRK/DDK=슬레이트). 단,
+  **조회 목록 행에는 상태 배지가 없다** — yonhap.css L1054-1056 주석대로 "REQ-FE-VIEW-011 v0.4.0: 목록 배지는
+  제거됨, `--yh-badge-*` 토큰은 버튼 팔레트가 계속 사용". 목록 상태 셀(`ViewPage.jsx:190-198`)은 단일 정적 클래스
+  `yh-desk-row__status` 로 plain text 만 렌더한다.
+- **When**: 신규 회귀 가드 테스트(`web/src/view/ViewPage.statusBadge.test.jsx`)로 (1) 각 상태에 대응하는
+  `--yh-badge-*` 색 토큰 값(`--yh-badge-rds-bg`=#e8e8e8, `--yh-badge-send-bg`=#c8102e, `--yh-badge-hold-bg`=#d97706,
+  `--yh-badge-kill-bg`=#374151)과 `.yh-badge--{rds,send,hold,kill}` 클래스의 background 바인딩을 단언하고,
+  (2) 조회 목록 상태 셀이 `.yh-badge--*` 클래스 없이 plain text 로 렌더됨을 단언
+- **Then**: 4개 색 그룹의 디자인 토큰/클래스 매핑이 위 값과 일치하고, 조회 목록 행은 배지 없는 plain text 임이
+  회귀 가드로 고정된다. (AC 문구의 "행 배지"는 코드에 없는 제거된 동작 — maintenance.md L119 의 색 규칙은 실재하나
+  목록 배지는 v0.4.0 에서 제거됨. 따라서 색 계약은 토큰/클래스 SSOT 로, 목록 셀은 plain text 현행으로 고정하며
+  운영 코드는 변경하지 않고 테스트만 신설한다 — characterization-first)
 
 ---
 
@@ -379,6 +394,6 @@ issue_number: 0
 
 ---
 
-Version: 0.1.0
+Version: 0.1.1
 Status: Plan
 Last Updated: 2026-06-12
