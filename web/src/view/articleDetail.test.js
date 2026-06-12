@@ -43,7 +43,7 @@ describe('buildArticleDetailHtml (news.md 상세보기)', () => {
     expect(html).toContain('기사 본문 내용입니다.');
   });
 
-  // SPEC-NEWS-REVISE-013 AC-NOTITLE-4(3): 별도 제목 요소(<h1>) 폐지 후, 섹션 순서는
+  // SPEC-NEWS-REVISE-013 AC-NOTITLE-4(3): 별도 제목 요소 폐지 후, 섹션 순서는
   // 공통정보 섹션이 기사 섹션보다 먼저 옴으로 단언한다 (이전 <h1> 위치 기준 비교를 대체).
   it('renders the 공통정보 section before the 기사 section', () => {
     const html = buildArticleDetailHtml(fullArticle);
@@ -453,6 +453,18 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
     expect(article뷰.textContent).toContain('현장 영상');
     const link = article뷰.querySelector('a');
     expect(link.getAttribute('href')).toBe('https://yt/v');
+  });
+
+  it('video embed URL이 javascript: 일 때 href 링크가 렌더링되지 않는다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'video', title: '테스트 영상', url: 'javascript:alert(1)' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const section = doc.querySelector('section[aria-label="기사"]');
+    expect(section.querySelector('a')).toBeNull();
   });
 
   it('기사(article) 임베드는 제목 카드로 렌더한다', () => {
