@@ -480,6 +480,18 @@ describe('상세보기 본문 = markupVersion 실제 본문 + 임베드 (과업 
     expect(section.textContent).toContain('<script>bad</script>');
   });
 
+  it('javascript: 프로토콜 URL은 video embed href에 삽입되지 않는다', () => {
+    const article = {
+      title: 't', content: 'c',
+      markupVersion: markup([
+        { type: 'embed', embed: { type: 'video', title: '영상', url: 'javascript:alert(1)' } },
+      ]),
+    };
+    const doc = parse(buildArticleDetailHtml(article));
+    const link = doc.querySelector('section[aria-label="기사"] a');
+    expect(link?.getAttribute('href')).not.toMatch(/^javascript:/i);
+  });
+
   it('markupVersion 이 없거나 빈 레거시 기사는 content 로 폴백한다 (깨지지 않음)', () => {
     for (const mv of [undefined, '', null]) {
       const article = { title: 't', content: '레거시 본문', markupVersion: mv };
