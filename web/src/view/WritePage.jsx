@@ -1015,18 +1015,16 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
             <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
               onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
-          {/* SPEC-NEWS-REVISE-009 lineage-Y — DDH(데스크 보류) 기사: role D|Z 에게 송고 노출(보류 없음),
-              KILL 은 Z 전용(news.md 권한 매트릭스 — role D 비표시, #19 8e4b1eb).
+          {/* SPEC-NEWS-REVISE-009 lineage-Y — DDH(데스크 보류) 기사: role D|Z 에게 송고를 노출(보류 없음).
+              KILL 은 권한 매트릭스(news.md L62-65, SSOT KILL 행)에 따라 Z 권한에만 노출 — D 권한은 비표시.
               role R 은 어떤 액션 버튼도 보이지 않는다. lockError 시 비활성화. */}
           {isDdh && (user.role === 'D' || user.role === 'Z') ? (
-            <>
-              <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
-                onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
-              {user.role === 'Z' ? (
-                <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
-                  onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
-              ) : null}
-            </>
+            <button type="button" className="yh-btn yh-btn--primary" disabled={!!ctrl.lockError}
+              onClick={() => { if (window.confirm('송고하시겠습니까?')) ctrl.send(); }}>송고</button>
+          ) : null}
+          {isDdh && user.role === 'Z' ? (
+            <button type="button" className="yh-btn yh-btn--kill" disabled={!!ctrl.lockError}
+              onClick={() => { if (window.confirm('KILL하시겠습니까?')) ctrl.kill(); }}>KILL</button>
           ) : null}
           {/* SPEC-NEWS-REVISE-011 — DPS 고침/포털고침: R/D/Z 에게 송고/보류만 노출(KILL 비표시). 기존 RDS
               블록과 동일 클래스·확인창·lockError disabled·송고 가드(ctrl.send 내부 "(끝)"/제목 가드)를 재사용한다. */}
@@ -1043,7 +1041,6 @@ export function WritePage({ user, editArticleId: editArticleIdProp, draftKey, on
         {/* REQ-FE-WRITE-014 v0.3.0: 성공 시 버튼 아래 상태 메시지를 표시하지 않는다 — lifecycleStatus
             표시 블록 제거. 거부/오류(actionError)는 종전대로 노출한다. */}
         {ctrl.actionError ? <div role="alert" className="yh-alert">{ctrl.actionError}</div> : null}
-
         {/* SPEC-NEWS-REVISE-007 REQ-VO-MAPPING (AC-MAP-2/3): read-only ContentsVO 8 fields, shown only in
             an edit context (ctrl.readonlyMeta non-null). A blank-new draft renders nothing here. */}
         {ctrl.readonlyMeta ? <ReadonlyMetaPanel meta={ctrl.readonlyMeta} /> : null}
