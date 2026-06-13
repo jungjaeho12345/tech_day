@@ -32,6 +32,46 @@ function freshCollection({ whitelistSource = 'FEED-A' } = {}) {
 
 const OPTS = { now: new Date('2026-06-13T00:00:00Z') };
 
+// --- AC-4: FTP path and API path produce IDENTICAL extraction ---------------
+// Round-1 evaluator recommendation: pin that both reception paths run the same
+// ingest/parser and yield equal {title, markupVersion} for an identical payload.
+describe('AC-4: FTP·API 경로가 동일 payload 에서 동등한 추출 결과를 산출한다 (REQ-RCV-PARSE-001/002)', () => {
+  it('동일 payload 를 FTP/API 양 경로로 수신시키면 title + markupVersion(blocks) 이 동등하다', () => {
+    const payload = { title: '동일 제목', body: '본문 단락 하나\n본문 단락 둘' };
+
+    // Each path needs its own DB row, but the extraction must be identical.
+    const ftpEnv = freshCollection();
+    const apiEnv = freshCollection();
+    const ftp = ftpEnv.svc.receiveFtpEvent({ sourceId: 'FEED-A', payload }, OPTS);
+    const api = apiEnv.svc.receiveApiResponse({ sourceId: 'FEED-A', payload }, OPTS);
+    assert.equal(ftp.ok, true);
+    assert.equal(api.ok, true);
+
+    const ftpRow = ftpEnv.db
+      .prepare('SELECT title, markupVersion FROM Article WHERE articleId = ?').get(ftp.articleId);
+    const apiRow = apiEnv.db
+      .prepare('SELECT title, markupVersion FROM Article WHERE articleId = ?').get(api.articleId);
+
+    // Title equality.
+    assert.equal(ftpRow.title, apiRow.title);
+    assert.equal(ftpRow.title, '동일 제목');
+    // markupVersion block-JSON equality — same parser, same normalization.
+    assert.deepEqual(JSON.parse(ftpRow.markupVersion), JSON.parse(apiRow.markupVersion));
+    assert.deepEqual(JSON.parse(ftpRow.markupVersion).blocks, [
+      { type: 'text', text: '본문 단락 하나' },
+      { type: 'text', text: '본문 단락 둘' },
+    ]);
+  });
+
+  it('수신 결과 객체(title 미반환이지만 source/status)도 양 경로에서 동등하다', () => {
+    const payload = { title: '동일', body: '본문' };
+    const ftp = freshCollection().svc.receiveFtpEvent({ sourceId: 'FEED-A', payload }, OPTS);
+    const api = freshCollection().svc.receiveApiResponse({ sourceId: 'FEED-A', payload }, OPTS);
+    assert.equal(ftp.status, api.status);
+    assert.equal(ftp.source, api.source);
+  });
+});
+
 // --- AC-5b: abstract parser adapter + default concrete parser ---------------
 describe('AC-5b: 추상 파서 어댑터 + 기본 파서 1종 (REQ-RCV-PARSE-005)', () => {
   it('구조화 입력 {title, body} 에서 {title, bodyBlocks} 를 산출한다', () => {
@@ -52,6 +92,29 @@ describe('AC-5b: 추상 파서 어댑터 + 기본 파서 1종 (REQ-RCV-PARSE-005
   it('defaultParser 는 어댑터 인터페이스(parse 함수)를 만족한다', () => {
     assert.equal(typeof defaultParser.parse, 'function');
     assert.equal(defaultParser.name, 'default');
+  });
+
+  // Covers defaultParser.js Array.isArray(payload.body) branch (round-1 uncovered).
+  it('body 가 배열이면 단락별 텍스트 블록이 생성된다', () => {
+    const result = parse({ title: '제목', body: ['단락1', '단락2'] });
+    assert.equal(result.title, '제목');
+    assert.deepEqual(result.bodyBlocks, [
+      { type: 'text', text: '단락1' },
+      { type: 'text', text: '단락2' },
+    ]);
+  });
+
+  it('body 배열의 비문자열 항목은 무시되고 문자열 단락만 블록이 된다', () => {
+    const result = parse({ title: '제목', body: ['단락1', 42, null, '단락2'] });
+    assert.deepEqual(result.bodyBlocks.map((b) => b.text), ['단락1', '단락2']);
+  });
+
+  it('배열 body 경로가 수집 파이프라인 전체에서 markupVersion 으로 적재된다', () => {
+    const { db, svc } = freshCollection();
+    const r = svc.ingest({ sourceId: 'FEED-A', payload: { title: 't', body: ['p1', 'p2'] } }, OPTS);
+    assert.equal(r.ok, true);
+    const parsed = JSON.parse(db.prepare('SELECT markupVersion FROM Article WHERE articleId = ?').get(r.articleId).markupVersion);
+    assert.deepEqual(parsed.blocks.map((b) => b.text), ['p1', 'p2']);
   });
 });
 
@@ -77,6 +140,20 @@ describe('AC-5: 본문 → yh-editor 블록 JSON 정규화 (REQ-RCV-PARSE-003)',
     assert.equal(isParseResultComplete({ title: '제목', bodyBlocks: [] }), false);
     assert.equal(isParseResultComplete({ title: '', bodyBlocks: [{ type: 'text', text: 'x' }] }), false);
     assert.equal(isParseResultComplete({ title: '제목', bodyBlocks: [{ type: 'text', text: 'x' }] }), true);
+  });
+
+  // Defensive branches in parser.js (round-1 uncovered: parser.js L24-25, L51-52).
+  it('textToBlocks 는 비문자열 입력에 대해 빈 블록 배열을 반환한다 (방어 분기)', () => {
+    assert.deepEqual(textToBlocks(null), []);
+    assert.deepEqual(textToBlocks(undefined), []);
+    assert.deepEqual(textToBlocks(123), []);
+    assert.deepEqual(textToBlocks(['배열도', '비문자열']), []);
+  });
+
+  it('isParseResultComplete 는 null/undefined 직접 호출 시 false 다 (방어 분기)', () => {
+    assert.equal(isParseResultComplete(null), false);
+    assert.equal(isParseResultComplete(undefined), false);
+    assert.equal(isParseResultComplete(), false);
   });
 });
 
@@ -249,6 +326,50 @@ describe('AC-8: 자동기사 표지 필수 (REQ-RCV-AUTOMARK-001/002, DP-RCV-1)'
     for (const id of [ftp.articleId, api.articleId]) {
       assert.equal(db.prepare('SELECT source FROM Contents WHERE articleId = ?').get(id).source, '자동기사');
     }
+  });
+});
+
+// --- collectionService uncovered branches (round-1: 78.95% → target 85%+) ---
+describe('collectionService 미커버 분기 보강', () => {
+  it('options.now 미주입 시 실제 new Date() 경로로 createdAt 이 기록된다 (프로덕션 경로)', () => {
+    const { db, svc } = freshCollection();
+    const before = Date.now();
+    // No options → register() falls through to `options.now ?? new Date()` real branch.
+    const r = svc.ingest({ sourceId: 'FEED-A', payload: { title: 't', body: 'b' } });
+    const after = Date.now();
+    assert.equal(r.ok, true);
+    // articleId date segment must reflect a real current date (not the fixed test clock).
+    assert.match(r.articleId, /^AKR\d{8}\d{9}$/);
+    const row = db.prepare('SELECT createdAt FROM Contents WHERE articleId = ?').get(r.articleId);
+    const created = Date.parse(row.createdAt);
+    assert.ok(Number.isFinite(created), 'createdAt is a valid ISO timestamp');
+    assert.ok(created >= before && created <= after, 'createdAt falls in the real-time window');
+  });
+
+  it('receiverConfigService 미주입 시 db 로 직접 생성한 화이트리스트 게이트가 동작한다', () => {
+    // Exercises `deps.receiverConfigService ?? createReceiverConfigService(db)` fallback branch.
+    const db = new DatabaseSync(':memory:');
+    createSchema(db);
+    // Register the whitelist source directly (no injected service handed to createCollectionService).
+    createReceiverConfigService(db).create(
+      { kind: 'receive', sourceId: 'FEED-A', config: {} }, OPTS,
+    );
+    const svc = createCollectionService(db); // no deps → builds its own receiverConfigService.
+    const ok = svc.ingest({ sourceId: 'FEED-A', payload: { title: 't', body: 'b' } }, OPTS);
+    assert.equal(ok.ok, true);
+    const rejected = svc.ingest({ sourceId: 'NOPE', payload: { title: 't', body: 'b' } }, OPTS);
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.reason, 'rejected-whitelist');
+  });
+
+  it('envelope 가 null/undefined 면 sourceId 없음으로 거부된다 (envelope ?? {} 분기)', () => {
+    const { db, svc } = freshCollection();
+    for (const bad of [null, undefined]) {
+      const r = svc.ingest(bad, OPTS);
+      assert.equal(r.ok, false);
+      assert.equal(r.reason, 'rejected-whitelist');
+    }
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM Contents').get().n, 0);
   });
 });
 
