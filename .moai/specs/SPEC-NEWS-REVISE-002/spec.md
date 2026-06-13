@@ -211,7 +211,7 @@ related_specs:
 
 #### Acceptance Criteria 포인터
 
-- AC-ENDMARK-1 (정확한 문자열), AC-ENDMARK-2 (이미 존재 시 noop), AC-ENDMARK-3 (골드색), AC-ENDMARK-4 (SPEC-NEWS-REVISE-001 AC-CTRL-D-5 갱신 정합) — acceptance.md §5
+- AC-ENDMARK-1 (정확한 문자열) — [SUPERSEDED by SPEC-NEWS-REVISE-015 REQ-EDITOR-END-NEWLINE] "(끝)" 은 이제 선행 개행 없는 인라인이 아니라 본문 맨 마지막 다음 **개행에 자기 줄**(`\n(끝)`)로 들어간다. 인라인(prefix-free) 단언은 폐지되고 SPEC-NEWS-REVISE-015 AC-END-NL-1 로 대체된다. (idempotent·골드색·임베드 뒤 배치는 SPEC-NEWS-REVISE-015 AC-END-NL-2/3/4 로 계승), AC-ENDMARK-2 (이미 존재 시 noop), AC-ENDMARK-3 (골드색), AC-ENDMARK-4 (SPEC-NEWS-REVISE-001 AC-CTRL-D-5 갱신 정합) — acceptance.md §5
 
 ---
 
