@@ -35,8 +35,8 @@ export function createArticleModel(db) {
           department, departmentCode, createdAt, editedAt, sentAt, distributedAt,
           embargoAt, secondEmbargoAt, status, lockYN,
           coAuthor, region, attribute, keyword,
-          internalComment, externalComment, attachmentFile, referenceFile)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          internalComment, externalComment, attachmentFile, referenceFile, source)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         articleId, data.title ?? null, data.content ?? null, data.author ?? null,
         data.modifier ?? null, data.sender ?? null, data.department ?? null,
@@ -46,6 +46,9 @@ export function createArticleModel(db) {
         data.coAuthor ?? null, data.region ?? null, data.attribute ?? null, data.keyword ?? null,
         data.internalComment ?? null, data.externalComment ?? null,
         data.attachmentFile ?? null, data.referenceFile ?? null,
+        // SPEC-RCV-COLLECT-001 DP-RCV-1: auto-article mark column. NULL for manual/editor articles;
+        // the collection pipeline passes source='자동기사' (REQ-RCV-AUTOMARK-001).
+        data.source ?? null,
       );
     },
 

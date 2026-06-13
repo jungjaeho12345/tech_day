@@ -246,6 +246,36 @@ export function createHttpModel({ baseUrl } = {}) {
       );
     },
 
+    // --- Receiver config (rcvMgmt.do, SPEC-RCV-COLLECT-001 REQ-RCV-MGMT-001..006) ----------
+    // Z-only is enforced server-side from the validated session; the client only replays the
+    // x-session-id header (via headers()) and forwards filters/entry/id. Network failures degrade
+    // to a { ok:false, reason } shape so the page renders its denial/error state instead of throwing.
+    //   queryReceiverConfig  -> GET    /api/receiver-config        { ok, entries } | { ok:false, reason }
+    //   createReceiverConfig -> POST   /api/receiver-config        { ok, id } | { ok:false, reason }
+    //   deleteReceiverConfig -> DELETE /api/receiver-config/:id    { ok } | { ok:false, reason }
+    async queryReceiverConfig(filters) {
+      return getJson(
+        `/api/receiver-config${toQueryString(filters)}`,
+        { ok: false, reason: 'network-error' },
+      );
+    },
+    async createReceiverConfig(entry) {
+      return sendJson(
+        'POST',
+        '/api/receiver-config',
+        entry ?? {},
+        { ok: false, reason: 'network-error' },
+      );
+    },
+    async deleteReceiverConfig(id) {
+      return sendJson(
+        'DELETE',
+        `/api/receiver-config/${encodeURIComponent(id)}`,
+        undefined,
+        { ok: false, reason: 'network-error' },
+      );
+    },
+
     // --- Realtime (SSE, DP-F2) ----------------------------------------------
     subscribe(_filter, onChange) {
       // EventSource is a browser global; guard so importing this module never crashes in non-browser contexts.

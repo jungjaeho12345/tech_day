@@ -23,11 +23,19 @@ export function canManageUsers(role) {
   return role === 'Z';
 }
 
+// @MX:NOTE: [AUTO] Business rule — only Z (관리자) may read/create/delete rcvMgmt.do receiver/API/FTP
+// settings (SPEC-RCV-COLLECT-001 REQ-RCV-MGMT-005, DP-RCV-6). R/D are denied — mirrors the user
+// management Z-only rule.
+export function canManageReceiverConfig(role) {
+  return role === 'Z';
+}
+
 // Action -> permission predicate. 'dps-edit' covers 고침/포털고침 on a DPS article.
 const ACTION_RULES = Object.freeze({
   'edit': canEditArticle,
   'dps-edit': canPerformDpsEdit,
   'manage-users': canManageUsers,
+  'manage-receiver-config': canManageReceiverConfig,
 });
 
 /**

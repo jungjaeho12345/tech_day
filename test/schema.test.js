@@ -29,7 +29,9 @@ function pkColumns(db, table) {
 }
 
 // AC-1: schema creation
-test('AC-1: creates exactly three tables Article, Contents, User', () => {
+// SPEC-RCV-COLLECT-001 DP-RCV-3 (REQ-RCV-MIGRATE-001): ReceiverConfig 수신처 설정 테이블이
+// additive 로 신설되어 총 4개 테이블이 된다 (기존 3개는 그대로 보존).
+test('AC-1: creates the four tables Article, Contents, ReceiverConfig, User', () => {
   const db = freshDb();
   createSchema(db);
   const tables = db
@@ -37,7 +39,7 @@ test('AC-1: creates exactly three tables Article, Contents, User', () => {
     .all()
     .map((r) => r.name)
     .filter((n) => !n.startsWith('sqlite_'));
-  assert.deepEqual(tables, ['Article', 'Contents', 'User']);
+  assert.deepEqual(tables, ['Article', 'Contents', 'ReceiverConfig', 'User']);
 });
 
 test('AC-1: Article has expected columns', () => {
@@ -56,6 +58,8 @@ test('AC-1: Contents has expected columns including distributedAt and status', (
   // 단일 SQL race-safe 락 획득 (UPDATE ... WHERE lockYN='N' OR lockedAt < ?)을 가능케 함.
   // 편집 진입 공통정보 복원 (news.md 기사 편집 기능): 공통정보 8 컬럼(coAuthor..referenceFile)
   // 추가 → 총 27 컬럼. 신규 CREATE와 레거시 ALTER 마이그레이션이 같은 순서를 공유하도록 맨 뒤에 둔다.
+  // SPEC-RCV-COLLECT-001 DP-RCV-1 (REQ-RCV-MIGRATE-001): `source` 자동기사 표지 컬럼이 맨 뒤에
+  // additive 로 추가되어 총 28 컬럼. attribute(사용자 편집)와 분리하여 표지를 안정화한다.
   assert.deepEqual(cols, [
     'articleId', 'title', 'content', 'author', 'modifier', 'sender',
     'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
@@ -63,9 +67,11 @@ test('AC-1: Contents has expected columns including distributedAt and status', (
     'lockerUserId', 'lockerSessionId', 'lockedAt',
     'coAuthor', 'region', 'attribute', 'keyword',
     'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
+    'source',
   ]);
   assert.ok(cols.includes('distributedAt'), 'distributedAt column must exist');
   assert.ok(cols.includes('status'), 'status column must exist on Contents');
+  assert.ok(cols.includes('source'), 'source 자동기사 표지 column must exist on Contents');
 });
 
 // SPEC-NEWS-REVISE-002 — AC-LOCKYN-1: lockYN 컬럼은 NOT NULL + DEFAULT 'N'.
@@ -144,6 +150,80 @@ test('REQ-SCH-010: re-running createSchema on a pre-existing Contents adds new c
   assert.equal(row.status, 'RDS');
   assert.equal(row.lockYN, 'N');
   assert.equal(row.lockerUserId, null);
+});
+
+// SPEC-RCV-COLLECT-001 — AC-12: 멱등 마이그레이션 (Contents.source 컬럼 + ReceiverConfig 테이블).
+describe('SPEC-RCV-COLLECT-001 AC-12 — 멱등 마이그레이션 (자동기사 표지 + 수신처 설정 테이블)', () => {
+  it('REQ-RCV-MIGRATE-001: ReceiverConfig 테이블이 신설되고 기대 컬럼을 갖는다', () => {
+    const db = freshDb();
+    createSchema(db);
+    const cols = columnInfo(db, 'ReceiverConfig').map((c) => c.name);
+    assert.deepEqual(cols, ['id', 'kind', 'sourceId', 'config', 'createdAt']);
+    assert.deepEqual(pkColumns(db, 'ReceiverConfig'), ['id']);
+  });
+
+  it('REQ-RCV-MIGRATE-001: Contents.source 자동기사 표지 컬럼이 VARCHAR + nullable 로 추가된다', () => {
+    const db = freshDb();
+    createSchema(db);
+    const col = columnInfo(db, 'Contents').find((c) => c.name === 'source');
+    assert.ok(col, 'source 컬럼이 존재해야 한다');
+    assert.equal(col.type, 'VARCHAR');
+    assert.equal(col.notnull, 0, 'source 는 nullable (레거시/수동 기사는 NULL)');
+  });
+
+  it('REQ-RCV-MIGRATE-002: 레거시 Contents(source 컬럼 없음)에 createSchema 재실행 시 행 보존 + source 추가', () => {
+    const db = freshDb();
+    // source 컬럼이 없는 레거시 Contents (공통정보/락 컬럼까지만).
+    db.exec(`
+      CREATE TABLE Contents (
+        articleId VARCHAR PRIMARY KEY,
+        title VARCHAR,
+        content VARCHAR,
+        author VARCHAR,
+        modifier VARCHAR,
+        sender VARCHAR,
+        department VARCHAR,
+        departmentCode VARCHAR,
+        createdAt VARCHAR,
+        editedAt VARCHAR,
+        sentAt VARCHAR,
+        distributedAt VARCHAR,
+        embargoAt VARCHAR,
+        secondEmbargoAt VARCHAR,
+        status VARCHAR
+      )
+    `);
+    db.prepare('INSERT INTO Contents (articleId, title, status) VALUES (?,?,?)')
+      .run('AKR202606130000000001', '레거시 기사', 'RDS');
+
+    createSchema(db);
+    const cols = columnInfo(db, 'Contents').map((c) => c.name);
+    assert.ok(cols.includes('source'), 'source 컬럼이 additive 로 추가된다');
+    const row = db.prepare('SELECT articleId, title, status, source FROM Contents WHERE articleId = ?')
+      .get('AKR202606130000000001');
+    assert.equal(row.title, '레거시 기사', '기존 행이 보존된다 (DB 삭제 금지)');
+    assert.equal(row.status, 'RDS');
+    assert.equal(row.source, null, '레거시 행의 source 는 NULL');
+  });
+
+  it('AC-12: createSchema 를 두 번 실행해도 안전하다 (멱등) — 행 수 불변, throw 없음', () => {
+    const db = freshDb();
+    createSchema(db);
+    db.prepare('INSERT INTO Contents (articleId, status, source) VALUES (?,?,?)')
+      .run('AKR202606130000000002', 'RDS', '자동기사');
+    db.prepare('INSERT INTO ReceiverConfig (id, kind, sourceId, config, createdAt) VALUES (?,?,?,?,?)')
+      .run('RCV000000001', 'receive', 'FEED-A', '{}', '2026-06-13T00:00:00.000Z');
+    const beforeContents = db.prepare('SELECT COUNT(*) AS n FROM Contents').get().n;
+    const beforeConfig = db.prepare('SELECT COUNT(*) AS n FROM ReceiverConfig').get().n;
+
+    // 재실행 — throw 하지 않고 데이터를 보존해야 한다.
+    createSchema(db);
+
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM Contents').get().n, beforeContents);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ReceiverConfig').get().n, beforeConfig);
+    assert.equal(db.prepare('SELECT source FROM Contents WHERE articleId = ?')
+      .get('AKR202606130000000002').source, '자동기사');
+  });
 });
 
 test('AC-1: User has expected columns', () => {

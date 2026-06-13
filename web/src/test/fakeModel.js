@@ -66,6 +66,18 @@ export function createFakeModel(overrides = {}) {
       // Default: end the session successfully (no real HTTP transport wired).
       return { ok: true };
     },
+    // SPEC-RCV-COLLECT-001 REQ-RCV-MGMT-001..006 — rcvMgmt.do receiver-config CRUD. Defaults mirror the
+    // backend's Z-allowed shapes ({ok:true,...}); tests that exercise denial/empty/duplicate paths
+    // override these via createFakeModel({ queryReceiverConfig, createReceiverConfig, ... }).
+    async queryReceiverConfig() {
+      return { ok: true, entries: [] };
+    },
+    async createReceiverConfig() {
+      return { ok: true, id: 'RCV000000001' };
+    },
+    async deleteReceiverConfig() {
+      return { ok: true };
+    },
     subscribe(_filter, onChange) {
       const entry = { onChange };
       subscribers.add(entry);

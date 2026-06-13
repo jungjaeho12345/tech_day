@@ -18,6 +18,11 @@ export const ARTICLE_COLUMNS = Object.freeze([
 // page's 공통정보 fields that previously lived only in the client DTO and were silently dropped on
 // INSERT, so 편집 진입 시 공통정보 복원이 불가능했다 (news.md 기사 편집 기능). Appended LAST so a
 // fresh CREATE TABLE and an ALTER-migrated legacy DB share the same column order.
+// @MX:NOTE: [AUTO] `source` (SPEC-RCV-COLLECT-001 DP-RCV-1) is the dedicated auto-article mark
+// column: collected (자동기사) rows carry source='자동기사'. It is intentionally SEPARATE from the
+// user-editable `attribute` column so a write-page edit can never overwrite the mark and so
+// auto/manual articles stay unambiguous. Appended LAST so a fresh CREATE and an ALTER-migrated
+// legacy DB share the same column order.
 export const CONTENTS_COLUMNS = Object.freeze([
   'articleId', 'title', 'content', 'author', 'modifier', 'sender',
   'department', 'departmentCode', 'createdAt', 'editedAt', 'sentAt',
@@ -25,7 +30,23 @@ export const CONTENTS_COLUMNS = Object.freeze([
   'lockerUserId', 'lockerSessionId', 'lockedAt',
   'coAuthor', 'region', 'attribute', 'keyword',
   'internalComment', 'externalComment', 'attachmentFile', 'referenceFile',
+  'source',
 ]);
+
+// SPEC-RCV-COLLECT-001 DP-RCV-3 — receiver-configuration table columns. Holds API settings,
+// FTP send settings, and FTP/receive (whitelist) settings. `sourceId` is the sender/source
+// identifier checked by the ingest whitelist (NOT a login userId — see User table). `kind`
+// distinguishes the three setting types; `config` carries the kind-specific settings as a JSON
+// string (all columns VARCHAR per the project schema convention).
+export const RECEIVER_CONFIG_COLUMNS = Object.freeze([
+  'id', 'kind', 'sourceId', 'config', 'createdAt',
+]);
+
+// Allowed receiver-configuration kinds (rcv.md 관리: API 설정 / FTP 송신 / 수신 설정).
+export const RECEIVER_CONFIG_KINDS = Object.freeze(new Set(['api', 'ftp-send', 'receive']));
+
+// The auto-article source mark value (rcv.md: 자동기사는 '자동기사'로 표기).
+export const AUTO_ARTICLE_SOURCE = '자동기사';
 
 // The 8 common-info columns added by the edit-load fix (nullable VARCHAR, no default).
 // Shared by CREATE_CONTENTS and the idempotent ALTER migration below.
@@ -86,7 +107,19 @@ CREATE TABLE IF NOT EXISTS Contents (
   internalComment VARCHAR,
   externalComment VARCHAR,
   attachmentFile VARCHAR,
-  referenceFile VARCHAR
+  referenceFile VARCHAR,
+  source VARCHAR
+)`;
+
+// SPEC-RCV-COLLECT-001 DP-RCV-3 — dedicated receiver-configuration table. Created idempotently
+// (CREATE TABLE IF NOT EXISTS) so re-running never destroys data (REQ-RCV-MIGRATE-001/002).
+const CREATE_RECEIVER_CONFIG = `
+CREATE TABLE IF NOT EXISTS ReceiverConfig (
+  id VARCHAR PRIMARY KEY,
+  kind VARCHAR,
+  sourceId VARCHAR,
+  config VARCHAR,
+  createdAt VARCHAR
 )`;
 
 const CREATE_USER = `
@@ -207,15 +240,37 @@ export function backfillContentsDepartmentFromAuthor(db) {
 }
 
 /**
- * Create the three foundation tables idempotently on the given DatabaseSync handle.
+ * Idempotently add the `source` auto-article mark column to a pre-existing Contents table
+ * (SPEC-RCV-COLLECT-001 DP-RCV-1, REQ-RCV-MIGRATE-001). Mirrors ensureContentsCommonInfoColumns:
+ * PRAGMA check → ALTER ADD COLUMN only when absent; re-running preserves existing rows
+ * (REQ-RCV-MIGRATE-002, CLAUDE.md HARD: DB 내용은 삭제하지 않는다). Nullable: legacy/manual rows
+ * carry NULL, only collected articles get source='자동기사'.
+ * @param {import('node:sqlite').DatabaseSync} db
+ */
+function ensureContentsSourceColumn(db) {
+  // Case-insensitive: see ensureContentsLockYNColumn.
+  const existing = new Set(
+    db.prepare("PRAGMA table_info('Contents')").all().map((col) => col.name.toLowerCase()),
+  );
+  if (!existing.has('source')) {
+    db.exec('ALTER TABLE Contents ADD COLUMN source VARCHAR');
+  }
+}
+
+/**
+ * Create the foundation tables idempotently on the given DatabaseSync handle.
+ * SPEC-RCV-COLLECT-001 adds the ReceiverConfig table (DP-RCV-3) and the Contents.source column
+ * (DP-RCV-1) as additive, idempotent migrations — no existing table/column/row is ever dropped.
  * @param {import('node:sqlite').DatabaseSync} db
  */
 export function createSchema(db) {
   db.exec(CREATE_ARTICLE);
   db.exec(CREATE_CONTENTS);
+  db.exec(CREATE_RECEIVER_CONFIG);
   db.exec(CREATE_USER);
   ensureUserActiveColumn(db);
   ensureContentsLockYNColumn(db);
   ensureContentsLockerColumns(db);
   ensureContentsCommonInfoColumns(db);
+  ensureContentsSourceColumn(db);
 }

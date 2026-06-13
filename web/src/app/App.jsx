@@ -11,6 +11,7 @@ import { TopBar } from '../view/TopBar.jsx';
 import { LoginPage } from '../view/LoginPage.jsx';
 import { WriteWorkspace } from '../view/WriteWorkspace.jsx';
 import { ViewPage } from '../view/ViewPage.jsx';
+import { RcvMgmtPage } from '../view/RcvMgmtPage.jsx';
 
 // 세션 영속화 키 — sessionStorage 충돌 방지를 위해 'tech_day.' prefix를 쓴다.
 // user(신원)는 App이, sessionId(전송 세션)는 httpModel이 각각 sessionStorage에 보관하며,
@@ -177,6 +178,16 @@ export function App({ model }) {
       >
         기사 조회
       </a>
+      {/* 수신처 관리(rcvMgmt.do) — Z 전용(SPEC-RCV-COLLECT-001 AC-11). 비-Z 에게는 링크 자체를 노출하지 않는다. */}
+      {user?.role === 'Z' ? (
+        <a
+          href={pathForRoute(ROUTES.RCVMGMT)}
+          className={`yh-nav__link${route === ROUTES.RCVMGMT ? ' yh-nav__link--active' : ''}`}
+          onClick={(e) => { e.preventDefault(); navigate(ROUTES.RCVMGMT); }}
+        >
+          수신처 관리
+        </a>
+      ) : null}
     </nav>
   ) : null;
 
@@ -200,6 +211,11 @@ export function App({ model }) {
         ) : null}
         {activeRoute === ROUTES.VIEW ? (
           <ViewPage user={user} nav={nav} />
+        ) : null}
+        {/* 수신처 관리(rcvMgmt.do) — Z 전용(AC-11). RcvMgmtPage 가 TopBar+nav 를 직접 렌더(ViewPage 관례).
+            페이지가 user.role 을 재검증해 비-Z 에게는 거부 화면을 보이고, 백엔드도 세션 역할로 Z-gate(이중 가드). */}
+        {activeRoute === ROUTES.RCVMGMT ? (
+          <RcvMgmtPage user={user} nav={nav} />
         ) : null}
       </SessionContext.Provider>
     </ModelContext.Provider>

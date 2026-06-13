@@ -8,6 +8,8 @@ import { createArticleService } from '../services/articleService.js';
 import { createUserService } from '../services/userService.js';
 import { createMediaSearchService } from '../services/mediaSearch.js';
 import { createSessionService } from '../services/sessionService.js';
+import { createReceiverConfigService } from '../services/receiverConfigService.js';
+import { createCollectionService } from '../services/collectionService.js';
 import { assertAuthorized } from '../services/authorization.js';
 
 /**
@@ -20,6 +22,10 @@ export function createControllers(db, deps = {}) {
   const mediaService = deps.mediaSearch ?? createMediaSearchService();
   // Session service is injectable so tests can drive ttl/clock (REQ-AUTH-GUARD-003).
   const sessions = deps.sessionService ?? createSessionService();
+  // SPEC-RCV-COLLECT-001 — receiver-config CRUD + the collection pipeline (auto-article ingestion).
+  const receiverConfigService = deps.receiverConfigService ?? createReceiverConfigService(db);
+  const collectionService = deps.collectionService
+    ?? createCollectionService(db, { receiverConfigService });
 
   // @MX:NOTE: [AUTO] Guard helper — derive the acting role ONLY from the validated session
   // (REQ-AUTH-ROLE-004); a forbidden/unauthenticated action is rejected before any state change.
@@ -117,6 +123,38 @@ export function createControllers(db, deps = {}) {
       // 2026-06-06 directive (supersedes D2-8 fallback): route by media type —
       // type 'image' -> Google Image Search, anything else -> YouTube.
       search: (queryText, type) => mediaService.search(queryText, type),
+    },
+    // SPEC-RCV-COLLECT-001 — rcvMgmt.do receiver/API/FTP setting CRUD. Z-only (REQ-RCV-MGMT-005,
+    // DP-RCV-6): the acting role is derived from the validated session, never the request body.
+    // The 'manage-receiver-config' authorization gate runs BEFORE any read/create/delete.
+    receiverConfig: {
+      query: (sessionId, filters) => {
+        const { decision } = guard(sessionId, 'manage-receiver-config');
+        if (!decision.ok) {
+          return decision;
+        }
+        return { ok: true, entries: receiverConfigService.query(filters ?? {}) };
+      },
+      create: (sessionId, entry, options) => {
+        const { decision } = guard(sessionId, 'manage-receiver-config');
+        if (!decision.ok) {
+          return decision;
+        }
+        return receiverConfigService.create(entry ?? {}, options);
+      },
+      remove: (sessionId, id) => {
+        const { decision } = guard(sessionId, 'manage-receiver-config');
+        if (!decision.ok) {
+          return decision;
+        }
+        return receiverConfigService.remove(id);
+      },
+    },
+    // SPEC-RCV-COLLECT-001 — collection (자동기사) ingestion. The whitelist → parse → register
+    // pipeline lives in the service; these are the FTP-event and API entry points.
+    collection: {
+      receiveFtpEvent: (envelope, options) => collectionService.receiveFtpEvent(envelope, options),
+      receiveApiResponse: (envelope, options) => collectionService.receiveApiResponse(envelope, options),
     },
   };
 }

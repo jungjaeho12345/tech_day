@@ -38,6 +38,13 @@
 // 별도 경로(기존 보유자-한정 unlockArticle 과 구분). 역할 가드는 서버가 검증된 세션에서 재검증하므로
 // 클라이언트는 body 없이 articleId 만 넘긴다(NFR-SEC).
 //   forceUnlockArticle(articleId) -> { ok:true } | { ok:false, reason }        POST /api/articles/:id/force-unlock
+//
+// SPEC-RCV-COLLECT-001 REQ-RCV-MGMT-001..006 — rcvMgmt.do receiver/API/FTP setting CRUD. The backend
+// gates these Z-only from the validated session (server/index.js), so the client passes NO role — it
+// only forwards filters/entry/id and replays the x-session-id header via the transport.
+//   queryReceiverConfig(filters?) -> { ok:true, entries } | { ok:false, reason }   GET    /api/receiver-config
+//   createReceiverConfig(entry)   -> { ok:true, id } | { ok:false, reason }         POST   /api/receiver-config
+//   deleteReceiverConfig(id)      -> { ok:true } | { ok:false, reason }             DELETE /api/receiver-config/:id
 export const MODEL_KEYS = Object.freeze([
   'login',
   'logout',
@@ -50,6 +57,9 @@ export const MODEL_KEYS = Object.freeze([
   'lockArticle',
   'unlockArticle',
   'forceUnlockArticle',
+  'queryReceiverConfig',
+  'createReceiverConfig',
+  'deleteReceiverConfig',
   'subscribe',
 ]);
 

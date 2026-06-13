@@ -164,6 +164,26 @@ export function createApp({ controllers, sessionService }) {
     res.json(result);
   });
 
+  // --- Receiver config (rcvMgmt.do) -----------------------------------------
+  // SPEC-RCV-COLLECT-001 — receiver/API/FTP setting CRUD. Z-only (REQ-RCV-MGMT-005, DP-RCV-6):
+  // the acting role is derived from the validated session via the manage-receiver-config gate;
+  // R/D and unauthenticated callers get { ok:false, reason } with no config leak.
+  // GET /api/receiver-config -> { ok, entries } (query params filter by kind/sourceId).
+  app.get('/api/receiver-config', (req, res) => {
+    res.json(controllers.receiverConfig.query(sessionIdOf(req), req.query));
+  });
+
+  // POST /api/receiver-config { kind, sourceId?, config? } -> { ok, id? }.
+  app.post('/api/receiver-config', (req, res) => {
+    res.json(controllers.receiverConfig.create(sessionIdOf(req), req.body ?? {}));
+  });
+
+  // DELETE /api/receiver-config/:id -> { ok }. REQ-RCV-MGMT-004: removes only the config entry;
+  // already-collected Article/Contents rows are never touched.
+  app.delete('/api/receiver-config/:id', (req, res) => {
+    res.json(controllers.receiverConfig.remove(sessionIdOf(req), req.params.id));
+  });
+
   // --- Articles -------------------------------------------------------------
   // GET /api/articles -> array. Query params are AND-combined metadata filters.
   // H-1: session-gated — the article roster is not public (no unauthenticated leak).
