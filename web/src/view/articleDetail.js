@@ -86,8 +86,9 @@ function renderEmbed(embed) {
       ? `<img src="${escapeHtml(embed.thumbnailUrl)}" alt="${escapeHtml(embed.title || '영상')}" />`
       : '';
     const title = escapeHtml(embed.title || embed.url || '영상');
-    const link = embed.url
-      ? `<a class="yh-detail__embed-link" href="${escapeHtml(embed.url)}" rel="noreferrer">${escapeHtml(embed.url)}</a>`
+    const safeHref = embed.url && /^https?:\/\//.test(embed.url) ? embed.url : null;
+    const link = safeHref
+      ? `<a class="yh-detail__embed-link" href="${escapeHtml(safeHref)}" rel="noreferrer">${escapeHtml(safeHref)}</a>`
       : '';
     return `<figure class="yh-detail__embed yh-detail__embed--video">`
       + `${thumb}<figcaption class="yh-detail__embed-cap"><span class="yh-detail__embed-mark">영상</span>`
