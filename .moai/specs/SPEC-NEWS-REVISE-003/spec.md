@@ -214,7 +214,7 @@ related_specs:
 
 #### Acceptance Criteria 포인터
 
-- AC-EMB-DEL-1 (단일 임베드 삭제), AC-EMB-DEL-2 (다중 임베드 중 하나만 삭제), AC-ALTY-1 (Alt+Y 텍스트 정확성), AC-ALTY-2 (이미 존재 시 noop), AC-EMB-DEL-3 (markupVersion round-trip 반영), AC-REG-1 (SPEC-NEWS-REVISE-001 회귀) — acceptance.md §5
+- AC-EMB-DEL-1 (단일 임베드 삭제), AC-EMB-DEL-2 (다중 임베드 중 하나만 삭제), AC-ALTY-1 (Alt+Y 텍스트 정확성) — [SUPERSEDED by SPEC-NEWS-REVISE-015 REQ-EDITOR-END-NEWLINE] "(끝)" 이 선행 `\r\n`/`\n` 없이 인라인으로 삽입되며 '\n(끝)' 등 prefix 형식을 금지한다는 단언은 폐지된다. 마커는 본문 맨 마지막 다음 **개행에 자기 줄**(`\n(끝)`)로 들어가는 것이 정식 동작이며 SPEC-NEWS-REVISE-015 AC-END-NL-1 로 대체된다. (noop·임베드 보존은 SPEC-NEWS-REVISE-015 AC-END-NL-2/3 로 계승), AC-ALTY-2 (이미 존재 시 noop), AC-EMB-DEL-3 (markupVersion round-trip 반영), AC-REG-1 (SPEC-NEWS-REVISE-001 회귀) — acceptance.md §5
 
 ---
 

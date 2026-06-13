@@ -12,7 +12,7 @@ description: >
 license: Apache-2.0
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
   category: "domain"
   status: "active"
   updated: "2026-06-11"
@@ -57,6 +57,7 @@ triggers:
 
 ## HISTORY
 
+- 2026-06-11 (v0.2.2): Alt+Y "(끝)" 동작 확장 동기화 (SPEC-NEWS-REVISE-015 — main 커밋 `74fc55c` 소급 명세). (1) "(끝)" 골드 마커가 본문 맨 마지막 다음 **개행에 자기 줄**로 들어간다(`...본문\n(끝)`; base 가 개행으로 끝나거나 비면 이중 개행 없이 `(끝)`). `endMarkerBlockFor`(editorContent.js) 도입, `appendEnd`(editorAdapter.js) 적용 — 임베드 뒤 최종 블록·idempotent·markupVersion round-trip·송고 `(끝)` 가드 통과는 유지. (2) "(끝)" 마커 뒤(토큰 시작 = bodyText.length−3 이상) 글자 생성 입력(타이핑/Enter/붙여넣기/IME)을 전면 차단하고 마커 **앞** 편집은 허용 — 마커를 지우면 입력 재개. 순수 함수 `isInputBlockedAfterEndMarker`(editorShortcuts.js) + WritePage BodyEditor 3 가드(onKeyDown/onPaste/onBeforeInput). (3) Alt+Y 시 브라우저 네이티브 **맞춤법 검사 토글** — 초기 `spellCheck=false`(빨간 밑줄 없음) → Alt+Y 후 `spellcheck=true`+`lang=ko`+재포커스. 기사 텍스트는 외부 미전송(사용자 승인). §1.4 Alt+Y 행 갱신, news.md 기사 에디터 절(Alt+Y) 4줄 반영. 본 동작은 SPEC-NEWS-REVISE-002 AC-ENDMARK-1(선행 개행 없는 인라인 "(끝)")·003 AC-ALTY-1('\n(끝)' 금지)을 supersede(인라인 전제 폐지; idempotent·골드·임베드 뒤 배치는 계승).
 - 2026-06-11 (v0.2.1): maintenance.md(구 news_.md — 코드-명세 갭 전수 조사 문서) 내용을 news.md 문체로 news.md 에 반영 동기화 — (1) API 명세서 절에 9개 라우트 추가 (login/logout, session, articles/search, :id/action, PUT :id, lock·unlock·force-unlock, media/search, stream, health). (2) "## 편집 잠금 (lockYN)" 절 신설 (30분 stale 승계, 1기사 1페이지 1세션, 보유자 비노출, 언로드 해제 요청, 강제해제 D/Z). (3) 생애주기 절에 Z=D-mirror, DPS(송고→DPS 유지/보류→DDH, KILL 불가), DDH(D/Z 송고→DPS·KILL→DDK, R 전액션 거부), 화이트리스트 거부 4줄 추가. (4) 조회페이지 절에 SSE 구현·부서 멀티셀렉트·컨텍스트 메뉴 비활성 스텁 8종·Lock해제 메뉴(D/Z)·컬럼 설정 모달·시간 포맷(YYYY-MM-DD HH:mm 가운데 정렬)·배지 색 추가. (5) 세션 정책·로그인 워크플로우에 보안 세부(무작위 토큰, fixation 방어, rate limit 15분/10회, bcrypt, active='N' 거부, constant-time) 추가. (6) "## 보안" 절 신설 + DB 명세서에 잠금/공통정보 8컬럼/User.active·멱등 마이그레이션·부서 자동입력·트랜잭션 추가. (7) 디자인 절 레드→블루 기조 정정 (#0A4DA6 주도, 레드 #C8102E 는 포인트 — v0.1.1 미해결 모순 해소), `wirter.do` 오타 → `writer.do` 정정. (8) 에디터 절에 임베드 삭제(Backspace/Delete/Ctrl+D 동반, × 버튼)·markupVersion 블록 구조·IME repaint 시점 추가. news.md 라인 인용은 대량 추가로 전반 drift — 본 스킬의 L## 인용은 추후 보정 필요. 본문 정정 4곳: §1.1 오타 주석, §2.2 Z 행 출처, §2.4 검색 fallback 폐기 반영, §2.6 lock 의미론 수록 표기.
 - 2026-06-09 (v0.2.0): 상세보기 별도 제목 요소 폐지 동기화 (SPEC-NEWS-REVISE-013 REQ-DETAIL-NO-SEPARATE-TITLE) — 상세보기 새창 `기사` 영역에서 별도 제목 요소(`.yh-detail__title`/`<h1>`)를 제거하고 본문(`.yh-detail__content`, markupVersion 첫 줄이 제목)만 렌더한다. 사용자 지시("제목은 이미 본문에서 같이 나오니 없애라") 기반. 기존 REQ-DETAIL-LAYOUT-SPLIT(001)·FONT-EMPHASIS(002)·BODY-EMPHASIS(003)의 제목-요소/폰트강조 전제는 supersede(마커 부착), gray-line `#DDE3EC`·12 공통정보 dt·공통정보→기사 형제 가드는 AC-NOTITLE-4 로 계승. `<head><title>`(빈 제목 시 `(제목 없음)`)은 유지. §2.3 반영, news.md "# 상세보기" 절 1줄 갱신. 구현: web/src/view/articleDetail.js (h1·CSS 제거), articleDetail.test.js (제목 단언 → AC-NOTITLE-*). 동반(별건): 에디터 임베드 Backspace 삭제 시 커서 점프 수정(editorCaret.embedTextOffset), 조회 작성/수정시간 컬럼 grid 정렬(yonhap.css).
 - 2026-06-08 (v0.1.9): 생애주기 신규 결정 동기화 — **최초 송고 = RDS**: 작성 페이지(writer.do) 신규 기사(A-DRAFT)의 송고는 권한과 무관하게 상태 전이 없이 RDS 저장만 한다 (useWriteController.submitAction 이 applyAction 을 부르지 않음). §1.3/§2.2 의 권한별 전이 표(D 송고 → DPS 등)는 기존 기사(편집 컨텍스트)의 송고/보류/KILL 에만 적용된다. 보류/KILL 은 신규에서도 종전 전이 유지 (R→RRH/RRK, D→DDH/DDK). news.md 기사 생애주기 절에 결정 1줄 반영. 동반: 부서별 작성/송고의 부서 멀티셀렉트 체크박스 드롭다운(.yh-multi-select) 디자인 토큰 스타일 신설 (yonhap.css — 종전엔 무스타일이라 깨져 보였음).
@@ -120,7 +121,7 @@ triggers:
 
 | 단축키 | 동작 | 제약 |
 |--------|------|------|
-| `Alt+Y` | `(끝)` 골드색 1회 삽입 — embeds 뒤 **최종 블록**으로 배치 (시각 순서: 본문 → embeds → `(끝)`) | 이미 `(끝)` 이 있으면 삽입하지 않음 (Source: news.md L122-123. prefix-free 토큰은 SPEC-NEWS-REVISE-002)"` / 본문 끝 삽입. prefix-free 토큰은 SPEC-NEWS-REVISE-002, embeds 뒤 배치는 2026-06-06 구두 지시) |
+| `Alt+Y` | `(끝)` 골드색 1회 삽입 — embeds 뒤 **최종 블록**, 본문 맨 마지막 다음 **개행에 자기 줄**로 (`...본문\n(끝)`; base 가 개행으로 끝나거나 비면 이중 개행 없이 `(끝)`). + 마커 뒤 입력 차단(마커 앞 편집 허용, 마커 삭제 시 재개) + 브라우저 맞춤법 검사 토글(off→on, `lang=ko`) | 이미 `(끝)` 이 있으면 삽입하지 않음(idempotent). 새 줄 삽입·입력 차단·맞춤법 토글: SPEC-NEWS-REVISE-015 (commit `74fc55c`). embeds 뒤 배치: 2026-06-06 구두 지시. (SPEC-NEWS-REVISE-002 AC-ENDMARK-1 / 003 AC-ALTY-1 인라인 전제는 supersede) |
 | `Ctrl+D` | 현재 라인 제거 | 에디터 포커스 한정, `preventDefault` 강제 (Source: news.md L124) |
 | IME 합성 중 | repaint 차단 | compositionEnd 까지 stale bodyText 사용 금지 — SPEC-NEWS-REVISE-001 D-7 회귀 (Source: 최근 커밋 7580d2b) |
 
