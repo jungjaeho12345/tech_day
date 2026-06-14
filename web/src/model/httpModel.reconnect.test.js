@@ -40,8 +40,6 @@ describe('AC-VW-2: SSE 재연결 배선 가드 (재연결 자체는 브라우저
   it('폴링/타이머가 아니라 EventSource 를 생성하고 open+error 핸들러를 등록한다', () => {
     const listeners = {};
     let constructed = 0;
-    const setIntervalSpy = vi.spyOn(global, 'setInterval');
-    const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
     class FakeEventSource {
       static OPEN = 1;
       constructor(url) {
@@ -55,6 +53,9 @@ describe('AC-VW-2: SSE 재연결 배선 가드 (재연결 자체는 브라우저
     global.EventSource = FakeEventSource;
 
     const model = createHttpModel();
+    // ↓ 여기서부터 스파이 — subscribe 단계에만 폴링 없음을 단언 (생성자 내부 타이머는 단언 대상 외)
+    const setIntervalSpy = vi.spyOn(global, 'setInterval');
+    const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
     model.subscribe({}, vi.fn());
 
     // (1) Transport is EventSource — exactly one stream opened, no polling timers spun up.
